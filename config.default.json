@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "features": {
+    "bootAnimation": false,
+    "themeStyles": true,
+    "crtScanlines": false,
+    "chineseLocalization": true,
+    "dynamicWallpaper": {
+      "enabled": true,
+      "videoPath": "assets/videos/default-bg.mp4",
+      "brightness": 0.85,
+      "contrast": 1.05
+    }
+  }
+}

@@ -1,0 +1,55 @@
+/* ==========================================================================
+   550C // ANTIGRAVITY CRT AMBER THEME (流浪地球 550C 沉浸式主题)
+   ========================================================================== */
+
+:root {
+  --550c-amber: #e8a020;
+  --550c-amber-bright: #ffc043;
+  --550c-amber-dark: #8a5e10;
+  --550c-amber-fade: rgba(232, 160, 32, 0.25);
+  --550c-bg-panel: rgba(14, 12, 8, 0.82);
+  --550c-green: #b8c840;
+  --550c-red: #e05030;
+}
+
+/* 1. 复古 CRT 荧光扫描线叠加层 (轻量、不干扰鼠标点击) */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999998;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(232, 160, 32, 0.02) 0,
+    rgba(232, 160, 32, 0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.65;
+}
+
+/* 2. 滚动条琥珀金质感 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(10, 8, 5, 0.3);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--550c-amber-dark);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--550c-amber);
+  box-shadow: 0 0 8px var(--550c-amber-fade);
+}
+
+/* 3. 550C 选区高亮 */
+::selection {
+  background: rgba(232, 160, 32, 0.35) !important;
+  color: #fff !important;
+}
+
+

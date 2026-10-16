@@ -1,0 +1,20 @@
+{
+  "name": "antigravity-skin",
+  "version": "1.0.0",
+  "description": "Antigravity Custom Theme, Dynamic Wallpaper, 550C Boot Animation and Appearance Menu Integration",
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-websocket sidecars/skin-engine/main.mjs",
+    "install-plugin": "./install.sh",
+    "uninstall-plugin": "./uninstall.sh"
+  },
+  "keywords": [
+    "antigravity",
+    "theme",
+    "skin",
+    "wallpaper",
+    "boot-animation"
+  ],
+  "author": "Antigravity Community",
+  "license": "MIT"
+}

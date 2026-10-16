@@ -1,0 +1,10 @@
+{
+  "command": "node",
+  "args": [
+    "--experimental-websocket",
+    "main.mjs"
+  ],
+  "restart_policy": "always",
+  "display_name": "Skin Engine",
+  "description": "Antigravity dynamic wallpaper, themes and UI enhancements"
+}
