@@ -1,28 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Antigravity Skin - macOS / Linux 一键卸载脚本
 set -e
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+echo "=================================================="
+echo "  正在卸载 Antigravity 主题与皮肤插件..."
+echo "=================================================="
 
-# 优先使用统一规范的 Node.js 卸载引擎
-if command -v node >/dev/null 2>&1; then
-    node "$PROJECT_DIR/scripts/uninstall.mjs"
-    exit 0
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+
+if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/scripts/uninstall.mjs" ]; then
+    if command -v node >/dev/null 2>&1; then
+        node "$PROJECT_DIR/scripts/uninstall.mjs"
+        exit 0
+    fi
 fi
 
-# 回退机制：系统无 node 运行时
 TARGET_DIR="$HOME/.gemini/config/plugins/antigravity-skin"
 CONFIG_FILE="$HOME/.gemini/config/config.json"
 
-echo "=================================================="
-echo " 正在卸载 Antigravity 主题与皮肤官方集成插件..."
-echo "=================================================="
-
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
-    echo "[1/2] 移除插件目录/链接..."
+    echo "[1/2] 移除插件部署目录..."
     rm -rf "$TARGET_DIR"
 fi
 
-echo "[2/2] 从 ~/.gemini/config/config.json 中移除插件..."
+echo "[2/2] 从配置文件注销插件..."
 python3 -c "
 import json, os
 
@@ -37,8 +38,9 @@ if os.path.exists(config_file):
                 json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-"
+" 2>/dev/null || true
 
 echo "=================================================="
-echo " [√] 卸载完成！重启客户端即可完全恢复官方原生状态。"
+echo " [√] 卸载成功！已完全还原官方初始状态。"
+echo " 请完全退出并重新打开 Antigravity 客户端。"
 echo "=================================================="

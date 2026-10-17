@@ -62,7 +62,18 @@
   - **Windows**：`%USERPROFILE%\.gemini\config\plugins\antigravity-skin`（即 `C:\Users\<你的用户名>\.gemini\config\plugins\antigravity-skin`）
   - **macOS / Linux**：`~/.gemini/config/plugins/antigravity-skin`
 - **一键脚本已经为你全自动化处理好了一切**：
-  本项目的 `install.bat` / `install.ps1` / `install.sh` 会自动按官方纯净白名单将插件部署到系统的 `.gemini` 官方持久化插件目录，并自动在 `config.json` 注册启用。**即使你以后更新反重力客户端，主题与个性化配置依然永久有效**！
+### Q2：如果是压缩包，用户要解压到哪里呢？运行完脚本，解压出来的文件夹可以删除吗？
+**答：随便解压到哪里都可以，安装完后解压出来的文件夹可以完全放心删除！**
+- 您可以解压到「桌面」、「下载」或任何临时目录。
+- 安装脚本执行的是**纯净物理文件拷贝（Copy）**，会将运行所需的全部代码完整部署到系统的官方持久化目录中。
+- 因此，解压出的文件夹只是“安装包媒介”，**运行完安装脚本后，解压出来的源文件/文件夹直接丢进回收站/废纸篓删除即可**，完全不影响插件正常运行。
+
+### Q3：为什么千万不能直接安装到反重力 App 根目录下？
+- 反重力（Antigravity）客户端具有**后台静默自动升级**机制。如果将文件强行复制到 App 根目录（例如 `C:\Program Files\Antigravity` 或 `AppData\Local\Programs\Antigravity`），或者去改动 `app.asar`，那么**只要客户端一自动更新，所有修改就会被官方升级包全量覆盖并失效**！
+- Antigravity 官方专为插件设计的标准持久化目录是：
+  - **Windows**：`%USERPROFILE%\.gemini\config\plugins\antigravity-skin`（即 `C:\Users\<你的用户名>\.gemini\config\plugins\antigravity-skin`）
+  - **macOS / Linux**：`~/.gemini/config/plugins/antigravity-skin`
+- 本项目的安装脚本会自动处理好一切。**即使以后升级反重力客户端，主题与配置依然永久有效**！
 
 ---
 
@@ -70,7 +81,7 @@
 
 ### 方式一：下载 Release 压缩包一键安装（推荐，免 Git）
 1. 前往 GitHub 仓库右侧的 [Releases](../../releases) 下载最新版的 `antigravity-skin.zip`。
-2. 将压缩包解压到任意位置。
+2. 将压缩包解压到任意位置（如桌面或下载文件夹）。
 3. 执行一键安装：
    - **Windows**：直接**双击运行 `install.bat`**。（或右键使用 PowerShell 运行 `install.ps1`）
    - **macOS / Linux**：在终端进入解压目录，运行：
@@ -78,39 +89,31 @@
      chmod +x install.sh
      ./install.sh
      ```
-4. 安装完成后，**完全退出并重新启动 Antigravity 客户端**即可！
-   *(安装完成后，解压出来的文件夹可以随时删除)*
+4. 安装完成后，**彻底退出并重新启动 Antigravity 客户端**即可！
+   *(提示：安装成功后，解压出来的文件夹可以直接删除)*
 
 ---
 
-### 方式二：PowerShell 一行命令在线安装（Windows 极速免下载）
-无需手动下载压缩包，直接在 PowerShell 窗口中粘贴并回车：
+### 方式二：终端一行命令极速在线安装（免手动下载）
+无需手动下载压缩包，直接在终端中粘贴并回车：
 
-```powershell
-irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.ps1 | iex
-```
-*(注：如果因网络无法访问 raw 内容，推荐直接采用【方式一】下载 Release 压缩包)*
+- **Windows (PowerShell)**：
+  ```powershell
+  irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.ps1 | iex
+  ```
+
+- **macOS / Linux (Terminal)**：
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.sh | bash
+  ```
 
 ---
 
 ### 方式三：从源码仓库安装（适合开发者）
 如果您已经通过 `git clone` 将本仓库克隆到了本地：
 
-- **Windows**：
-  ```powershell
-  cd antigravity-skin
-  .\install.ps1
-  ```
-  *(或双击 `install.bat`)*
-
-- **macOS / Linux**：
-  ```bash
-  cd antigravity-skin
-  chmod +x install.sh
-  ./install.sh
-  ```
-
-安装成功后，重启 Antigravity 即可。
+- **Windows**：直接双击 `install.bat` 或在 PowerShell 执行 `.\install.ps1`。
+- **macOS / Linux**：终端执行 `./install.sh`。
 
 ---
 
@@ -131,14 +134,25 @@ irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.ps1
 
 ---
 
-## 🗑️ 彻底卸载
+## 🗑️ 彻底卸载（支持本地与一行命令）
 
 如果您希望卸载本插件并恢复纯官方初始环境：
 
+### 1. 终端一行指令在线卸载（最方便）
+- **macOS / Linux**：
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/uninstall.sh | bash
+  ```
+- **Windows (PowerShell)**：
+  ```powershell
+  irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/uninstall.ps1 | iex
+  ```
+
+### 2. 本地脚本卸载
 - **Windows**：双击运行 `uninstall.bat`（或在 PowerShell 中执行 `.\uninstall.ps1`）。
 - **macOS / Linux**：终端执行 `./uninstall.sh`。
 
-脚本会自动从 `~/.gemini/config/plugins` 中安全移除插件，并自动清理配置项。重启 Antigravity 即可完全还原。
+脚本会自动从官方插件目录安全移除插件并清理配置文件。重启 Antigravity 即可完全恢复。
 
 ---
 
