@@ -12,3 +12,9 @@ assets/videos/*.webm
 assets/videos/*.mov
 assets/videos/*.mkv
 !assets/videos/.gitkeep
+
+# 本地实验补丁脚本
+patch-loading.bat
+restore-loading.bat
+scripts/patch-boot-overlay.mjs
+scripts/restore-boot-overlay.mjs
