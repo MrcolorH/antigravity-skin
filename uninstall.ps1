@@ -1,4 +1,4 @@
-# Antigravity Skin - Windows 一键卸载脚本
+﻿# Antigravity Skin - Windows 一键卸载脚本
 $ErrorActionPreference = "Stop"
 
 Write-Host "==================================================" -ForegroundColor Yellow

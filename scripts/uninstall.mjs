@@ -3,6 +3,11 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const home = os.homedir();
 const targetPluginDir = path.join(home, '.gemini', 'config', 'plugins', 'antigravity-skin');
