@@ -4,22 +4,21 @@
 
 
 // 0. 同步并持久锁定 Windows 原生窗口控制按钮（WCO）强制完全透明与图标色
-function syncTitleBarOverlay() {
+function syncTitleBarOverlay(force = false) {
   if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
     const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     const isCustomThemeEnabled = cfg.features?.themeStyles !== false;
 
     // 若未启用自定义皮肤与动效增强，恢复官方原生深浅色实色背景
     if (!isCustomThemeEnabled) {
-      const isDark = document.body && (
+      const isDark = (document.body && (
         document.body.classList.contains('dark') ||
-        document.body.classList.contains('theme-dark') ||
-        document.documentElement.classList.contains('dark')
-      );
+        document.body.classList.contains('theme-dark')
+      )) || (document.documentElement && document.documentElement.classList.contains('dark'));
       const color = isDark ? '#18181b' : '#f8fafc';
       const symbolColor = isDark ? '#f4f4f5' : '#334155';
       const cacheKey = `native__${color}__${symbolColor}`;
-      if (window.__agyLastTitleBarKey === cacheKey) return;
+      if (!force && window.__agyLastTitleBarKey === cacheKey) return;
       window.__agyLastTitleBarKey = cacheKey;
 
       window.electronNative.setTitleBarOverlay({
@@ -42,17 +41,17 @@ function syncTitleBarOverlay() {
 
     let symbolColor = '#f8fafc';
     if (!isBootPlaying) {
-      const isDark = document.body && (
+      const isDark = (document.body && (
         document.body.classList.contains('dark') ||
-        document.body.classList.contains('theme-dark') ||
-        document.documentElement.classList.contains('dark')
-      );
+        document.body.classList.contains('theme-dark')
+      )) || (document.documentElement && document.documentElement.classList.contains('dark'));
       // 主界面非开机时：根据深浅色自适应图标颜色，浅色主题使用深色图标保证在浅色天空/亮色壁纸下清晰可辨
       symbolColor = isDark ? '#f8fafc' : '#334155';
     }
 
     const cacheKey = `custom_trans__${color}__${symbolColor}`;
-    if (window.__agyLastTitleBarKey === cacheKey) return;
+    // 关键修复：在 force 强制模式或开机动画播放中，绝不被缓存阻断！彻底压制宿主在 0~8 秒内异步覆盖的白色背景！
+    if (!force && !isBootPlaying && window.__agyLastTitleBarKey === cacheKey) return;
     window.__agyLastTitleBarKey = cacheKey;
 
     window.electronNative.setTitleBarOverlay({
@@ -65,29 +64,30 @@ function syncTitleBarOverlay() {
 
 window.__agySyncTitleBar = syncTitleBarOverlay;
 
-// 启动阶段多梯队保活执行（彻底压制宿主冷启动 0~6 秒内的延迟主题初始化）
+// 启动阶段多梯队保活执行（彻底压制宿主冷启动 0~8 秒内的延迟主题初始化）
 if (typeof window !== 'undefined') {
-  syncTitleBarOverlay();
-  [100, 300, 600, 1200, 2500, 5000].forEach(delay => {
-    setTimeout(syncTitleBarOverlay, delay);
+  syncTitleBarOverlay(true);
+  [50, 100, 200, 300, 500, 800, 1200, 1800, 2500, 3500, 5000, 7500].forEach(delay => {
+    setTimeout(() => syncTitleBarOverlay(true), delay);
   });
-  window.addEventListener('focus', syncTitleBarOverlay);
+  window.addEventListener('focus', () => syncTitleBarOverlay(true));
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') syncTitleBarOverlay();
+    if (document.visibilityState === 'visible') syncTitleBarOverlay(true);
   });
 
-  // 监听 body class 变动（深浅色切换），即刻同步
+  // 监听 body 和 html class 变动（深浅色切换），即刻同步
   if (typeof MutationObserver !== 'undefined') {
     const themeObs = new MutationObserver(() => {
       syncTitleBarOverlay();
     });
-    if (document.body) {
-      themeObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    } else {
+    const observeEl = (el) => {
+      if (el) themeObs.observe(el, { attributes: true, attributeFilter: ['class'] });
+    };
+    observeEl(document.body);
+    observeEl(document.documentElement);
+    if (!document.body) {
       document.addEventListener('DOMContentLoaded', () => {
-        if (document.body) {
-          themeObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-        }
+        observeEl(document.body);
       }, { once: true });
     }
   }

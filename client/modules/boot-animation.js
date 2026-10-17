@@ -1,6 +1,5 @@
 (() => {
   if (typeof window === 'undefined') return;
-  if (window.__antigravity550CInstalled) return;
   window.__antigravity550CInstalled = true;
 
   // 极速冷启动优先级保障：若配置开启开机动画且本会话未播放过，第 0 毫秒置位全局播放标志
@@ -1134,6 +1133,8 @@ function resumeWallpaperVideo() {
   }
 }
 
+let bootTitleBarTimer = null;
+
 function setBootTitleBarOverlay() {
   if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
     window.electronNative.setTitleBarOverlay({
@@ -1144,9 +1145,34 @@ function setBootTitleBarOverlay() {
   }
 }
 
+function startBootTitleBarLock() {
+  stopBootTitleBarLock();
+  setBootTitleBarOverlay();
+  // 关键：以 80ms 高频持续锁定，彻底压制宿主在开机动画期间加载完成引发的实色覆盖！
+  bootTitleBarTimer = setInterval(() => {
+    const isPlaying = !!window.__agyBootPlaying ||
+                      !!document.querySelector('.dsh550c-host') ||
+                      !!document.getElementById('agy-video-boot-host') ||
+                      !!document.getElementById('agy-custom-code-boot-host');
+    if (!isPlaying) {
+      stopBootTitleBarLock();
+      return;
+    }
+    setBootTitleBarOverlay();
+  }, 80);
+}
+
+function stopBootTitleBarLock() {
+  if (bootTitleBarTimer) {
+    clearInterval(bootTitleBarTimer);
+    bootTitleBarTimer = null;
+  }
+}
+
 function restoreTitleBarOverlay() {
+  stopBootTitleBarLock();
   if (typeof window !== 'undefined' && typeof window.__agySyncTitleBar === 'function') {
-    window.__agySyncTitleBar();
+    window.__agySyncTitleBar(true);
   }
 }
 
@@ -1154,7 +1180,8 @@ function notifyNative(action) {
   if (hasFinished) return;
   hasFinished = true;
   window.__agyBootPlaying = false;
-  // 核心：在动画淡出的第一时间立即通知动态壁纸引擎启动加载，形成优雅 Cross-fade 交叉淡入过渡
+  // 核心：在动画淡出的第一时间立即同步标题栏，让图标色平滑衔接，底色始终保持 100% 透明
+  restoreTitleBarOverlay();
   if (typeof window.__agyResumeBootWallpaper === 'function') {
     try { window.__agyResumeBootWallpaper(); } catch(e) {}
   }
@@ -1179,14 +1206,14 @@ function start550C() {
   hasFinished = false;
   window.__agyBootPlaying = true;
 
-  // 关键：在挂载的第 0 毫秒，立即将右上角原生窗口控制按钮染成纯黑，与全屏 550C 背景完全同化，彻底消除白色色块与闪烁！
-  setBootTitleBarOverlay();
+  // 关键：在挂载的第 0 毫秒，立即启动标题栏透明锁定器，彻底消除白色色块与闪烁！
+  startBootTitleBarLock();
 
   const runMount = () => {
     if (document.querySelector('.dsh550c-host')) return;
     window.__agyBootPlaying = true;
     pauseWallpaperVideo();
-    setBootTitleBarOverlay();
+    startBootTitleBarLock();
 
     const host = document.createElement('div');
     host.className = 'dsh550c-host';
@@ -1251,7 +1278,7 @@ function startVideoBoot(videoSrc) {
   if (document.getElementById('agy-video-boot-host')) return;
   window.__agyBootPlaying = true;
   pauseWallpaperVideo();
-  setBootTitleBarOverlay();
+  startBootTitleBarLock();
 
   const host = document.createElement('div');
   host.id = 'agy-video-boot-host';
@@ -1276,7 +1303,8 @@ function startVideoBoot(videoSrc) {
     if (cleaned) return;
     cleaned = true;
     window.__agyBootPlaying = false;
-    // 核心：在动画淡出的第一时间立即通知动态壁纸引擎启动加载，形成平滑 Cross-fade 过渡
+    // 核心：在动画淡出的第一时间立即同步标题栏，让图标色平滑衔接，底色始终保持 100% 透明
+    restoreTitleBarOverlay();
     if (typeof window.__agyResumeBootWallpaper === 'function') {
       try { window.__agyResumeBootWallpaper(); } catch(e) {}
     }
@@ -1312,12 +1340,14 @@ function startVideoBoot(videoSrc) {
 
 window.__trigger550C = start550C;
 window.__triggerVideoBoot = startVideoBoot;
+window.__agyStartBootTitleBarLock = startBootTitleBarLock;
+window.__agyStopBootTitleBarLock = stopBootTitleBarLock;
 
 async function startCustomCodeBoot(scriptPath) {
   if (document.getElementById('agy-custom-code-boot-host')) return;
   window.__agyBootPlaying = true;
   pauseWallpaperVideo();
-  setBootTitleBarOverlay();
+  startBootTitleBarLock();
 
   const host = document.createElement('div');
   host.id = 'agy-custom-code-boot-host';
@@ -1341,7 +1371,8 @@ async function startCustomCodeBoot(scriptPath) {
     if (typeof customCleanup === 'function') {
       try { customCleanup(); } catch(e) {}
     }
-    // 核心：在动画淡出的第一时间立即通知动态壁纸引擎启动加载，形成平滑 Cross-fade 过渡
+    // 核心：在动画淡出的第一时间立即同步标题栏，让图标色平滑衔接，底色始终保持 100% 透明
+    restoreTitleBarOverlay();
     if (typeof window.__agyResumeBootWallpaper === 'function') {
       try { window.__agyResumeBootWallpaper(); } catch(e) {}
     }

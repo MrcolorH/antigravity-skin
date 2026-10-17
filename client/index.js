@@ -29,6 +29,18 @@
   const API_PORT = window.__AG_SKIN_PORT__ || 59288;
   const API_BASE = `http://127.0.0.1:${API_PORT}`;
 
+  // 状态句柄与壁纸状态缓存
+  let wallpaperHandle = null;
+  let crtHandle = null;
+  let menuHandle = null;
+  let lastWallpaperState = {
+    isCustomTheme: undefined,
+    isVideoOn: undefined,
+    videoPath: undefined,
+    brightness: undefined,
+    contrast: undefined
+  };
+
   function saveConfigRemote(newCfg) {
     currentConfig = newCfg;
     window.__AG_SKIN_CONFIG__ = newCfg;
@@ -64,7 +76,7 @@
   if (window.__AG_SKIN_ATTACHED__) {
     console.log('[Antigravity Skin] Re-checking skin active state & DOM attachments...');
     if (typeof window.__agySyncTitleBar === 'function') {
-      window.__agySyncTitleBar();
+      window.__agySyncTitleBar(true);
     }
 
     if (typeof window.__agyInitAppearanceMenu === 'function') {
@@ -107,17 +119,6 @@
 
   console.log('[Antigravity Skin] Initializing custom theme and skin...');
 
-  // 2. 状态句柄与壁纸状态缓存
-  let wallpaperHandle = null;
-  let crtHandle = null;
-  let menuHandle = null;
-  let lastWallpaperState = {
-    isCustomTheme: undefined,
-    isVideoOn: undefined,
-    videoPath: undefined,
-    brightness: undefined,
-    contrast: undefined
-  };
 
   function applyFeatures(cfg) {
     const f = cfg.features || {};
@@ -242,6 +243,11 @@
 
   window.__agyApplyFeatures = applyFeatures;
 
+  // 2.5 启动第零防线：第一时间强力同步标题栏完全透明
+  if (typeof window.__agySyncTitleBar === 'function') {
+    try { window.__agySyncTitleBar(true); } catch(e) {}
+  }
+
   // 3. 开机引导动画优先检测与极速呈现（若开启且本 Session 未播放过）
   // 核心时序：优先挂载开屏动画素材，推迟动态壁纸资源的下载与渲染，彻底消除开机闪现壁纸的割裂感！
   try {
@@ -259,10 +265,16 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+      if (typeof window.__agySyncTitleBar === 'function') {
+        try { window.__agySyncTitleBar(true); } catch(e) {}
+      }
       checkAndTriggerBootAnimation();
       try { applyFeatures(currentConfig); } catch (e) {}
     }, { once: true });
     window.addEventListener('load', () => {
+      if (typeof window.__agySyncTitleBar === 'function') {
+        try { window.__agySyncTitleBar(true); } catch(e) {}
+      }
       try { applyFeatures(currentConfig); } catch (e) {}
     }, { once: true });
   }

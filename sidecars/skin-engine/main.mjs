@@ -508,6 +508,22 @@ function buildClientBundle() {
 
   let bundleParts = [];
 
+  // 0. 最先置顶：第 0 毫秒强力实施标题栏完全透明，彻底消除开机动画加载前后的白条闪烁
+  bundleParts.push(`(() => {
+    try {
+      if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+        const isCustom = (${JSON.stringify(config)}?.features?.themeStyles !== false);
+        if (isCustom) {
+          window.electronNative.setTitleBarOverlay({
+            color: 'rgba(0, 0, 0, 0)',
+            symbolColor: '#f8fafc',
+            height: 35
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  })();`);
+
   // 全局注入变量
   bundleParts.push(`window.__AG_SKIN_PORT__ = ${HTTP_PORT};`);
   bundleParts.push(`window.__AG_SKIN_CONFIG__ = ${JSON.stringify(config)};`);
@@ -615,6 +631,14 @@ function createCdpSession(target) {
 
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url})`);
+    // 关键优化：WebSocket 刚建立握手的第 0 毫秒，立即极速执行轻量透明指令，消除大 bundle 编译等待期间的视觉白块
+    try {
+      await send('Runtime.evaluate', {
+        expression: `if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+          window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
+        }`
+      });
+    } catch (_) {}
     await executeInjection();
   };
 
@@ -653,7 +677,7 @@ function createCdpSession(target) {
       const result = await send('Runtime.evaluate', {
         expression: `(() => {
           if (typeof window.__agySyncTitleBar === 'function') {
-            try { window.__agySyncTitleBar(); } catch (e) {}
+            try { window.__agySyncTitleBar(true); } catch (e) {}
           }
           if (!window.__AG_SKIN_ATTACHED__) return false;
           const bridge = window.__agySkinBridge;
@@ -738,10 +762,24 @@ async function pollAndInject() {
   }
 }
 
-// 7. 定时巡检与保活（每 3 秒低负载无感巡检）
-console.log('[Skin Engine] Antigravity Skin daemon active with persistent CDP keep-alive.');
-setInterval(pollAndInject, 3000);
-pollAndInject();
+// 7. 高速冷启动探测与常驻自愈巡检（自适应动态频次）
+console.log('[Skin Engine] Antigravity Skin daemon active with adaptive CDP keep-alive.');
+let isFastPolling = true;
+const daemonStartTime = Date.now();
+
+async function pollLoop() {
+  try {
+    await pollAndInject();
+  } catch (_) {}
+  // 启动前 15 秒内使用 150ms 高速轮询，极速捕获冷启动 DevToolsActivePort 和窗口页面；之后转为 2000ms 定期保活
+  const elapsed = Date.now() - daemonStartTime;
+  if (elapsed > 15000 && activeSessions.size > 0) {
+    isFastPolling = false;
+  }
+  const nextDelay = isFastPolling ? 150 : 2000;
+  setTimeout(pollLoop, nextDelay);
+}
+pollLoop();
 
 // 8. 优雅退出与资源清理（杜绝重启客户端时形成僵尸进程占用端口）
 function gracefulShutdown(signal) {

@@ -7,7 +7,7 @@ Write-Host "=================================================="
 
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Definition }
 
-# 模式 A：本地已有解压文件（或由 install.bat 调起）
+# 模式 A：本地已有解压文件且系统已安装 node
 if ($scriptDir -and (Test-Path (Join-Path $scriptDir "scripts\install.mjs"))) {
     if (Get-Command node -ErrorAction SilentlyContinue) {
         node --experimental-websocket (Join-Path $scriptDir "scripts\install.mjs")
