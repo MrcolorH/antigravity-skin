@@ -63,7 +63,7 @@ try {
 
     # 白名单实体复制（装完后用户可以随意删除解压目录）
     $whitelistDirs = @("client", "sidecars", "assets", "scripts")
-    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh")
+    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh", "patch-loading.bat", "restore-loading.bat")
 
     foreach ($dir in $whitelistDirs) {
         $srcPath = Join-Path $sourceRoot $dir
@@ -105,6 +105,20 @@ try {
     $updatedJson = $configObj | ConvertTo-Json -Depth 10
     Set-Content -Path $configFile -Value $updatedJson -Encoding UTF8
 
+    # 4. Windows 开机动画引擎自动配置（若 Node.js 可用）
+    $patchScript = Join-Path $targetDir "scripts\patch-boot-overlay.mjs"
+    if (Test-Path $patchScript) {
+        if (Get-Command node -ErrorAction SilentlyContinue) {
+            try {
+                Write-Host "[4/4] 正在配置 Windows 客户端前置开机动画引擎 (零闪白溶出)..." -ForegroundColor Green
+                node $patchScript
+            } catch {
+                Write-Host "  ⚠️ 开机动画补丁未能在安装时自动合入（通常因客户端正在运行中）。" -ForegroundColor Yellow
+                Write-Host "     👉 请完全退出 Antigravity 客户端后，双击执行 patch-loading.bat 即可一键完成升级！" -ForegroundColor Yellow
+            }
+        }
+    }
+
     Write-Host "==================================================" -ForegroundColor Cyan
     Write-Host " [√] 安装部署完成！" -ForegroundColor Green
     Write-Host " 插件已部署至: $targetDir" -ForegroundColor Cyan
@@ -113,6 +127,11 @@ try {
     Write-Host " 插件核心文件已全部复制到上述持久化目录。" -ForegroundColor Yellow
     Write-Host " 当前解压出来的安装包文件夹【已不需要，请直接删除】！" -ForegroundColor Yellow
     Write-Host " 本地无需保留任何多余文件，完全不影响插件正常运行。" -ForegroundColor Yellow
+    Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host " 🎬 Windows 开机动画专属提示：" -ForegroundColor Magenta
+    Write-Host " 若需彻底消除官方 Logo 呼吸动画并使用自定义开机动画：" -ForegroundColor Magenta
+    Write-Host " 请先完全退出 Antigravity 客户端，然后随时双击运行 patch-loading.bat！" -ForegroundColor Magenta
+    Write-Host " 如需恢复官方原版开机动画，可随时双击 restore-loading.bat。" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
     Write-Host " 请完全退出并重新打开 Antigravity 客户端即可生效！" -ForegroundColor Cyan
     Write-Host "==================================================" -ForegroundColor Cyan

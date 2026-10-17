@@ -26,8 +26,9 @@
 - **实时无级滤镜调节**：支持亮度（Brightness）、对比度（Contrast）滑块实时无级微调，调节时画面完全不中断。
 - **用户对话气泡折叠增强**：长文本提问气泡智能限高并提供一键折叠/展开按钮。
 
-### 3. 可定制开机引导动画
-- **零延迟秒开引导**：启动客户端即刻全屏呈现开机动效，杜绝加载过程中的黑屏假死感。
+### 3. 可定制开机引导动画（真·零延迟动态联动 & 影院级溶出）
+- **官方 Logo 呼吸彻底移除（Windows 专属增强）**：彻底解除官方反重力呼吸 Logo 遮罩，直接动态联动呈现您在「设置 - 外观」中配置的专属开机动画（短视频或科技代码）。
+- **零白闪平滑溶出（Cross-Dissolve）**：底层深度探测主工作台 DOM 与动态壁纸真实就绪状态后才提示「就绪」，点击跳过后通过 450ms 贝塞尔曲线自然溶入主界面，无缝衔接。
 - **两套素材方案独立下拉切换（不管底层文件物理路径）**：
   - 🎬 **短视频开机方案**：内置独立视频下拉库，支持导入 MP4/WebM，直接通过下拉框在多个视频间自由切换。
   - 💻 **代码渲染动效方案**：内置极客科技动效预设与独立脚本下拉库，支持导入任意 Canvas / WebGL / DOM 渲染脚本，通过下拉框在各个代码动效方案间自由切换。
@@ -117,6 +118,15 @@
 
 ---
 
+### 🎬 Windows 专属开机动画配置提示（重要标注）
+
+- **自动配置**：一键安装脚本（`install.bat` / `install.ps1`）在 Windows 下会**自动尝试合入前置开机动画防闪白溶出引擎**。
+- **手动补丁 `patch-loading.bat`**：若执行安装时 Antigravity 客户端正在运行（程序锁定核心文件），请在**彻底退出客户端后，随时双击运行根目录下的 `patch-loading.bat`**，即可一键完成升级，彻底消除官方 Logo 呼吸等待！
+- **macOS / Linux 用户**：**完全不需要执行此 bat 脚本**（macOS 平台原生即享流畅开屏体验）。
+- **一键安全还原 `restore-loading.bat`**：脚本在首次运行时会自动创建官方原版安全备份 `app.asar.bak`。若未来任何时候想恢复官方默认 Logo 呼吸动画，随时双击运行 `restore-loading.bat` 即可 1 秒原样恢复原厂状态。
+
+---
+
 ## ⚙️ 如何在客户端中个性化设置
 
 安装生效后，主题已与 Antigravity 原生设置融为一体：
@@ -168,6 +178,8 @@ antigravity-skin/
 ├── uninstall.ps1               # Windows PowerShell 自动清理脚本
 ├── install.sh                  # macOS / Linux 一键安装脚本
 ├── uninstall.sh                # macOS / Linux 一键卸载脚本
+├── patch-loading.bat           # Windows 前置开机动画防闪白溶出引擎升级脚本
+├── restore-loading.bat         # Windows 一键安全恢复官方原厂开机状态脚本
 ├── sidecars/
 │   └── skin-engine/
 │       ├── sidecar.json        # 官方 Sidecar 服务声明配置
@@ -186,6 +198,8 @@ antigravity-skin/
 ├── scripts/
 │   ├── install.mjs             # 跨平台纯净白名单部署与 RPC 注册引擎
 │   ├── uninstall.mjs           # 跨平台安全卸载引擎
+│   ├── patch-boot-overlay.mjs  # Windows 核心开机引擎与原生窗口锁黑补丁
+│   ├── restore-boot-overlay.mjs# Windows 官方 app.asar 自动还原脚本
 │   └── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
 └── assets/
     ├── scripts/

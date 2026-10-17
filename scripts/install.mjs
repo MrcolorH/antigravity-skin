@@ -49,7 +49,8 @@ for (const obs of obsoleteDirs) {
 const WHITELIST_DIRS = ['client', 'sidecars', 'assets', 'scripts'];
 const WHITELIST_FILES = [
   'plugin.json', 'config.default.json', 'package.json', 'README.md',
-  'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh'
+  'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh',
+  'patch-loading.bat', 'restore-loading.bat'
 ];
 
 function copyDirSafe(src, dest) {
@@ -227,6 +228,21 @@ async function cleanRunningHost() {
 
 await cleanRunningHost();
 
+// 5. Windows 平台特权：自动尝试执行前置开机动画动态联动补丁（macOS / Linux 不需要）
+if (process.platform === 'win32') {
+  console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (零闪白溶出)...');
+  const patchScript = path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+  if (fs.existsSync(patchScript)) {
+    try {
+      const { execSync } = await import('node:child_process');
+      execSync(`node "${patchScript}"`, { stdio: 'inherit' });
+    } catch (e) {
+      console.log('  ⚠️ 开机动画补丁未能在安装时自动合入（通常因客户端正在运行中锁定文件）。');
+      console.log('     👉 请完全退出 Antigravity 客户端后，双击执行 patch-loading.bat 即可一键合入！');
+    }
+  }
+}
+
 console.log('==================================================');
 console.log(' [√] 部署与优化完成！');
 console.log(` 部署目录：${targetPluginDir}`);
@@ -235,6 +251,13 @@ console.log(' 🔔 重要提示：');
 console.log(' 插件核心文件已全部复制到上述持久化目录。');
 console.log(' 当前解压出来的安装包文件夹【已不需要，请直接删除】！');
 console.log(' 本地无需保留任何多余文件，完全不影响插件正常运行。');
+if (process.platform === 'win32') {
+  console.log('--------------------------------------------------');
+  console.log(' 🎬 Windows 开机动画专属提示：');
+  console.log(' 若需彻底消除官方 Logo 呼吸动画并使用自定义开机动画：');
+  console.log(' 请先完全退出 Antigravity 客户端，然后随时双击运行 patch-loading.bat！');
+  console.log(' 如需恢复官方原版开机动画，可随时双击 restore-loading.bat。');
+}
 console.log('--------------------------------------------------');
 console.log(' 请完全退出并重新打开 Antigravity 客户端即可生效！');
 console.log('==================================================');

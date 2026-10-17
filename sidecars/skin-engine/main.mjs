@@ -900,23 +900,12 @@ function createCdpSession(target, port) {
 
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
-    // 关键优化：WebSocket 刚建立握手的第 0 毫秒，立即极速执行轻量透明与全屏黑底预埋，彻底消除白屏与原生界面
+    // 关键优化：WebSocket 握手就绪时同步标题栏属性，绝不向 DOM 预埋多余全屏容器
     try {
-      const cfg = readConfig();
-      const shouldBoot = (cfg.features?.bootAnimation !== false && cfg.features?.bootAnimation === true);
       await send('Runtime.evaluate', {
         expression: `(() => {
           if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
             window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
-          }
-          if (${shouldBoot} && !sessionStorage.getItem('__agy_booted__')) {
-            const root = document.body || document.documentElement;
-            if (root && !document.getElementById('agy-video-boot-host') && !document.getElementById('agy-custom-code-boot-host')) {
-              const h = document.createElement('div');
-              h.id = 'agy-video-boot-host';
-              h.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:opacity 400ms ease;';
-              root.appendChild(h);
-            }
           }
         })()`
       });

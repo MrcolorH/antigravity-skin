@@ -86,16 +86,9 @@
   }
 
   function checkAndTriggerBootAnimation() {
-    const activeCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || currentConfig || window.__AG_SKIN_CONFIG__ || {};
-    if (shouldAbandonBootAnimation(activeCfg)) {
-      return;
-    }
-    if (activeCfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
-      window.__agyBootPlaying = true;
-      if (typeof window.__triggerBootAnimation === 'function') {
-        window.__triggerBootAnimation();
-      }
-    }
+    // 架构统一：开机引导动画已由原生 LoadingOverlay 完整接管（真·第0毫秒秒开），
+    // 渲染层仅保留「外观设置」中的手动「▶️ 立即预览」功能，冷启动绝不重复弹出！
+    return;
   }
 
   if (window.__AG_SKIN_ATTACHED__) {
