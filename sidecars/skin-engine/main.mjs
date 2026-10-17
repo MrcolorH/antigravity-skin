@@ -730,11 +730,20 @@ function fetchJson(url) {
 }
 
 // 6. 活跃 CDP 会话管理与持续巡检保活 (Persistent Keep-Alive & Auto-Heal)
-const activeSessions = new Map(); // targetId -> { ws, send, isAttached }
+const activeSessions = new Map(); // targetId -> { ws, send, isAttached, checkHealthAndHeal }
+let browserWs = null;
+let currentDevToolsPort = null;
+let reconnectTimer = null;
+let healthCheckTimer = null;
 
-function createCdpSession(target) {
-  const targetId = target.id;
-  const wsUrl = target.webSocketDebuggerUrl;
+function createCdpSession(target, port) {
+  const targetId = target.id || target.targetId;
+  const wsUrl = target.webSocketDebuggerUrl || (port ? `ws://127.0.0.1:${port}/devtools/page/${targetId}` : null);
+
+  if (!wsUrl) {
+    console.warn(`[Skin Engine] Missing wsUrl for target ${targetId}`);
+    return null;
+  }
 
   let ws;
   try {
@@ -795,7 +804,7 @@ function createCdpSession(target) {
   }
 
   ws.onopen = async () => {
-    console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url})`);
+    console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
     // 关键优化：WebSocket 刚建立握手的第 0 毫秒，立即极速执行轻量透明指令，消除大 bundle 编译等待期间的视觉白块
     try {
       await send('Runtime.evaluate', {
@@ -886,7 +895,7 @@ function createCdpSession(target) {
 
 // 6.5 精准主窗口 Target 判定（坚决剔除临时原生遮罩、嵌入插件 iframe、DevTools 等死靶）
 function isMainAppTarget(target) {
-  if (!target || !target.webSocketDebuggerUrl) return false;
+  if (!target) return false;
   if (target.type && target.type !== 'page') return false;
   const url = (target.url || '').trim();
   // 必须排除原生临时 loadingOverlay、嵌入式 iframe、DevTools、扩展及空白页
@@ -910,9 +919,110 @@ function isMainAppTarget(target) {
   return false;
 }
 
-async function pollAndInject() {
+// 7. 纯事件驱动核心：Browser 级别长连接与 0 轮询目标发现 (0% CPU Idle)
+console.log('[Skin Engine] Antigravity Skin daemon active in Event-Driven mode (0% idle CPU).');
+
+function scheduleReconnect(delayMs = 2000) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    ensureEventDrivenEngine();
+  }, delayMs);
+}
+
+async function connectBrowserTarget(port) {
+  if (browserWs && (browserWs.readyState === WebSocket.OPEN || browserWs.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  currentDevToolsPort = port;
+
+  let versionInfo = null;
+  try {
+    versionInfo = await fetchJson(`http://127.0.0.1:${port}/json/version`);
+  } catch (err) {
+    scheduleReconnect(2000);
+    return;
+  }
+
+  const browserWsUrl = versionInfo?.webSocketDebuggerUrl;
+  if (!browserWsUrl) {
+    scheduleReconnect(2000);
+    return;
+  }
+
+  try {
+    const ws = new WebSocket(browserWsUrl);
+    browserWs = ws;
+
+    ws.onopen = () => {
+      console.log(`[Skin Engine] Browser-level CDP connected on port ${port}. Event-driven mode active (0% idle CPU).`);
+      // 订阅全域 Target 事件推送（0 轮询，由 Chromium 在窗口创建或销毁时主动推送）
+      ws.send(JSON.stringify({
+        id: 1,
+        method: 'Target.setDiscoverTargets',
+        params: { discover: true }
+      }));
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        const method = msg.method;
+        if (method === 'Target.targetCreated' || method === 'Target.targetInfoChanged') {
+          const info = msg.params?.targetInfo;
+          if (info && isMainAppTarget(info)) {
+            const targetId = info.targetId;
+            let session = activeSessions.get(targetId);
+            if (!session || session.ws.readyState !== WebSocket.OPEN) {
+              const fullTarget = {
+                id: targetId,
+                targetId: targetId,
+                type: info.type,
+                title: info.title,
+                url: info.url,
+                webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/page/${targetId}`
+              };
+              session = createCdpSession(fullTarget, port);
+              if (session) {
+                activeSessions.set(targetId, session);
+              }
+            }
+          }
+        } else if (method === 'Target.targetDestroyed') {
+          const targetId = msg.params?.targetId;
+          if (targetId && activeSessions.has(targetId)) {
+            const session = activeSessions.get(targetId);
+            try { session.ws.close(); } catch (_) {}
+            activeSessions.delete(targetId);
+            console.log(`[Skin Engine] Target destroyed via event: ${targetId}`);
+          }
+        }
+      } catch (_) {}
+    };
+
+    ws.onclose = () => {
+      console.log('[Skin Engine] Browser-level CDP connection closed.');
+      browserWs = null;
+      scheduleReconnect(2000);
+    };
+
+    ws.onerror = (err) => {
+      console.warn('[Skin Engine] Browser-level CDP error:', err.message || err);
+      try { ws.close(); } catch (_) {}
+      browserWs = null;
+      scheduleReconnect(2000);
+    };
+  } catch (err) {
+    browserWs = null;
+    scheduleReconnect(2000);
+  }
+}
+
+async function ensureEventDrivenEngine() {
   const portFile = getDevToolsPortPath();
-  if (!fs.existsSync(portFile)) return;
+  if (!fs.existsSync(portFile)) {
+    scheduleReconnect(2000);
+    return;
+  }
 
   let port = null;
   try {
@@ -920,70 +1030,52 @@ async function pollAndInject() {
     const p = parseInt(raw.split(/\r?\n/)[0].trim(), 10);
     if (!isNaN(p) && p > 0) port = p;
   } catch (e) {
+    scheduleReconnect(2000);
     return;
   }
 
-  if (!port) return;
+  if (!port) {
+    scheduleReconnect(2000);
+    return;
+  }
 
-  try {
-    const targets = await fetchJson(`http://127.0.0.1:${port}/json/list`);
-    if (!Array.isArray(targets)) return;
+  if (browserWs && currentDevToolsPort !== port) {
+    try { browserWs.close(); } catch (_) {}
+    browserWs = null;
+  }
 
-    const currentTargetIds = new Set();
+  if (!browserWs || browserWs.readyState !== WebSocket.OPEN) {
+    await connectBrowserTarget(port);
+  }
+}
 
-    for (const target of targets) {
-      // 核心拦截：精准识别主窗口，彻底避免打到临时 loadingOverlay 导致状态竞态
-      if (isMainAppTarget(target)) {
-        currentTargetIds.add(target.id);
+// 启动事件引擎
+ensureEventDrivenEngine();
 
-        let session = activeSessions.get(target.id);
-        if (!session || session.ws.readyState !== WebSocket.OPEN) {
-          session = createCdpSession(target);
-          if (session) {
-            activeSessions.set(target.id, session);
-          }
-        } else {
-          // 常驻会话定期巡检与自愈
-          await session.checkHealthAndHeal();
-        }
-      }
-    }
-
-    // 清理已关闭的 target
+// 极温和保活巡检（每 4 秒检查一次，没有活跃窗口时完全不做 DOM 运算，0% CPU）
+if (healthCheckTimer) clearInterval(healthCheckTimer);
+healthCheckTimer = setInterval(async () => {
+  if (!browserWs || browserWs.readyState !== WebSocket.OPEN) {
+    await ensureEventDrivenEngine();
+  }
+  if (activeSessions.size > 0) {
     for (const [id, session] of activeSessions.entries()) {
-      if (!currentTargetIds.has(id)) {
-        try { session.ws.close(); } catch (e) {}
-        activeSessions.delete(id);
+      if (session && session.checkHealthAndHeal) {
+        await session.checkHealthAndHeal();
       }
     }
-  } catch (e) {
-    // 宿主可能尚未就绪，静默重试
   }
-}
-
-// 7. 高速冷启动探测与常驻自愈巡检（自适应动态频次）
-console.log('[Skin Engine] Antigravity Skin daemon active with adaptive CDP keep-alive.');
-let isFastPolling = true;
-const daemonStartTime = Date.now();
-
-async function pollLoop() {
-  try {
-    await pollAndInject();
-  } catch (_) {}
-  // 启动前 15 秒内高速轮询，极速捕获冷启动 DevToolsActivePort 和窗口页面；之后转为 2000ms 定期保活
-  const elapsed = Date.now() - daemonStartTime;
-  if (elapsed > 15000 && activeSessions.size > 0) {
-    isFastPolling = false;
-  }
-  // 未连接到主会话前采用 80ms 极速探测，连接后提升至 200ms，稳定 15 秒后转为 2000ms 定期保活
-  const nextDelay = isFastPolling ? (activeSessions.size === 0 ? 80 : 200) : 2000;
-  setTimeout(pollLoop, nextDelay);
-}
-pollLoop();
+}, 4000);
 
 // 8. 优雅退出与资源清理（杜绝重启客户端时形成僵尸进程占用端口）
 function gracefulShutdown(signal) {
   console.log(`[Skin Engine] Received ${signal}, cleanly shutting down...`);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (healthCheckTimer) clearInterval(healthCheckTimer);
+  if (browserWs) {
+    try { browserWs.close(); } catch (_) {}
+    browserWs = null;
+  }
   for (const [id, session] of activeSessions.entries()) {
     try { session.ws.close(); } catch (e) {}
   }
