@@ -1,7 +1,7 @@
 {
   "name": "antigravity-skin",
   "version": "1.0.2",
-  "description": "Antigravity Custom Theme, Dynamic Wallpaper, 550C Boot Animation and Appearance Menu Integration",
+  "description": "Antigravity Custom Theme, Dynamic Wallpaper, Boot Animation and Appearance Menu Integration",
   "type": "module",
   "scripts": {
     "start": "node --experimental-websocket sidecars/skin-engine/main.mjs",

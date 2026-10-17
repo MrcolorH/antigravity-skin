@@ -3,16 +3,15 @@
   "features": {
     "bootAnimation": false,
     "bootAnimationConfig": {
-      "type": "code",
-      "codeMode": "550c",
+      "type": "video",
       "customCodePath": "",
-      "videoPath": "assets/videos/default-bg.mp4"
+      "videoPath": ""
     },
     "themeStyles": true,
     "chineseLocalization": true,
     "dynamicWallpaper": {
-      "enabled": true,
-      "videoPath": "assets/videos/default-bg.mp4",
+      "enabled": false,
+      "videoPath": "",
       "brightness": 0.85,
       "contrast": 1.05
     }

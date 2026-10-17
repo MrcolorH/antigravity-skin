@@ -5,7 +5,7 @@
  * 2. 在“主题”行正下方紧跟第二行：“界面语言 (Language)”；
  * 3. 原生系统/浅色/深色模式下：严格隐藏所有自定义视频与配置，彻底恢复官方原生黑白效果；
  * 4. 自定义主题模式下：隐藏原生的 Contrast 及原生配色卡片，展开自定义主题细项；
- * 5. 开机动画支持双素材模式：💻 550C 代码动效 vs 🎬 自定义短视频；
+ * 5. 开机动画支持双素材模式：💻 自定义代码动效 vs 🎬 自定义短视频；
  * 6. 全面重构 Switch 控件为高对比度立体胶囊，解决浅色/深色背景下不明显的问题。
  */
 
@@ -313,12 +313,81 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     });
   }
 
+  let wasModalOpen = false;
+
+  function getSettingsModal() {
+    const modalByClass = document.querySelector('.settings-modal-container');
+    if (modalByClass && document.body.contains(modalByClass)) return modalByClass;
+
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (const d of dialogs) {
+      if (document.body.contains(d)) {
+        if (d.classList.contains('settings-modal-container') || d.querySelector('.bg-sidebar, [role="group"]')) {
+          return d;
+        }
+      }
+    }
+    return null;
+  }
+
+
+  // 核心规则：只有当用户彻底关闭设置弹窗后，才执行校验。若动态壁纸或开机短视频开关开着，但没有内容，才把开关关闭掉。
+  // 在设置弹窗打开期间，绝不主动关闭用户的开关，保证用户能够从容载入素材！
+  function validateAndAutoOffEmptyFeatures() {
+    // 弹窗依然在 DOM 中时，坚决不关停！
+    if (getSettingsModal()) return;
+
+    const cfg = getConfig();
+    if (!cfg || !cfg.features) return;
+    let changed = false;
+
+    // 1. 动态壁纸校验：开启但无视频素材 -> 自动关闭开关
+    if (cfg.features.dynamicWallpaper?.enabled === true) {
+      const vPath = (cfg.features.dynamicWallpaper.videoPath || '').trim();
+      if (!vPath) {
+        console.log('[Antigravity Skin] 关闭设置时校验：未配置壁纸素材，自动关闭全局动态视频壁纸开关');
+        cfg.features.dynamicWallpaper.enabled = false;
+        changed = true;
+      }
+    }
+
+    // 2. 开机短视频校验：开启且形式为短视频，但无有效视频素材 -> 自动关闭开机动画开关
+    if (cfg.features.bootAnimation === true) {
+      const bCfg = cfg.features.bootAnimationConfig || {};
+      const isVideo = bCfg.type === 'video';
+      if (isVideo) {
+        const vPath = (bCfg.videoPath || '').trim();
+        if (!vPath) {
+          console.log('[Antigravity Skin] 关闭设置时校验：未配置开机短视频素材，自动关闭开机引导动画开关');
+          cfg.features.bootAnimation = false;
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      saveConfig(cfg);
+      if (typeof onConfigChange === 'function') {
+        onConfigChange(cfg);
+      }
+    }
+  }
+
   function integrateNativeMenu() {
     cleanupLegacyPanels();
     ensureSegmentedStyle();
 
-    const modal = document.querySelector('.settings-modal-container');
-    if (!modal) return;
+    const modal = getSettingsModal();
+    if (!modal) {
+      if (wasModalOpen) {
+        wasModalOpen = false;
+        validateAndAutoOffEmptyFeatures();
+      }
+      return;
+    }
+
+    // 弹窗当前存在于 DOM 中
+    wasModalOpen = true;
 
     const elements = findAppearanceCard(modal);
     if (!elements) {
@@ -344,10 +413,12 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const config = getConfig();
     const f = config.features || {};
     const dw = f.dynamicWallpaper || {};
-    const bootCfg = f.bootAnimationConfig || { type: 'code', codeMode: '550c', customCodePath: '', videoPath: 'assets/videos/default-bg.mp4' };
+    const bootCfg = f.bootAnimationConfig || { type: 'video', customCodePath: '', videoPath: '' };
     const currentLang = f.language || (window.__agyI18n ? window.__agyI18n.getLanguage() : 'zh-CN');
     let isZh = currentLang !== 'en';
     let isCustomThemeEnabled = f.themeStyles !== false;
+    const hasWallVal = !!(dw.videoPath && dw.videoPath.trim());
+    const hasBootVal = !!(bootCfg.videoPath && bootCfg.videoPath.trim());
 
     function triggerSave() {
       saveConfig(config);
@@ -422,7 +493,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-group-code-mode') || !customOptions.querySelector('#agy-wrap-boot-code-config') || customOptions.querySelector('#agy-opt-crt'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -441,23 +512,14 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             <span class="text-xs text-muted-foreground opacity-65">在底层循环播放流媒体壁纸（关闭时仅保留毛玻璃穿透）</span>
           </div>
           <div class="shrink-0">
-            ${createSwitchHtml('agy-opt-wallpaper', dw.enabled !== false)}
+            ${createSwitchHtml('agy-opt-wallpaper', dw.enabled === true)}
           </div>
         </div>
 
         <!-- 视频路径与内置预设选择配置 -->
-        <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2 min-h-[96px] justify-center" id="agy-wrap-video-path" style="display: ${dw.enabled !== false ? 'flex' : 'none'};">
-          <!-- 首次加载骨架与过渡 Loading 占位态 -->
-          <div id="agy-wallpaper-loading" class="flex items-center justify-center gap-2.5 py-4 text-xs text-muted-foreground/80 select-none">
-            <svg class="animate-spin text-sky-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor"></circle>
-              <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span class="font-medium text-sky-400/90 tracking-wide">正在读取壁纸素材库...</span>
-          </div>
-
-          <!-- 真实内容容器（初始隐藏，数据载入后淡入平滑展现） -->
-          <div id="agy-wallpaper-content" style="display: none; flex-direction: column; gap: 8px; width: 100%; opacity: 0; transition: opacity 0.2s ease;">
+        <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2 min-h-[96px] justify-center" id="agy-wrap-video-path" style="display: ${dw.enabled === true ? 'flex' : 'none'};">
+          <!-- 真实内容容器（直接静态展示，绝不抖动或抽风） -->
+          <div id="agy-wallpaper-content" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
             <!-- 选择动态壁纸下拉框与删除按钮 -->
             <div class="flex justify-between items-center gap-3">
               <div class="flex flex-col gap-0.5">
@@ -466,9 +528,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               </div>
               <div class="flex items-center gap-1.5 shrink-0">
                 <select id="agy-select-builtin-wallpaper" class="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/30 text-foreground outline-none cursor-pointer max-w-[210px] truncate">
-                  <option value="assets/videos/default-bg.mp4">🌟 默认动态壁纸 (default-bg.mp4)</option>
+                  <option value="">(素材库为空，请点击下方载入视频)</option>
                 </select>
-                <button type="button" id="agy-btn-delete-wallpaper" title="删除当前选中的自定义素材" class="text-xs p-1.5 rounded border border-rose-500/30 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center">
+                <button type="button" id="agy-btn-delete-wallpaper" title="${hasWallVal ? '彻底从插件素材库中删除该素材' : '当前未选择任何视频素材'}" ${hasWallVal ? '' : 'disabled'} class="text-xs p-1.5 rounded border border-rose-500/30 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
                   </svg>
@@ -492,7 +554,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         </div>
 
         <!-- 亮度与对比度 -->
-        <div class="py-2 px-3 w-full bg-transparent grid grid-cols-2 gap-4" id="agy-wrap-sliders" style="display: ${dw.enabled !== false ? 'grid' : 'none'};">
+        <div class="py-2 px-3 w-full bg-transparent grid grid-cols-2 gap-4" id="agy-wrap-sliders" style="display: ${dw.enabled === true ? 'grid' : 'none'};">
           <div class="flex flex-col gap-1">
             <div class="flex justify-between text-xs">
               <span class="opacity-75">壁纸亮度 (Brightness)</span>
@@ -544,17 +606,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
           <!-- 开机短视频素材配置（仅在选自定义短视频时展示） -->
           <div class="flex flex-col gap-2 pt-1.5 border-t border-border/40 min-h-[96px] justify-center" id="agy-wrap-boot-video-path" style="display: ${bootCfg.type === 'video' ? 'flex' : 'none'};">
-            <!-- 首次加载骨架与过渡 Loading 占位态 -->
-            <div id="agy-boot-video-loading" class="flex items-center justify-center gap-2.5 py-4 text-xs text-muted-foreground/80 select-none">
-              <svg class="animate-spin text-sky-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor"></circle>
-                <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span class="font-medium text-sky-400/90 tracking-wide">正在同步开机视频素材...</span>
-            </div>
-
-            <!-- 真实内容容器（初始隐藏，数据载入后淡入平滑展现） -->
-            <div id="agy-boot-video-content" style="display: none; flex-direction: column; gap: 8px; width: 100%; opacity: 0; transition: opacity 0.2s ease;">
+            <!-- 真实内容容器（直接静态展示，绝不抖动或抽风） -->
+            <div id="agy-boot-video-content" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
               <!-- 选择开机短视频下拉框与删除按钮 -->
               <div class="flex justify-between items-center gap-3">
                 <div class="flex flex-col gap-0.5">
@@ -563,9 +616,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                   <select id="agy-select-boot-video" class="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/30 text-foreground outline-none cursor-pointer max-w-[210px] truncate">
-                    <option value="assets/videos/default-bg.mp4">🌟 默认动态壁纸 (default-bg.mp4)</option>
+                    <option value="">(素材库为空，请点击下方载入视频)</option>
                   </select>
-                  <button type="button" id="agy-btn-delete-boot-video" title="删除当前选中的自定义素材" class="text-xs p-1.5 rounded border border-rose-500/30 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center">
+                  <button type="button" id="agy-btn-delete-boot-video" title="${hasBootVal ? '彻底从插件素材库中删除该素材' : '当前未选择任何视频素材'}" ${hasBootVal ? '' : 'disabled'} class="text-xs p-1.5 rounded border border-rose-500/30 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
                     </svg>
@@ -589,44 +642,43 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           </div>
 
           <!-- 代码动效配置区（仅在选中代码动效时展示） -->
-          <div class="flex flex-col gap-2 pt-1.5 border-t border-border/40" id="agy-wrap-boot-code-config" style="display: ${bootCfg.type !== 'video' ? 'flex' : 'none'};">
-            <div class="flex justify-between items-center">
-              <span class="text-xs font-medium opacity-85">动效代码来源</span>
-              <div role="group" id="agy-group-code-mode" class="agy-seg-group select-none h-6">
-                <button type="button" id="agy-code-mode-550c" class="agy-seg-btn text-[11px] px-2 gap-1 ${bootCfg.codeMode !== 'custom' ? 'active' : ''}" ${bootCfg.codeMode !== 'custom' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
-                  <span>🌟 550C 样例动效</span>
-                </button>
-                <button type="button" id="agy-code-mode-custom" class="agy-seg-btn text-[11px] px-2 gap-1 ${bootCfg.codeMode === 'custom' ? 'active' : ''}" ${bootCfg.codeMode === 'custom' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
-                  <span>📁 导入动效代码</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- 550C 样例说明与来源标注（当选中 550C 样例时显示） -->
-            <div id="agy-wrap-550c-source" style="display: ${bootCfg.codeMode !== 'custom' ? 'block' : 'none'}; padding: 7px 10px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.22); border-radius: 6px;">
-              <div class="flex items-center gap-1.5 text-xs text-sky-400 font-medium">
-                <span>💻 流浪地球2 550C 量子计算机引导（官方内置样例）</span>
-              </div>
-              <div class="text-[11px] text-muted-foreground opacity-90 mt-1 flex flex-wrap items-center gap-1.5">
-                <span>开源样例代码来源：</span>
-                <a href="https://github.com/bl4346324-alt/antigravity-550c.git" id="agy-link-550c-repo" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:underline font-mono" style="word-break: break-all;">https://github.com/bl4346324-alt/antigravity-550c.git</a>
-                <button type="button" id="agy-btn-copy-550c-url" class="text-[10px] px-1.5 py-0.5 rounded border border-border bg-secondary/40 hover:bg-secondary/80 cursor-pointer">复制链接</button>
-              </div>
-            </div>
-
-            <!-- 自定义动效代码路径输入与文件选择（当选中导入动效代码时显示） -->
-            <div id="agy-wrap-custom-code-input" style="display: ${bootCfg.codeMode === 'custom' ? 'flex' : 'none'}; flex-direction: column; gap: 6px;">
-              <div class="flex justify-between items-center">
-                <span class="text-xs font-medium opacity-85">本地 JS 动效脚本路径</span>
-                <div class="flex gap-1.5">
-                  <input type="file" id="agy-file-custom-code" accept=".js" style="display: none;">
-                  <button type="button" id="agy-btn-pick-code-file" class="text-xs px-2 py-0.5 rounded border border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer">📂 选择文件</button>
-                  <button type="button" id="agy-btn-restore-550c" class="text-xs px-2 py-0.5 rounded border border-border bg-secondary/30 hover:bg-secondary/60 cursor-pointer">使用 550C 样例</button>
+          <div class="flex flex-col gap-2 pt-1.5 border-t border-border/40 min-h-[96px] justify-center" id="agy-wrap-boot-code-config" style="display: ${bootCfg.type !== 'video' ? 'flex' : 'none'};">
+            <!-- 真实内容容器（直接静态展示，绝不抖动或抽风） -->
+            <div id="agy-boot-code-content" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+              <!-- 选择代码动效下拉框与删除按钮 -->
+              <div class="flex justify-between items-center gap-3">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-xs font-medium opacity-85 shrink-0">选择代码动效方案</span>
+                  <span class="text-[11px] text-muted-foreground opacity-60">选择已载入的动效脚本或导入新方案</span>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <select id="agy-select-boot-code" class="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/30 text-foreground outline-none cursor-pointer max-w-[210px] truncate">
+                    <option value="assets/scripts/default-boot.js">🌟 默认极客科技动效 (default-boot.js)</option>
+                  </select>
+                  <button type="button" id="agy-btn-delete-boot-code" title="默认动效方案受系统保护，不可删除" disabled class="text-xs p-1.5 rounded border border-rose-500/30 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                  </button>
                 </div>
               </div>
-              <input type="text" id="agy-input-custom-code-path" value="${bootCfg.customCodePath || ''}" placeholder="本地 JS 脚本绝对路径（例如：D:\\Scripts\\my-boot.js）" class="w-full text-xs px-2.5 py-1.5 rounded-md border border-border bg-secondary/20 outline-none text-foreground">
-              <div class="text-[11px] text-muted-foreground opacity-70">
-                💡 支持任意 Canvas / DOM 渲染脚本，可直接执行或导出 <code>window.__customBootAnimation(container, close)</code>。按 ESC 退出。
+
+              <!-- 载入新动效脚本交互行 -->
+              <div class="flex items-center justify-between pt-1.5 border-t border-border/40">
+                <span class="text-[11px] text-muted-foreground opacity-75" id="agy-boot-code-upload-tip">
+                  支持 JS 动效脚本，直接导入插件动效库
+                </span>
+                <div class="flex items-center gap-2">
+                  <input type="file" id="agy-file-boot-code" accept=".js,application/javascript,text/javascript" style="display: none;">
+                  <button type="button" id="agy-btn-pick-boot-code" class="text-xs px-2.5 py-1 rounded border border-sky-500/40 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 cursor-pointer flex items-center gap-1 font-medium">
+                    <span>📂 载入新动效脚本</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 提示说明 -->
+              <div class="text-[11px] text-muted-foreground opacity-65 pt-1">
+                💡 支持任意 Canvas / WebGL / DOM 渲染脚本，可直接执行或导出 <code>window.__customBootAnimation(container, close)</code>。按 ESC 随时跳过。
               </div>
             </div>
           </div>
@@ -674,8 +726,234 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     syncLangUI(isZh);
 
+    // 状态更新与素材/动效列表同步核心函数（提升至作用域顶部，确保首次与所有幂等巡检均可同步）
+    function updateDeleteBtnState(selectEl, btnEl) {
+      if (!selectEl || !btnEl) return;
+      const currentVal = selectEl.value;
+      const hasVal = !!currentVal && currentVal !== '';
+      btnEl.disabled = !hasVal;
+      if (!hasVal) {
+        btnEl.setAttribute('title', '当前未选择任何视频素材');
+      } else {
+        btnEl.setAttribute('title', '彻底从插件素材库中删除该素材');
+      }
+    }
+
+    function updateDeleteScriptBtnState(selectEl, btnEl) {
+      if (!selectEl || !btnEl) return;
+      const currentVal = selectEl.value;
+      const isDefault = !currentVal || currentVal === 'assets/scripts/default-boot.js' || currentVal.endsWith('/default-boot.js');
+      btnEl.disabled = isDefault;
+      if (isDefault) {
+        btnEl.setAttribute('title', '默认动效方案受系统保护，不可删除');
+      } else {
+        btnEl.setAttribute('title', '彻底从插件动效库中删除该脚本方案');
+      }
+    }
+
+    let isSyncingWallpapers = false;
+    async function syncWallpapers(forceSelectedPath = '', targetScope = 'all') {
+      if (isSyncingWallpapers) return;
+      isSyncingWallpapers = true;
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/list`);
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.videos)) {
+          let currentWallPath = config.features?.dynamicWallpaper?.videoPath || '';
+          let currentBootPath = config.features?.bootAnimationConfig?.videoPath || '';
+
+          if (forceSelectedPath) {
+            if (targetScope === 'wallpaper' || targetScope === 'all') {
+              currentWallPath = forceSelectedPath;
+              if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+              config.features.dynamicWallpaper.videoPath = forceSelectedPath;
+            }
+            if (targetScope === 'boot' || targetScope === 'all') {
+              currentBootPath = forceSelectedPath;
+              if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+              config.features.bootAnimationConfig.videoPath = forceSelectedPath;
+            }
+          }
+
+          if (currentWallPath && currentWallPath.startsWith('assets/videos/')) {
+            const exists = data.videos.some(v => v.relPath === currentWallPath || currentWallPath.endsWith('/' + v.name));
+            if (!exists) currentWallPath = '';
+          }
+          if (currentBootPath && currentBootPath.startsWith('assets/videos/')) {
+            const exists = data.videos.some(v => v.relPath === currentBootPath || currentBootPath.endsWith('/' + v.name));
+            if (!exists) currentBootPath = '';
+          }
+
+          const curSelectWall = document.getElementById('agy-select-builtin-wallpaper');
+          const curBtnDelWall = document.getElementById('agy-btn-delete-wallpaper');
+          const curSelectBoot = document.getElementById('agy-select-boot-video');
+          const curBtnDelBoot = document.getElementById('agy-btn-delete-boot-video');
+
+          if (curSelectWall) {
+            curSelectWall.innerHTML = '';
+            if (data.videos.length === 0) {
+              const emptyOpt = document.createElement('option');
+              emptyOpt.value = '';
+              emptyOpt.textContent = '(素材库为空，请点击下方载入视频)';
+              curSelectWall.appendChild(emptyOpt);
+            } else {
+              let matched = false;
+              data.videos.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.relPath;
+                opt.textContent = v.displayName;
+                if (currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name))) {
+                  opt.selected = true;
+                  matched = true;
+                }
+                curSelectWall.appendChild(opt);
+              });
+              if (!matched && currentWallPath && !currentWallPath.startsWith('assets/videos/')) {
+                const extOpt = document.createElement('option');
+                extOpt.value = currentWallPath;
+                const fileName = currentWallPath.split(/[\/\\]/).pop();
+                extOpt.textContent = `📁 外部素材: ${fileName}`;
+                extOpt.selected = true;
+                curSelectWall.appendChild(extOpt);
+                matched = true;
+              }
+              if (!matched && !currentWallPath && data.videos.length > 0) {
+                curSelectWall.selectedIndex = 0;
+                config.features.dynamicWallpaper.videoPath = curSelectWall.value;
+              }
+            }
+            if (currentWallPath) curSelectWall.value = currentWallPath;
+            updateDeleteBtnState(curSelectWall, curBtnDelWall);
+          }
+
+          if (curSelectBoot) {
+            curSelectBoot.innerHTML = '';
+            if (data.videos.length === 0) {
+              const emptyOpt = document.createElement('option');
+              emptyOpt.value = '';
+              emptyOpt.textContent = '(素材库为空，请点击下方载入视频)';
+              curSelectBoot.appendChild(emptyOpt);
+            } else {
+              let matched = false;
+              data.videos.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.relPath;
+                opt.textContent = v.displayName;
+                if (currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name))) {
+                  opt.selected = true;
+                  matched = true;
+                }
+                curSelectBoot.appendChild(opt);
+              });
+              if (!matched && currentBootPath && !currentBootPath.startsWith('assets/videos/')) {
+                const extOpt = document.createElement('option');
+                extOpt.value = currentBootPath;
+                const fileName = currentBootPath.split(/[\/\\]/).pop();
+                extOpt.textContent = `📁 外部素材: ${fileName}`;
+                extOpt.selected = true;
+                curSelectBoot.appendChild(extOpt);
+                matched = true;
+              }
+              if (!matched && !currentBootPath && data.videos.length > 0) {
+                curSelectBoot.selectedIndex = 0;
+                config.features.bootAnimationConfig.videoPath = curSelectBoot.value;
+              }
+            }
+            if (currentBootPath) curSelectBoot.value = currentBootPath;
+            updateDeleteBtnState(curSelectBoot, curBtnDelBoot);
+          }
+        }
+      } catch (err) {
+        console.warn('[Skin Menu] Failed to load wallpaper list:', err);
+      } finally {
+        isSyncingWallpapers = false;
+      }
+    }
+
+    let isSyncingBootScripts = false;
+    async function syncBootScripts(forceSelectedPath = '') {
+      if (isSyncingBootScripts) return;
+      isSyncingBootScripts = true;
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-script/list`);
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.scripts)) {
+          let currentCodePath = forceSelectedPath || config.features?.bootAnimationConfig?.customCodePath || 'assets/scripts/default-boot.js';
+          if (forceSelectedPath) {
+            if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+            config.features.bootAnimationConfig.customCodePath = forceSelectedPath;
+          }
+
+          const curSelectCode = document.getElementById('agy-select-boot-code');
+          const curBtnDelCode = document.getElementById('agy-btn-delete-boot-code');
+
+          if (curSelectCode) {
+            curSelectCode.innerHTML = '';
+            let matchedCode = false;
+            data.scripts.forEach(s => {
+              const opt = document.createElement('option');
+              opt.value = s.relPath;
+              opt.textContent = s.displayName;
+              if (currentCodePath === s.relPath || currentCodePath.endsWith(s.name)) {
+                opt.selected = true;
+                matchedCode = true;
+              }
+              curSelectCode.appendChild(opt);
+            });
+            if (!matchedCode && currentCodePath && !currentCodePath.startsWith('assets/scripts/')) {
+              const extOpt = document.createElement('option');
+              extOpt.value = currentCodePath;
+              const fileName = currentCodePath.split(/[\/\\]/).pop();
+              extOpt.textContent = `📁 外部动效: ${fileName}`;
+              extOpt.selected = true;
+              curSelectCode.appendChild(extOpt);
+            }
+            if (currentCodePath) curSelectCode.value = currentCodePath;
+            updateDeleteScriptBtnState(curSelectCode, curBtnDelCode);
+          }
+        }
+      } catch (err) {
+        console.warn('[Skin Menu] Failed to load boot scripts list:', err);
+      } finally {
+        isSyncingBootScripts = false;
+      }
+    }
+
     // 关键防抖幂等保护：如果自定义配置卡片已完整挂载且就绪，重新同步一次状态后跳过后续多余的重复事件绑定
     if (customOptions && customOptions.dataset.agyReady === 'true') {
+      // 同步动态壁纸开关及展开区域状态
+      const optW = customOptions.querySelector('#agy-opt-wallpaper');
+      const wrapV = customOptions.querySelector('#agy-wrap-video-path');
+      const wrapS = customOptions.querySelector('#agy-wrap-sliders');
+      const isWallOn = dw.enabled === true;
+      if (optW && optW.checked !== isWallOn) {
+        optW.checked = isWallOn;
+        syncSwitchUI(optW);
+      }
+      if (wrapV) {
+        const d = isWallOn ? 'flex' : 'none';
+        if (wrapV.style.display !== d) wrapV.style.display = d;
+      }
+      if (wrapS) {
+        const d = isWallOn ? 'grid' : 'none';
+        if (wrapS.style.display !== d) wrapS.style.display = d;
+      }
+
+      // 同步开机动画开关及展开区域状态
+      const optB = customOptions.querySelector('#agy-opt-boot');
+      const wrapB = customOptions.querySelector('#agy-wrap-boot-config');
+      const isBootOn = !!f.bootAnimation;
+      if (optB && optB.checked !== isBootOn) {
+        optB.checked = isBootOn;
+        syncSwitchUI(optB);
+      }
+      if (wrapB) {
+        const d = isBootOn ? 'flex' : 'none';
+        if (wrapB.style.display !== d) wrapB.style.display = d;
+      }
+
       const gBoot = customOptions.querySelector('#agy-group-boot-type');
       const bCode = customOptions.querySelector('#agy-boot-type-code');
       const bVideo = customOptions.querySelector('#agy-boot-type-video');
@@ -700,23 +978,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           : '💻 执行动态脚本代码渲染开机引导动效';
         if (bootTypeDesc.textContent !== text) bootTypeDesc.textContent = text;
       }
-      const gCode = customOptions.querySelector('#agy-group-code-mode');
-      const c550 = customOptions.querySelector('#agy-code-mode-550c');
-      const cCustom = customOptions.querySelector('#agy-code-mode-custom');
-      const isCustom = bootCfg.codeMode === 'custom';
-      if (gCode && c550 && cCustom) {
-        syncSegmentedState(gCode, isCustom ? cCustom : c550);
-      }
-      const wrap550cSource = customOptions.querySelector('#agy-wrap-550c-source');
-      const wrapCustomCodeInput = customOptions.querySelector('#agy-wrap-custom-code-input');
-      if (wrap550cSource) {
-        const d = isCustom ? 'none' : 'block';
-        if (wrap550cSource.style.display !== d) wrap550cSource.style.display = d;
-      }
-      if (wrapCustomCodeInput) {
-        const d = isCustom ? 'flex' : 'none';
-        if (wrapCustomCodeInput.style.display !== d) wrapCustomCodeInput.style.display = d;
-      }
+      syncWallpapers();
+      syncBootScripts();
       return;
     }
 
@@ -754,20 +1017,15 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const wrapBootVideoPath = customOptions.querySelector('#agy-wrap-boot-video-path');
 
     const wrapBootCodeConfig = customOptions.querySelector('#agy-wrap-boot-code-config');
-    const codeMode550c = customOptions.querySelector('#agy-code-mode-550c');
-    const codeModeCustom = customOptions.querySelector('#agy-code-mode-custom');
-    const wrap550cSource = customOptions.querySelector('#agy-wrap-550c-source');
     const wrapCustomCodeInput = customOptions.querySelector('#agy-wrap-custom-code-input');
     const fileCustomCode = customOptions.querySelector('#agy-file-custom-code');
     const btnPickCodeFile = customOptions.querySelector('#agy-btn-pick-code-file');
-    const btnRestore550c = customOptions.querySelector('#agy-btn-restore-550c');
+    const btnClearCode = customOptions.querySelector('#agy-btn-clear-code');
     const inputCustomCodePath = customOptions.querySelector('#agy-input-custom-code-path');
-    const btnCopy550cUrl = customOptions.querySelector('#agy-btn-copy-550c-url');
-    const link550cRepo = customOptions.querySelector('#agy-link-550c-repo');
 
     // 动态壁纸开关显式同步与事件监听
     if (optWallpaper) {
-      const isWallOn = dw.enabled !== false;
+      const isWallOn = dw.enabled === true;
       optWallpaper.checked = isWallOn;
       syncSwitchUI(optWallpaper);
       if (wrapVideoPath) wrapVideoPath.style.display = isWallOn ? 'flex' : 'none';
@@ -779,6 +1037,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         if (wrapSliders) wrapSliders.style.display = isEnabled ? 'grid' : 'none';
         if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
         config.features.dynamicWallpaper.enabled = isEnabled;
+        if (isEnabled && !config.features.dynamicWallpaper.videoPath && selectBuiltinWallpaper && selectBuiltinWallpaper.value) {
+          config.features.dynamicWallpaper.videoPath = selectBuiltinWallpaper.value;
+        }
         triggerSave();
       };
     }
@@ -810,8 +1071,6 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const btnPickVideo = customOptions.querySelector('#agy-btn-pick-video');
     const fileWallpaper = customOptions.querySelector('#agy-file-wallpaper');
     const wallpaperUploadTip = customOptions.querySelector('#agy-wallpaper-upload-tip');
-    const wallpaperLoading = customOptions.querySelector('#agy-wallpaper-loading');
-    const wallpaperContent = customOptions.querySelector('#agy-wallpaper-content');
 
     // 开机短视频相关
     const selectBootVideo = customOptions.querySelector('#agy-select-boot-video');
@@ -819,114 +1078,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const btnPickBootVideo = customOptions.querySelector('#agy-btn-pick-boot-video');
     const fileBootVideo = customOptions.querySelector('#agy-file-boot-video');
     const bootVideoUploadTip = customOptions.querySelector('#agy-boot-video-upload-tip');
-    const bootVideoLoading = customOptions.querySelector('#agy-boot-video-loading');
-    const bootVideoContent = customOptions.querySelector('#agy-boot-video-content');
 
-    // B. 更新删除按钮禁用/启用状态
-    function updateDeleteBtnState(selectEl, btnEl) {
-      if (!selectEl || !btnEl) return;
-      const currentVal = selectEl.value;
-      const isDefault = !currentVal || currentVal === 'assets/videos/default-bg.mp4' || currentVal.endsWith('/default-bg.mp4');
-      btnEl.disabled = isDefault;
-      if (isDefault) {
-        btnEl.setAttribute('title', '默认素材受系统保护，不可删除');
-      } else {
-        btnEl.setAttribute('title', '彻底从插件素材库中删除该素材');
-      }
-    }
-
-    // C. 统一同步素材库列表（壁纸与开机短视频共享同一个素材库）
-    let isSyncingWallpapers = false;
-    async function syncWallpapers(initialLoad = false) {
-      if (isSyncingWallpapers) return;
-      isSyncingWallpapers = true;
-
-      if (initialLoad) {
-        if (wallpaperLoading && wallpaperContent) {
-          wallpaperLoading.style.display = 'flex';
-          wallpaperContent.style.display = 'none';
-          wallpaperContent.style.opacity = '0';
-        }
-        if (bootVideoLoading && bootVideoContent) {
-          bootVideoLoading.style.display = 'flex';
-          bootVideoContent.style.display = 'none';
-          bootVideoContent.style.opacity = '0';
-        }
-      }
-
-      try {
-        const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/list`);
-        const data = await res.json();
-        if (data.ok && Array.isArray(data.videos)) {
-          const currentWallPath = config.features?.dynamicWallpaper?.videoPath || 'assets/videos/default-bg.mp4';
-          const currentBootPath = config.features?.bootAnimationConfig?.videoPath || 'assets/videos/default-bg.mp4';
-
-          // 填充壁纸下拉框
-          if (selectBuiltinWallpaper) {
-            selectBuiltinWallpaper.innerHTML = '';
-            let matchedWall = false;
-            data.videos.forEach(v => {
-              const opt = document.createElement('option');
-              opt.value = v.relPath;
-              opt.textContent = v.displayName;
-              if (currentWallPath === v.relPath || currentWallPath.endsWith(v.name)) {
-                opt.selected = true;
-                matchedWall = true;
-              }
-              selectBuiltinWallpaper.appendChild(opt);
-            });
-            if (!matchedWall && currentWallPath && !currentWallPath.startsWith('assets/videos/')) {
-              const extOpt = document.createElement('option');
-              extOpt.value = currentWallPath;
-              const fileName = currentWallPath.split(/[\/\\]/).pop();
-              extOpt.textContent = `📁 外部素材: ${fileName}`;
-              extOpt.selected = true;
-              selectBuiltinWallpaper.appendChild(extOpt);
-            }
-            updateDeleteBtnState(selectBuiltinWallpaper, btnDeleteWallpaper);
-          }
-
-          // 填充开机短视频下拉框
-          if (selectBootVideo) {
-            selectBootVideo.innerHTML = '';
-            let matchedBoot = false;
-            data.videos.forEach(v => {
-              const opt = document.createElement('option');
-              opt.value = v.relPath;
-              opt.textContent = v.displayName;
-              if (currentBootPath === v.relPath || currentBootPath.endsWith(v.name)) {
-                opt.selected = true;
-                matchedBoot = true;
-              }
-              selectBootVideo.appendChild(opt);
-            });
-            if (!matchedBoot && currentBootPath && !currentBootPath.startsWith('assets/videos/')) {
-              const extOpt = document.createElement('option');
-              extOpt.value = currentBootPath;
-              const fileName = currentBootPath.split(/[\/\\]/).pop();
-              extOpt.textContent = `📁 外部素材: ${fileName}`;
-              extOpt.selected = true;
-              selectBootVideo.appendChild(extOpt);
-            }
-            updateDeleteBtnState(selectBootVideo, btnDeleteBootVideo);
-          }
-        }
-      } catch (err) {
-        console.warn('[Skin Menu] Failed to load wallpaper list:', err);
-      } finally {
-        isSyncingWallpapers = false;
-        if (wallpaperLoading && wallpaperContent) {
-          wallpaperLoading.style.display = 'none';
-          wallpaperContent.style.display = 'flex';
-          requestAnimationFrame(() => { wallpaperContent.style.opacity = '1'; });
-        }
-        if (bootVideoLoading && bootVideoContent) {
-          bootVideoLoading.style.display = 'none';
-          bootVideoContent.style.display = 'flex';
-          requestAnimationFrame(() => { bootVideoContent.style.opacity = '1'; });
-        }
-      }
-    }
+    // 开机代码动效相关
+    const selectBootCode = customOptions.querySelector('#agy-select-boot-code');
+    const btnDeleteBootCode = customOptions.querySelector('#agy-btn-delete-boot-code');
+    const btnPickBootCode = customOptions.querySelector('#agy-btn-pick-boot-code');
+    const fileBootCode = customOptions.querySelector('#agy-file-boot-code');
+    const bootCodeUploadTip = customOptions.querySelector('#agy-boot-code-upload-tip');
 
     // D. 上传载入视频通用处理函数
     async function handleUploadVideo(file, targetType) {
@@ -951,8 +1109,18 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           if (isWallpaper) {
             if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
             config.features.dynamicWallpaper.videoPath = data.relPath;
+            config.features.dynamicWallpaper.enabled = true;
+            const curOptWall = customOptions.querySelector('#agy-opt-wallpaper') || document.getElementById('agy-opt-wallpaper');
+            if (curOptWall) {
+              curOptWall.checked = true;
+              syncSwitchUI(curOptWall);
+              const curWrapV = customOptions.querySelector('#agy-wrap-video-path') || document.getElementById('agy-wrap-video-path');
+              const curWrapS = customOptions.querySelector('#agy-wrap-sliders') || document.getElementById('agy-wrap-sliders');
+              if (curWrapV) curWrapV.style.display = 'flex';
+              if (curWrapS) curWrapS.style.display = 'grid';
+            }
             triggerSave();
-            await syncWallpapers();
+            await syncWallpapers(data.relPath, 'wallpaper');
             if (tipEl) {
               tipEl.textContent = `✅ 已成功载入「${data.fileName}」并设为当前壁纸！`;
               tipEl.className = 'text-[11px] text-emerald-400 font-medium';
@@ -960,8 +1128,18 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           } else {
             if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
             config.features.bootAnimationConfig.videoPath = data.relPath;
+            config.features.bootAnimationConfig.type = 'video';
+            config.features.bootAnimation = true;
+            const curOptBoot = customOptions.querySelector('#agy-opt-boot') || document.getElementById('agy-opt-boot');
+            if (curOptBoot) {
+              curOptBoot.checked = true;
+              syncSwitchUI(curOptBoot);
+              const curWrapB = customOptions.querySelector('#agy-wrap-boot-config') || document.getElementById('agy-wrap-boot-config');
+              if (curWrapB) curWrapB.style.display = 'flex';
+            }
+            syncBootTypeUI('video');
             triggerSave();
-            await syncWallpapers();
+            await syncWallpapers(data.relPath, 'boot');
             if (tipEl) {
               tipEl.textContent = `✅ 已成功载入「${data.fileName}」并设为开机视频！`;
               tipEl.className = 'text-[11px] text-emerald-400 font-medium';
@@ -990,10 +1168,11 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     // E. 删除视频通用处理函数（直接物理删除插件目录对应文件）
     async function handleDeleteVideo(selectEl, tipEl, targetType) {
-      if (!selectEl) return;
-      const val = selectEl.value;
-      if (!val || val === 'assets/videos/default-bg.mp4' || val.endsWith('/default-bg.mp4')) {
-        alert('官方默认素材受系统保护，不可删除。');
+      const curSelect = (targetType === 'wallpaper' ? document.getElementById('agy-select-builtin-wallpaper') : document.getElementById('agy-select-boot-video')) || selectEl;
+      if (!curSelect) return;
+      const val = curSelect.value;
+      if (!val) {
+        alert('当前未选中任何可删除的视频素材。');
         return;
       }
       const fileName = val.split(/[\/\\]/).pop();
@@ -1014,16 +1193,16 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const data = await res.json();
         if (data.ok) {
           if (config.features?.dynamicWallpaper?.videoPath && (config.features.dynamicWallpaper.videoPath === val || config.features.dynamicWallpaper.videoPath.includes(fileName))) {
-            config.features.dynamicWallpaper.videoPath = 'assets/videos/default-bg.mp4';
+            config.features.dynamicWallpaper.videoPath = '';
           }
           if (config.features?.bootAnimationConfig?.videoPath && (config.features.bootAnimationConfig.videoPath === val || config.features.bootAnimationConfig.videoPath.includes(fileName))) {
-            config.features.bootAnimationConfig.videoPath = 'assets/videos/default-bg.mp4';
+            config.features.bootAnimationConfig.videoPath = '';
           }
           triggerSave();
           await syncWallpapers();
 
           if (tipEl) {
-            tipEl.textContent = `🗑️ 素材「${fileName}」已成功删除并恢复默认素材。`;
+            tipEl.textContent = `🗑️ 素材「${fileName}」已成功删除。`;
             tipEl.className = 'text-[11px] text-emerald-400 font-medium';
             setTimeout(() => {
               tipEl.textContent = '支持 MP4/WebM，直接导入插件素材库';
@@ -1041,7 +1220,106 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     }
 
-    // F. 壁纸下拉框与按钮事件绑定
+    // G. 上传载入动效脚本通用处理函数
+    async function handleUploadScript(file) {
+      if (!file) return;
+      const tipEl = bootCodeUploadTip;
+      const defaultTip = '支持 JS 动效脚本，直接导入插件动效库';
+
+      if (tipEl) {
+        tipEl.textContent = `⏳ 正在载入动效「${file.name}」到内置库...`;
+        tipEl.className = 'text-[11px] text-sky-400 font-medium';
+      }
+
+      try {
+        const uploadUrl = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-script/upload?name=${encodeURIComponent(file.name)}`;
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          body: file
+        });
+        const data = await res.json();
+        if (data.ok && data.relPath) {
+          if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+          config.features.bootAnimationConfig.customCodePath = data.relPath;
+          triggerSave();
+          await syncBootScripts(data.relPath);
+          if (tipEl) {
+            tipEl.textContent = `✅ 已成功载入「${data.fileName}」并设为当前动效！`;
+            tipEl.className = 'text-[11px] text-emerald-400 font-medium';
+          }
+          setTimeout(() => {
+            if (tipEl) {
+              tipEl.textContent = defaultTip;
+              tipEl.className = 'text-[11px] text-muted-foreground opacity-75';
+            }
+          }, 5000);
+        } else {
+          throw new Error(data.error || '上传脚本失败');
+        }
+      } catch (err) {
+        if (tipEl) {
+          tipEl.textContent = `❌ 载入失败：${err.message}`;
+          tipEl.className = 'text-[11px] text-rose-400 font-medium';
+          setTimeout(() => {
+            tipEl.textContent = defaultTip;
+            tipEl.className = 'text-[11px] text-muted-foreground opacity-75';
+          }, 6000);
+        }
+      }
+    }
+
+    // H. 删除动效脚本通用处理函数（直接物理删除插件目录对应文件）
+    async function handleDeleteScript(selectEl, tipEl) {
+      const curSelect = document.getElementById('agy-select-boot-code') || selectEl;
+      if (!curSelect) return;
+      const val = curSelect.value;
+      if (!val || val === 'assets/scripts/default-boot.js' || val.endsWith('/default-boot.js')) {
+        alert('官方默认动效受系统保护，不可删除。');
+        return;
+      }
+      const fileName = val.split(/[\/\\]/).pop();
+      const confirmed = confirm(`确定要彻底删除动效方案「${fileName}」吗？\n\n该操作将直接从插件动效库中物理删除此脚本文件，不可恢复。`);
+      if (!confirmed) return;
+
+      if (tipEl) {
+        tipEl.textContent = `⏳ 正在删除动效「${fileName}」...`;
+        tipEl.className = 'text-[11px] text-amber-400 font-medium';
+      }
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-script/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: val })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          if (config.features?.bootAnimationConfig?.customCodePath && (config.features.bootAnimationConfig.customCodePath === val || config.features.bootAnimationConfig.customCodePath.includes(fileName))) {
+            config.features.bootAnimationConfig.customCodePath = 'assets/scripts/default-boot.js';
+          }
+          triggerSave();
+          await syncBootScripts();
+
+          if (tipEl) {
+            tipEl.textContent = `🗑️ 动效方案「${fileName}」已成功删除并恢复默认动效。`;
+            tipEl.className = 'text-[11px] text-emerald-400 font-medium';
+            setTimeout(() => {
+              tipEl.textContent = '支持 JS 动效脚本，直接导入插件动效库';
+              tipEl.className = 'text-[11px] text-muted-foreground opacity-75';
+            }, 5000);
+          }
+        } else {
+          throw new Error(data.error || '删除失败');
+        }
+      } catch (err) {
+        if (tipEl) {
+          tipEl.textContent = `❌ 删除失败：${err.message}`;
+          tipEl.className = 'text-[11px] text-rose-400 font-medium';
+        }
+      }
+    }
+
+    // I. 壁纸下拉框与按钮事件绑定
     if (selectBuiltinWallpaper) {
       selectBuiltinWallpaper.onchange = () => {
         const val = selectBuiltinWallpaper.value;
@@ -1093,8 +1371,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       };
     }
 
-    // 首次载入素材库
-    syncWallpapers(true);
+    // 首次载入素材库（静态载入，不带闪烁动画）
+    syncWallpapers();
+    syncBootScripts();
 
     // 开机动画总开关显式同步与事件监听
     if (optBoot) {
@@ -1107,6 +1386,16 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const isEnabled = optBoot.checked;
         if (wrapBootConfig) wrapBootConfig.style.display = isEnabled ? 'flex' : 'none';
         config.features.bootAnimation = isEnabled;
+        if (isEnabled) {
+          if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+          if (!config.features.bootAnimationConfig.type) {
+            config.features.bootAnimationConfig.type = 'video';
+            syncBootTypeUI('video');
+          }
+          if (config.features.bootAnimationConfig.type === 'video' && !config.features.bootAnimationConfig.videoPath && selectBootVideo && selectBootVideo.value) {
+            config.features.bootAnimationConfig.videoPath = selectBootVideo.value;
+          }
+        }
         triggerSave();
       };
     }
@@ -1127,7 +1416,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     }
 
-    syncBootTypeUI(bootCfg.type || 'code');
+    syncBootTypeUI(bootCfg.type || 'video');
 
     function setBootType(type) {
       if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
@@ -1139,97 +1428,42 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     bootTypeCode.onclick = () => setBootType('code');
     bootTypeVideo.onclick = () => setBootType('video');
 
-    // 代码动效模式切换函数（550C 样例 vs 导入自定义代码）
-    const groupCodeMode = customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-boot-code-config [role="group"]');
-    function syncCodeModeUI(mode) {
-      const isCustom = mode === 'custom';
-      syncSegmentedState(groupCodeMode, isCustom ? codeModeCustom : codeMode550c);
-      if (isCustom) {
-        wrap550cSource.style.display = 'none';
-        wrapCustomCodeInput.style.display = 'flex';
-      } else {
-        wrap550cSource.style.display = 'block';
-        wrapCustomCodeInput.style.display = 'none';
-      }
-    }
-
-    syncCodeModeUI(bootCfg.codeMode || '550c');
-
-    function setCodeMode(mode) {
-      if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
-      config.features.bootAnimationConfig.codeMode = mode;
-      syncCodeModeUI(mode);
-      triggerSave();
-    }
-
-    codeMode550c.onclick = () => setCodeMode('550c');
-    codeModeCustom.onclick = () => setCodeMode('custom');
-
-    // 复制 550C 仓库链接
-    if (btnCopy550cUrl) {
-      btnCopy550cUrl.onclick = async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText('https://github.com/bl4346324-alt/antigravity-550c.git');
-          const orig = btnCopy550cUrl.textContent;
-          btnCopy550cUrl.textContent = '已复制 √';
-          setTimeout(() => btnCopy550cUrl.textContent = orig, 1500);
-        } catch (err) {}
+    // K. 开机动效脚本下拉框与按钮事件绑定
+    if (selectBootCode) {
+      selectBootCode.onchange = () => {
+        const val = selectBootCode.value;
+        if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+        config.features.bootAnimationConfig.customCodePath = val;
+        updateDeleteScriptBtnState(selectBootCode, btnDeleteBootCode);
+        triggerSave();
       };
     }
 
-    if (link550cRepo) {
-      link550cRepo.onclick = (e) => {
-        e.preventDefault();
-        try {
-          if (window.electronNative && typeof window.electronNative.openExternal === 'function') {
-            window.electronNative.openExternal('https://github.com/bl4346324-alt/antigravity-550c.git');
-            return;
-          }
-        } catch (err) {}
-        window.open('https://github.com/bl4346324-alt/antigravity-550c.git', '_blank');
-      };
+    if (btnDeleteBootCode) {
+      btnDeleteBootCode.onclick = () => handleDeleteScript(selectBootCode, bootCodeUploadTip);
     }
 
-    // 自定义代码文件选择与恢复样例
-    if (btnPickCodeFile && fileCustomCode) {
-      btnPickCodeFile.onclick = () => fileCustomCode.click();
-      fileCustomCode.onchange = () => {
-        const file = fileCustomCode.files && fileCustomCode.files[0];
+    if (btnPickBootCode && fileBootCode) {
+      btnPickBootCode.onclick = () => fileBootCode.click();
+      fileBootCode.onchange = () => {
+        const file = fileBootCode.files && fileBootCode.files[0];
         if (file) {
-          const filePath = file.path || file.name;
-          inputCustomCodePath.value = filePath;
-          if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
-          config.features.bootAnimationConfig.customCodePath = filePath;
-          triggerSave();
+          handleUploadScript(file);
+          fileBootCode.value = '';
         }
       };
     }
-
-    if (btnRestore550c) {
-      btnRestore550c.onclick = () => setCodeMode('550c');
-    }
-
-    inputCustomCodePath.onchange = () => {
-      if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
-      config.features.bootAnimationConfig.customCodePath = inputCustomCodePath.value.trim();
-      triggerSave();
-    };
 
     // 开机动画预览按钮
     btnPreviewBoot.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const currentBootType = config.features?.bootAnimationConfig?.type || 'code';
-      const currentBootPath = config.features?.bootAnimationConfig?.videoPath || (selectBootVideo ? selectBootVideo.value : 'assets/videos/default-bg.mp4');
-      const currentCodeMode = config.features?.bootAnimationConfig?.codeMode || '550c';
-      const currentCustomCodePath = config.features?.bootAnimationConfig?.customCodePath || inputCustomCodePath.value.trim() || '';
+      const currentBootType = config.features?.bootAnimationConfig?.type || 'video';
+      const currentBootPath = config.features?.bootAnimationConfig?.videoPath || (selectBootVideo ? selectBootVideo.value : '');
+      const currentCustomCodePath = config.features?.bootAnimationConfig?.customCodePath || (selectBootCode ? selectBootCode.value : 'assets/scripts/default-boot.js');
 
       if (typeof window.__triggerBootAnimation === 'function') {
-        window.__triggerBootAnimation(currentBootType, currentBootPath, currentCodeMode, currentCustomCodePath);
-      } else if (typeof window.__trigger550C === 'function') {
-        window.__trigger550C();
+        window.__triggerBootAnimation(currentBootType, currentBootPath, currentCustomCodePath);
       }
     };
 
@@ -1311,23 +1545,46 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     }, true);
   }
 
-  // 弹窗状态兜底巡检（弹窗处于外观面板且未完成注入时快速自愈）
+  // 弹窗状态兜底巡检（弹窗处于外观面板且未完成注入时快速自愈，弹窗完全移出 DOM 时触发自动关停）
   if (window.__agyMenuPoller) {
     clearInterval(window.__agyMenuPoller);
   }
   window.__agyMenuPoller = setInterval(() => {
-    const modal = document.querySelector('.settings-modal-container') || document.querySelector('[role="dialog"]');
-    if (modal) {
-      if (!document.getElementById('agy-integrated-custom-switch-row') || !document.getElementById('agy-integrated-custom-options')) {
-        integrateNativeMenu();
+    const modal = getSettingsModal();
+    if (!modal) {
+      if (wasModalOpen) {
+        wasModalOpen = false;
+        validateAndAutoOffEmptyFeatures();
       }
+      return;
+    }
+    wasModalOpen = true;
+    if (!document.getElementById('agy-integrated-custom-switch-row') || !document.getElementById('agy-integrated-custom-options')) {
+      integrateNativeMenu();
     }
   }, 400);
+
+  // 监听 ESC 键：在弹窗关闭后微任务中检测
+  if (!window.__agyModalCloseBound) {
+    window.__agyModalCloseBound = true;
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        setTimeout(() => {
+          if (!getSettingsModal() && wasModalOpen) {
+            wasModalOpen = false;
+            validateAndAutoOffEmptyFeatures();
+          }
+        }, 100);
+      }
+    }, true);
+  }
 
   integrateNativeMenu();
 
   const instance = {
+    validateAndAutoOff: validateAndAutoOffEmptyFeatures,
     destroy: () => {
+      validateAndAutoOffEmptyFeatures();
       if (timer) clearTimeout(timer);
       timer = null;
       if (window.__agyMenuPoller) clearInterval(window.__agyMenuPoller);

@@ -125,26 +125,30 @@
           box-shadow: none !important;
         }
 
-        /* 标题菜单项按钮微调与悬停微光胶囊效果 */
+        /* ========================================================
+           2.6 标题菜单项（反重力标题与菜单文字）：浅色纯黑高对比度，深色保持浅色
+           ======================================================== */
         [data-testid="title-menu-bar-item"] {
-          color: #334155 !important;
-          font-weight: 500 !important;
+          color: #000000 !important;
+          font-weight: 550 !important;
           font-size: 12.5px !important;
           border-radius: 6px !important;
           transition: all 0.15s ease !important;
         }
 
         [data-testid="title-menu-bar-item"]:hover {
-          background-color: rgba(255, 255, 255, 0.45) !important;
+          background-color: rgba(255, 255, 255, 0.55) !important;
           backdrop-filter: blur(12px) !important;
           -webkit-backdrop-filter: blur(12px) !important;
-          color: #0f172a !important;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+          color: #000000 !important;
+          font-weight: 600 !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
         }
 
         .theme-dark [data-testid="title-menu-bar-item"],
         .dark [data-testid="title-menu-bar-item"] {
           color: #cbd5e1 !important;
+          font-weight: 500 !important;
         }
 
         .theme-dark [data-testid="title-menu-bar-item"]:hover,
@@ -152,6 +156,120 @@
           background-color: rgba(255, 255, 255, 0.14) !important;
           color: #ffffff !important;
           box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* ========================================================
+           2.7 窗口顶部控制按钮（Antigravity 图标、侧边栏折叠、前进后退、搜索、打开IDE等）：浅色纯黑
+           ======================================================== */
+        /* 侧边栏与顶栏左侧控制按钮组（A图标、折叠侧边栏、后退、前进、搜索） */
+        div.absolute.left-0.top-0.flex.items-center button,
+        div.absolute.left-0.top-0.flex.items-center [data-testid="app-icon-new-conversation-button"],
+        div.absolute.left-0.top-0.flex.items-center [data-testid="sidebar-toggle"],
+        div.absolute.left-0.top-0.flex.items-center [data-testid="sidebar-search-button"],
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="后退"],
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="前进"],
+        [data-testid="app-icon-new-conversation-button"],
+        [data-testid="sidebar-toggle"],
+        [data-testid="sidebar-search-button"] {
+          color: #000000 !important;
+          opacity: 0.95 !important;
+        }
+
+        div.absolute.left-0.top-0.flex.items-center svg,
+        [data-testid="sidebar-toggle"] svg,
+        [data-testid="sidebar-search-button"] svg,
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="后退"] svg,
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="前进"] svg {
+          color: #000000 !important;
+          fill: currentColor !important;
+          opacity: 0.95 !important;
+        }
+
+        /* Antigravity Logo A 图标 Path 填充纯黑色 */
+        [data-testid="app-icon-new-conversation-button"] svg path {
+          fill: #000000 !important;
+        }
+
+        /* 顶部按钮悬停 Hover 状态 */
+        div.absolute.left-0.top-0.flex.items-center button:hover,
+        [data-testid="sidebar-toggle"]:hover,
+        [data-testid="sidebar-search-button"]:hover,
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="后退"]:hover,
+        div.absolute.left-0.top-0.flex.items-center button[aria-label="前进"]:hover {
+          color: #000000 !important;
+          background-color: rgba(255, 255, 255, 0.45) !important;
+          opacity: 1 !important;
+        }
+
+        /* 禁用状态（如不可前进/后退） */
+        div.absolute.left-0.top-0.flex.items-center button[disabled],
+        div.absolute.left-0.top-0.flex.items-center button[disabled] svg {
+          color: rgba(0, 0, 0, 0.3) !important;
+          opacity: 0.3 !important;
+        }
+
+        /* 窗口顶栏右侧操作区按钮（打开 IDE、更多操作、面板切换等） */
+        [data-testid="open-editor-single"],
+        [data-testid="titlebar-more-actions"],
+        [data-testid="toggle-overview-panel"],
+        [data-testid="toggle-aux-sidebar"] {
+          color: #000000 !important;
+          font-weight: 500 !important;
+        }
+
+        [data-testid="open-editor-single"] svg,
+        [data-testid="titlebar-more-actions"] svg,
+        [data-testid="toggle-overview-panel"] svg,
+        [data-testid="toggle-aux-sidebar"] svg {
+          color: #000000 !important;
+          fill: currentColor !important;
+        }
+
+        [data-testid="open-editor-single"]:hover,
+        [data-testid="titlebar-more-actions"]:hover,
+        [data-testid="toggle-overview-panel"]:hover,
+        [data-testid="toggle-aux-sidebar"]:hover {
+          color: #000000 !important;
+          background-color: rgba(255, 255, 255, 0.45) !important;
+        }
+
+        /* 深色主题严格不改动（保持浅色） */
+        .theme-dark div.absolute.left-0.top-0.flex.items-center button,
+        .dark div.absolute.left-0.top-0.flex.items-center button,
+        .theme-dark [data-testid="app-icon-new-conversation-button"],
+        .dark [data-testid="app-icon-new-conversation-button"],
+        .theme-dark [data-testid="sidebar-toggle"],
+        .dark [data-testid="sidebar-toggle"],
+        .theme-dark [data-testid="sidebar-search-button"],
+        .dark [data-testid="sidebar-search-button"],
+        .theme-dark [data-testid="open-editor-single"],
+        .dark [data-testid="open-editor-single"],
+        .theme-dark [data-testid="titlebar-more-actions"],
+        .dark [data-testid="titlebar-more-actions"],
+        .theme-dark [data-testid="toggle-overview-panel"],
+        .dark [data-testid="toggle-overview-panel"],
+        .theme-dark [data-testid="toggle-aux-sidebar"],
+        .dark [data-testid="toggle-aux-sidebar"] {
+          color: #cbd5e1 !important;
+        }
+
+        .theme-dark div.absolute.left-0.top-0.flex.items-center svg,
+        .dark div.absolute.left-0.top-0.flex.items-center svg,
+        .theme-dark [data-testid="open-editor-single"] svg,
+        .dark [data-testid="open-editor-single"] svg,
+        .theme-dark [data-testid="titlebar-more-actions"] svg,
+        .dark [data-testid="titlebar-more-actions"] svg,
+        .theme-dark [data-testid="toggle-overview-panel"] svg,
+        .dark [data-testid="toggle-overview-panel"] svg,
+        .theme-dark [data-testid="toggle-aux-sidebar"] svg,
+        .dark [data-testid="toggle-aux-sidebar"] svg {
+          color: #cbd5e1 !important;
+          fill: currentColor !important;
+        }
+
+        .theme-dark [data-testid="app-icon-new-conversation-button"] svg path,
+        .dark [data-testid="app-icon-new-conversation-button"] svg path {
+          fill: #cbd5e1 !important;
         }
 
         /* 3. 消灭一切粗笨硬边框 */
@@ -337,28 +455,31 @@
           box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
         }
 
-        /* 文件夹项目名称与图标颜色加深（优雅深石墨灰 #333d4b，清晰易读） */
+        /* 文件夹项目名称与图标颜色加深（优雅深墨灰 #0f172a，清晰易读） */
         [role="navigation"] [data-project-card="true"],
         [role="navigation"] [data-project-card="true"] span,
         [role="navigation"] button[data-project-card="true"],
         [role="navigation"] [class*="group/headerbtn"],
         [role="navigation"] [class*="group/headerbtn"] span {
-          color: #333d4b !important;
+          color: #0f172a !important;
           font-weight: 500 !important;
         }
         [role="navigation"] [data-project-card="true"] svg,
         [role="navigation"] [class*="group/headerbtn"] svg {
-          color: #4b5563 !important;
+          color: #334155 !important;
+          opacity: 0.95 !important;
         }
         [role="navigation"] [data-project-card="true"]:hover,
         [role="navigation"] [data-project-card="true"]:hover span,
         [role="navigation"] [class*="group/headerbtn"]:hover,
         [role="navigation"] [class*="group/headerbtn"]:hover span {
-          color: #1e293b !important;
+          color: #000000 !important;
+          font-weight: 600 !important;
         }
         [role="navigation"] [data-project-card="true"]:hover svg,
         [role="navigation"] [class*="group/headerbtn"]:hover svg {
-          color: #334155 !important;
+          color: #000000 !important;
+          opacity: 1 !important;
         }
         .theme-dark [role="navigation"] [data-project-card="true"],
         .dark [role="navigation"] [data-project-card="true"],
@@ -439,6 +560,96 @@
         .theme-dark [role="navigation"] div[class*="group"]:not([data-project-card]):not(:has([data-project-card="true"])):hover,
         .dark [role="navigation"] div[class*="group"]:not([data-project-card]):not(:has([data-project-card="true"])):hover {
           background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* 会话条目文本（未激活状态）：高对比度深墨黑，清晰锐利易读 */
+        [role="navigation"] [data-testid="conversation-row-sidebar"] span.truncate,
+        [role="navigation"] [data-testid="conversation-row-sidebar"] [class*="text-secondary-foreground"],
+        [role="navigation"] div:has(> a[href*="/c/"]) span.truncate,
+        [role="navigation"] div:has(> a[href*="/c/"]) [class*="text-secondary-foreground"] {
+          color: #0f172a !important;
+          font-weight: 500 !important;
+        }
+
+        /* 会话条目悬停 Hover 状态文字加深 */
+        [role="navigation"] [data-testid="conversation-row-sidebar"]:hover span.truncate,
+        [role="navigation"] [data-testid="conversation-row-sidebar"]:hover [class*="text-secondary-foreground"],
+        [role="navigation"] div:has(> a[href*="/c/"]):hover span.truncate,
+        [role="navigation"] div:has(> a[href*="/c/"]):hover [class*="text-secondary-foreground"] {
+          color: #000000 !important;
+          font-weight: 600 !important;
+        }
+
+        /* 会话条目右侧时间戳（如 4m, 26m, 2h）：提升对比度，解决原生 opacity-60 造成的灰淡发白 */
+        [role="navigation"] [data-testid="conversation-row-sidebar"] span[class*="text-xs"],
+        [role="navigation"] div:has(> a[href*="/c/"]) span[class*="text-xs"] {
+          color: #334155 !important;
+          opacity: 0.9 !important;
+          font-weight: 500 !important;
+        }
+
+        [role="navigation"] [data-testid="conversation-row-sidebar"]:hover span[class*="text-xs"],
+        [role="navigation"] div:has(> a[href*="/c/"]):hover span[class*="text-xs"] {
+          color: #000000 !important;
+          opacity: 1 !important;
+          font-weight: 600 !important;
+        }
+
+        /* 展开项目底部的“查看全部”按钮（如 查看全部 (18) / See all） */
+        [role="navigation"] button[class*="text-muted-foreground"],
+        [role="navigation"] button[class*="opacity-75"],
+        [role="navigation"] button[class*="hover:opacity-100"] {
+          color: #1e293b !important;
+          opacity: 0.95 !important;
+          font-weight: 500 !important;
+        }
+
+        [role="navigation"] button[class*="text-muted-foreground"]:hover,
+        [role="navigation"] button[class*="opacity-75"]:hover {
+          color: #000000 !important;
+          opacity: 1 !important;
+          font-weight: 600 !important;
+        }
+
+        /* 空项目状态提示文字（暂无对话） */
+        [role="navigation"] span[class*="opacity-30"],
+        [role="navigation"] [class*="select-none"][class*="truncate"][class*="whitespace-nowrap"] {
+          color: #475569 !important;
+          opacity: 0.8 !important;
+        }
+
+        /* 会话条目深色模式适配 */
+        .theme-dark [role="navigation"] [data-testid="conversation-row-sidebar"] span.truncate,
+        .dark [role="navigation"] [data-testid="conversation-row-sidebar"] span.truncate,
+        .theme-dark [role="navigation"] [data-testid="conversation-row-sidebar"] [class*="text-secondary-foreground"],
+        .dark [role="navigation"] [data-testid="conversation-row-sidebar"] [class*="text-secondary-foreground"],
+        .theme-dark [role="navigation"] div:has(> a[href*="/c/"]) span.truncate,
+        .dark [role="navigation"] div:has(> a[href*="/c/"]) span.truncate,
+        .theme-dark [role="navigation"] div:has(> a[href*="/c/"]) [class*="text-secondary-foreground"],
+        .dark [role="navigation"] div:has(> a[href*="/c/"]) [class*="text-secondary-foreground"] {
+          color: #cbd5e1 !important;
+          font-weight: 400 !important;
+        }
+
+        .theme-dark [role="navigation"] [data-testid="conversation-row-sidebar"]:hover span.truncate,
+        .dark [role="navigation"] [data-testid="conversation-row-sidebar"]:hover span.truncate {
+          color: #ffffff !important;
+        }
+
+        .theme-dark [role="navigation"] [data-testid="conversation-row-sidebar"] span[class*="text-xs"],
+        .dark [role="navigation"] [data-testid="conversation-row-sidebar"] span[class*="text-xs"],
+        .theme-dark [role="navigation"] div:has(> a[href*="/c/"]) span[class*="text-xs"],
+        .dark [role="navigation"] div:has(> a[href*="/c/"]) span[class*="text-xs"] {
+          color: #94a3b8 !important;
+          opacity: 0.8 !important;
+        }
+
+        .theme-dark [role="navigation"] button[class*="text-muted-foreground"],
+        .dark [role="navigation"] button[class*="text-muted-foreground"],
+        .theme-dark [role="navigation"] button[class*="opacity-75"],
+        .dark [role="navigation"] button[class*="opacity-75"] {
+          color: #94a3b8 !important;
+          opacity: 0.85 !important;
         }
 
         /* ========================================================
@@ -567,8 +778,62 @@
         }
 
         /* ========================================================
-           4.3 侧边栏通用操作按钮（新建对话、对话历史、设置等）悬停效果
+           4.3 侧边栏通用操作按钮（新建对话、对话历史、Automations、自定义、设置）
+           加深字体颜色与图标对比度，彻底解决浅色模式下发灰发淡问题
            ======================================================== */
+        /* 新建对话主按钮：精致高亮悬浮胶囊底色与深色字 */
+        [role="navigation"] a[data-testid="new-conversation-button"] {
+          background: rgba(255, 255, 255, 0.65) !important;
+          backdrop-filter: blur(16px) !important;
+          -webkit-backdrop-filter: blur(16px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.85) !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+          color: #0f172a !important;
+          font-weight: 500 !important;
+        }
+        [role="navigation"] a[data-testid="new-conversation-button"]:hover {
+          background: rgba(255, 255, 255, 0.85) !important;
+          color: #000000 !important;
+        }
+
+        /* 对话历史、Automations、自定义、设置等导航条目文字颜色严格纯黑与立体微漫反射 */
+        [role="navigation"] a[data-testid="history-button"],
+        [role="navigation"] [data-testid="automations-button"],
+        [role="navigation"] a[href*="/customizations"],
+        [role="navigation"] [data-testid="settings-button"],
+        [role="navigation"] a.text-secondary-foreground,
+        [role="navigation"] button.text-secondary-foreground {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+
+        [role="navigation"] a[data-testid="history-button"] span,
+        [role="navigation"] [data-testid="automations-button"] span,
+        [role="navigation"] a[href*="/customizations"] span,
+        [role="navigation"] [data-testid="settings-button"] span,
+        [role="navigation"] a.text-secondary-foreground span,
+        [role="navigation"] button.text-secondary-foreground span {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* 导航条目图标颜色纯黑 */
+        [role="navigation"] a[data-testid="history-button"] svg,
+        [role="navigation"] [data-testid="automations-button"] svg,
+        [role="navigation"] a[href*="/customizations"] svg,
+        [role="navigation"] [data-testid="settings-button"] svg,
+        [role="navigation"] a[data-testid="new-conversation-button"] svg,
+        [role="navigation"] a.text-secondary-foreground svg,
+        [role="navigation"] button.text-secondary-foreground svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* 侧边栏按钮悬停 Hover 状态 */
         [role="navigation"] > div a:hover,
         [role="navigation"] > div button:hover,
         [role="navigation"] button.popover-trigger-element:hover {
@@ -577,9 +842,97 @@
           -webkit-backdrop-filter: blur(12px) !important;
           border-radius: 8px !important;
         }
+
+        [role="navigation"] a[data-testid="history-button"]:hover,
+        [role="navigation"] [data-testid="automations-button"]:hover,
+        [role="navigation"] a[href*="/customizations"]:hover,
+        [role="navigation"] [data-testid="settings-button"]:hover,
+        [role="navigation"] a.text-secondary-foreground:hover,
+        [role="navigation"] button.text-secondary-foreground:hover,
+        [role="navigation"] a[data-testid="history-button"]:hover span,
+        [role="navigation"] [data-testid="automations-button"]:hover span,
+        [role="navigation"] a[href*="/customizations"]:hover span,
+        [role="navigation"] [data-testid="settings-button"]:hover span {
+          color: #000000 !important;
+          font-weight: 600 !important;
+        }
+
+        [role="navigation"] a[data-testid="history-button"]:hover svg,
+        [role="navigation"] [data-testid="automations-button"]:hover svg,
+        [role="navigation"] a[href*="/customizations"]:hover svg,
+        [role="navigation"] [data-testid="settings-button"]:hover svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* 深色模式适配 */
         .theme-dark [role="navigation"] > div a:hover,
         .theme-dark [role="navigation"] > div button:hover {
           background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="new-conversation-button"],
+        .dark [role="navigation"] a[data-testid="new-conversation-button"] {
+          background: rgba(255, 255, 255, 0.08) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          color: #f1f5f9 !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="history-button"],
+        .dark [role="navigation"] a[data-testid="history-button"],
+        .theme-dark [role="navigation"] [data-testid="automations-button"],
+        .dark [role="navigation"] [data-testid="automations-button"],
+        .theme-dark [role="navigation"] a[href*="/customizations"],
+        .dark [role="navigation"] a[href*="/customizations"],
+        .theme-dark [role="navigation"] [data-testid="settings-button"],
+        .dark [role="navigation"] [data-testid="settings-button"],
+        .theme-dark [role="navigation"] a.text-secondary-foreground,
+        .dark [role="navigation"] a.text-secondary-foreground,
+        .theme-dark [role="navigation"] button.text-secondary-foreground,
+        .dark [role="navigation"] button.text-secondary-foreground {
+          color: #cbd5e1 !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="history-button"] span,
+        .dark [role="navigation"] a[data-testid="history-button"] span,
+        .theme-dark [role="navigation"] [data-testid="automations-button"] span,
+        .dark [role="navigation"] [data-testid="automations-button"] span,
+        .theme-dark [role="navigation"] a[href*="/customizations"] span,
+        .dark [role="navigation"] a[href*="/customizations"] span,
+        .theme-dark [role="navigation"] [data-testid="settings-button"] span,
+        .dark [role="navigation"] [data-testid="settings-button"] span {
+          color: #cbd5e1 !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="history-button"] svg,
+        .dark [role="navigation"] a[data-testid="history-button"] svg,
+        .theme-dark [role="navigation"] [data-testid="automations-button"] svg,
+        .dark [role="navigation"] [data-testid="automations-button"] svg,
+        .theme-dark [role="navigation"] a[href*="/customizations"] svg,
+        .dark [role="navigation"] a[href*="/customizations"] svg,
+        .theme-dark [role="navigation"] [data-testid="settings-button"] svg,
+        .dark [role="navigation"] [data-testid="settings-button"] svg,
+        .theme-dark [role="navigation"] a[data-testid="new-conversation-button"] svg,
+        .dark [role="navigation"] a[data-testid="new-conversation-button"] svg {
+          color: #94a3b8 !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="history-button"]:hover,
+        .dark [role="navigation"] a[data-testid="history-button"]:hover,
+        .theme-dark [role="navigation"] [data-testid="automations-button"]:hover,
+        .dark [role="navigation"] [data-testid="automations-button"]:hover,
+        .theme-dark [role="navigation"] [data-testid="settings-button"]:hover,
+        .dark [role="navigation"] [data-testid="settings-button"]:hover {
+          color: #ffffff !important;
+        }
+
+        .theme-dark [role="navigation"] a[data-testid="history-button"]:hover svg,
+        .dark [role="navigation"] a[data-testid="history-button"]:hover svg,
+        .theme-dark [role="navigation"] [data-testid="automations-button"]:hover svg,
+        .dark [role="navigation"] [data-testid="automations-button"]:hover svg,
+        .theme-dark [role="navigation"] [data-testid="settings-button"]:hover svg,
+        .dark [role="navigation"] [data-testid="settings-button"]:hover svg {
+          color: #ffffff !important;
         }
 
         /* 5. 聊天会话气泡卡片：用户提问与 AI 回复样式完全一致，统一高透细腻毛玻璃（与输入框保持一致） */
@@ -918,30 +1271,126 @@
           right: 44px !important; /* 位于展开按钮左边 */
         }
 
-        /* 鼠标悬停在卡片或操作列时微光高亮 */
+        /* 鼠标悬停在卡片或操作列时微光高亮 (浅色模式) */
         .user-input-buttons-container:hover,
         [class*="user-input-buttons"]:hover,
         [class*="user-input-step"]:hover .user-input-buttons-container,
-        [class*="user-input-step"]:hover [class*="user-input-buttons"] {
+        [class*="user-input-step"]:hover [class*="user-input-buttons"],
+        [data-testid="user-input-step"]:hover .user-input-buttons-container,
+        [data-testid="user-input-step"]:hover [class*="user-input-buttons"],
+        [class*="group/user-input-step"]:hover .user-input-buttons-container,
+        [class*="group/user-input-step"]:hover [class*="user-input-buttons"],
+        .user-bubble-card:hover .user-input-buttons-container,
+        .user-bubble-card:hover [class*="user-input-buttons"],
+        div[aria-label="User message"]:hover .user-input-buttons-container,
+        div[aria-label="User message"]:hover [class*="user-input-buttons"] {
           background-color: rgba(255, 255, 255, 0.90) !important;
           box-shadow: 0 2px 8px rgba(99, 102, 241, 0.16) !important;
         }
 
-        /* 深色模式适配 */
+        /* 深色模式适配 (Dark Mode) */
+        @media (prefers-color-scheme: dark) {
+          .user-input-buttons-container,
+          [class*="user-input-buttons"] {
+            background-color: rgba(30, 36, 56, 0.75) !important;
+            border: 1px solid rgba(165, 180, 252, 0.25) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+          }
+
+          /* 深色模式：鼠标悬浮在提问卡片区域时（防止误激活浅色高亮变成白色，保持深色毛玻璃微光） */
+          [class*="user-input-step"]:hover .user-input-buttons-container,
+          [class*="user-input-step"]:hover [class*="user-input-buttons"],
+          [data-testid="user-input-step"]:hover .user-input-buttons-container,
+          [data-testid="user-input-step"]:hover [class*="user-input-buttons"],
+          [class*="group/user-input-step"]:hover .user-input-buttons-container,
+          [class*="group/user-input-step"]:hover [class*="user-input-buttons"],
+          .user-bubble-card:hover .user-input-buttons-container,
+          .user-bubble-card:hover [class*="user-input-buttons"],
+          div[aria-label="User message"]:hover .user-input-buttons-container,
+          div[aria-label="User message"]:hover [class*="user-input-buttons"] {
+            background-color: rgba(34, 40, 60, 0.82) !important;
+            border: 1px solid rgba(165, 180, 252, 0.30) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.40) !important;
+          }
+
+          /* 深色模式：鼠标直接悬停在操作胶囊自身上时的高亮微光 */
+          .user-input-buttons-container:hover,
+          [class*="user-input-buttons"]:hover {
+            background-color: rgba(45, 52, 80, 0.92) !important;
+            border-color: rgba(165, 180, 252, 0.45) !important;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.50) !important;
+          }
+
+          .user-input-buttons-container span,
+          [class*="user-input-buttons"] span {
+            color: #94a3b8 !important;
+          }
+
+          .user-input-buttons-container button,
+          [class*="user-input-buttons"] button {
+            color: #cbd5e1 !important;
+          }
+
+          .user-input-buttons-container button:hover,
+          [class*="user-input-buttons"] button:hover {
+            background: rgba(255, 255, 255, 0.15) !important;
+            color: #ffffff !important;
+          }
+        }
+
         .dark .user-input-buttons-container,
         .dark [class*="user-input-buttons"],
         .theme-dark .user-input-buttons-container,
-        .theme-dark [class*="user-input-buttons"] {
+        .theme-dark [class*="user-input-buttons"],
+        [data-theme="dark"] .user-input-buttons-container,
+        [data-theme="dark"] [class*="user-input-buttons"] {
           background-color: rgba(30, 36, 56, 0.75) !important;
           border: 1px solid rgba(165, 180, 252, 0.25) !important;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
         }
+
+        /* 深色模式：鼠标悬浮在提问卡片区域时（防止误激活浅色高亮变成白色，保持深色毛玻璃微光） */
+        .dark [class*="user-input-step"]:hover .user-input-buttons-container,
+        .dark [class*="user-input-step"]:hover [class*="user-input-buttons"],
+        .dark [data-testid="user-input-step"]:hover .user-input-buttons-container,
+        .dark [data-testid="user-input-step"]:hover [class*="user-input-buttons"],
+        .dark [class*="group/user-input-step"]:hover .user-input-buttons-container,
+        .dark [class*="group/user-input-step"]:hover [class*="user-input-buttons"],
+        .dark .user-bubble-card:hover .user-input-buttons-container,
+        .dark .user-bubble-card:hover [class*="user-input-buttons"],
+        .dark div[aria-label="User message"]:hover .user-input-buttons-container,
+        .dark div[aria-label="User message"]:hover [class*="user-input-buttons"],
+        .theme-dark [class*="user-input-step"]:hover .user-input-buttons-container,
+        .theme-dark [class*="user-input-step"]:hover [class*="user-input-buttons"],
+        .theme-dark [data-testid="user-input-step"]:hover .user-input-buttons-container,
+        .theme-dark [data-testid="user-input-step"]:hover [class*="user-input-buttons"],
+        .theme-dark [class*="group/user-input-step"]:hover .user-input-buttons-container,
+        .theme-dark [class*="group/user-input-step"]:hover [class*="user-input-buttons"],
+        .theme-dark .user-bubble-card:hover .user-input-buttons-container,
+        .theme-dark .user-bubble-card:hover [class*="user-input-buttons"],
+        .theme-dark div[aria-label="User message"]:hover .user-input-buttons-container,
+        .theme-dark div[aria-label="User message"]:hover [class*="user-input-buttons"],
+        [data-theme="dark"] [class*="user-input-step"]:hover .user-input-buttons-container,
+        [data-theme="dark"] [class*="user-input-step"]:hover [class*="user-input-buttons"],
+        [data-theme="dark"] [data-testid="user-input-step"]:hover .user-input-buttons-container,
+        [data-theme="dark"] [data-testid="user-input-step"]:hover [class*="user-input-buttons"],
+        [data-theme="dark"] .user-bubble-card:hover .user-input-buttons-container,
+        [data-theme="dark"] .user-bubble-card:hover [class*="user-input-buttons"] {
+          background-color: rgba(34, 40, 60, 0.82) !important;
+          border: 1px solid rgba(165, 180, 252, 0.30) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.40) !important;
+        }
+
+        /* 深色模式：鼠标直接悬停在操作胶囊自身上时的高亮微光 */
         .dark .user-input-buttons-container:hover,
         .dark [class*="user-input-buttons"]:hover,
         .theme-dark .user-input-buttons-container:hover,
-        .theme-dark [class*="user-input-buttons"]:hover {
-          background-color: rgba(45, 52, 80, 0.90) !important;
-          box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5) !important;
+        .theme-dark [class*="user-input-buttons"]:hover,
+        [data-theme="dark"] .user-input-buttons-container:hover,
+        [data-theme="dark"] [class*="user-input-buttons"]:hover {
+          background-color: rgba(45, 52, 80, 0.92) !important;
+          border-color: rgba(165, 180, 252, 0.45) !important;
+          box-shadow: 0 3px 12px rgba(0, 0, 0, 0.50) !important;
         }
 
         /* 时间文字独立样式 */
@@ -957,7 +1406,8 @@
           font-variant-numeric: tabular-nums !important;
         }
         .dark .user-input-buttons-container span,
-        .theme-dark .user-input-buttons-container span {
+        .theme-dark .user-input-buttons-container span,
+        [data-theme="dark"] .user-input-buttons-container span {
           color: #94a3b8 !important;
         }
 
@@ -978,6 +1428,13 @@
           cursor: pointer !important;
           transition: all 0.15s ease !important;
         }
+        .user-input-buttons-container button svg,
+        [class*="user-input-buttons"] button svg {
+          width: 13px !important;
+          height: 13px !important;
+          color: inherit !important;
+          stroke: currentColor !important;
+        }
         .user-input-buttons-container button:hover,
         [class*="user-input-buttons"] button:hover {
           background: rgba(99, 102, 241, 0.12) !important;
@@ -985,11 +1442,13 @@
           transform: scale(1.1) !important;
         }
         .dark .user-input-buttons-container button,
-        .theme-dark .user-input-buttons-container button {
+        .theme-dark .user-input-buttons-container button,
+        [data-theme="dark"] .user-input-buttons-container button {
           color: #cbd5e1 !important;
         }
         .dark .user-input-buttons-container button:hover,
-        .theme-dark .user-input-buttons-container button:hover {
+        .theme-dark .user-input-buttons-container button:hover,
+        [data-theme="dark"] .user-input-buttons-container button:hover {
           background: rgba(255, 255, 255, 0.15) !important;
           color: #ffffff !important;
         }
@@ -1916,4 +2375,1265 @@
           border-radius: 7px !important;
           color: #ffffff !important;
         }
+
+        /* ========================================================
+           13. 快速搜索会话弹窗（Fastpick Search Dialog）：
+           对齐设置弹窗全景磨砂毛玻璃质感，温润通透，高级光感，彻底杜绝死白
+           ======================================================== */
+        /* 13.1 搜索弹窗全屏背景遮罩（参考设置弹窗背景深度景深模糊） */
+        div.absolute.inset-0.flex.justify-center.items-start.z-\[4800\] {
+          background-color: rgba(0, 0, 0, 0.16) !important;
+          backdrop-filter: blur(6px) !important;
+          -webkit-backdrop-filter: blur(6px) !important;
+          padding-top: 12vh !important;
+        }
+
+        .theme-dark div.absolute.inset-0.flex.justify-center.items-start.z-\[4800\],
+        .dark div.absolute.inset-0.flex.justify-center.items-start.z-\[4800\] {
+          background-color: rgba(0, 0, 0, 0.55) !important;
+          backdrop-filter: blur(8px) !important;
+          -webkit-backdrop-filter: blur(8px) !important;
+        }
+
+        /* 13.2 搜索弹窗主体卡片容器 */
+        [data-testid="fastpick"] {
+          background-color: rgba(245, 247, 252, 0.78) !important;
+          background: rgba(245, 247, 252, 0.78) !important;
+          backdrop-filter: blur(48px) saturate(200%) !important;
+          -webkit-backdrop-filter: blur(48px) saturate(200%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.85) !important;
+          border-radius: 16px !important;
+          box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.6) !important;
+          overflow: hidden !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+
+        /* 13.3 顶部搜索输入栏与前缀选择 */
+        [data-testid="fastpick"] .box-border {
+          border-bottom: 1px solid rgba(0, 0, 0, 0.07) !important;
+          background: rgba(255, 255, 255, 0.4) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          padding: 4px 6px !important;
+        }
+
+        [data-testid="fastpick-prefix-trigger"] {
+          background-color: rgba(255, 255, 255, 0.75) !important;
+          border: 1px solid rgba(255, 255, 255, 0.9) !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+          color: #0f172a !important;
+          font-weight: 550 !important;
+          border-radius: 8px !important;
+          transition: all 0.15s ease !important;
+        }
+
+        [data-testid="fastpick-prefix-trigger"]:hover {
+          background-color: rgba(255, 255, 255, 0.95) !important;
+          color: #000000 !important;
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06) !important;
+        }
+
+        [data-testid="fastpick-input"] {
+          color: #0f172a !important;
+          font-weight: 500 !important;
+          font-size: 14.5px !important;
+        }
+
+        [data-testid="fastpick-input"]::placeholder {
+          color: #64748b !important;
+          opacity: 0.9 !important;
+        }
+
+        /* 13.4 搜索结果会话条目 */
+        [data-testid="fastpick"] div[role="option"] {
+          border: 1px solid transparent !important;
+          border-radius: 10px !important;
+          margin: 2px 4px !important;
+          transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+
+        [data-testid="fastpick"] div[role="option"] span.truncate {
+          color: #0f172a !important;
+          font-weight: 500 !important;
+        }
+
+        [data-testid="fastpick"] div[role="option"] span.text-muted-foreground,
+        [data-testid="fastpick"] div[role="option"] svg {
+          color: #475569 !important;
+        }
+
+        [data-testid="fastpick"] div[role="option"] span[data-screenshot-volatile="true"],
+        [data-testid="fastpick"] div[role="option"] span[class*="text-xs"] {
+          color: #475569 !important;
+          opacity: 0.9 !important;
+          font-weight: 500 !important;
+        }
+
+        /* 结果条目悬停 Hover */
+        [data-testid="fastpick"] div[role="option"]:hover {
+          background-color: rgba(255, 255, 255, 0.5) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+        }
+
+        [data-testid="fastpick"] div[role="option"]:hover span.truncate {
+          color: #000000 !important;
+          font-weight: 600 !important;
+        }
+
+        /* 键盘选中或高亮项 (Active / Highlighted) */
+        [data-testid="fastpick"] div[role="option"][data-highlighted] {
+          background-color: rgba(255, 255, 255, 0.8) !important;
+          backdrop-filter: blur(16px) !important;
+          -webkit-backdrop-filter: blur(16px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.9) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+        }
+
+        [data-testid="fastpick"] div[role="option"][data-highlighted] span.truncate {
+          color: #000000 !important;
+          font-weight: 600 !important;
+        }
+
+        /* 13.5 深色模式 (Dark Mode) 自适应 */
+        .theme-dark [data-testid="fastpick"],
+        .dark [data-testid="fastpick"] {
+          background-color: rgba(22, 26, 36, 0.85) !important;
+          background: rgba(22, 26, 36, 0.85) !important;
+          backdrop-filter: blur(48px) saturate(190%) !important;
+          -webkit-backdrop-filter: blur(48px) saturate(190%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          box-shadow: 0 25px 70px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] .box-border,
+        .dark [data-testid="fastpick"] .box-border {
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+          background: rgba(255, 255, 255, 0.04) !important;
+        }
+
+        .theme-dark [data-testid="fastpick-prefix-trigger"],
+        .dark [data-testid="fastpick-prefix-trigger"] {
+          background-color: rgba(255, 255, 255, 0.1) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          color: #f1f5f9 !important;
+        }
+
+        .theme-dark [data-testid="fastpick-prefix-trigger"]:hover,
+        .dark [data-testid="fastpick-prefix-trigger"]:hover {
+          background-color: rgba(255, 255, 255, 0.18) !important;
+          color: #ffffff !important;
+        }
+
+        .theme-dark [data-testid="fastpick-input"],
+        .dark [data-testid="fastpick-input"] {
+          color: #f8fafc !important;
+        }
+
+        .theme-dark [data-testid="fastpick-input"]::placeholder,
+        .dark [data-testid="fastpick-input"]::placeholder {
+          color: #94a3b8 !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] div[role="option"] span.truncate,
+        .dark [data-testid="fastpick"] div[role="option"] span.truncate {
+          color: #e2e8f0 !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] div[role="option"] span.text-muted-foreground,
+        .dark [data-testid="fastpick"] div[role="option"] span.text-muted-foreground,
+        .theme-dark [data-testid="fastpick"] div[role="option"] svg,
+        .dark [data-testid="fastpick"] div[role="option"] svg {
+          color: #94a3b8 !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] div[role="option"]:hover,
+        .dark [data-testid="fastpick"] div[role="option"]:hover {
+          background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] div[role="option"][data-highlighted],
+        .dark [data-testid="fastpick"] div[role="option"][data-highlighted] {
+          background-color: rgba(255, 255, 255, 0.14) !important;
+          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        .theme-dark [data-testid="fastpick"] div[role="option"][data-highlighted] span.truncate,
+        .dark [data-testid="fastpick"] div[role="option"][data-highlighted] span.truncate,
+        .theme-dark [data-testid="fastpick"] div[role="option"]:hover span.truncate,
+        .dark [data-testid="fastpick"] div[role="option"]:hover span.truncate {
+          color: #ffffff !important;
+        }
+
+        /* ========================================================
+           14. 对话历史 (History)、Automations 与 自定义 (Customizations) 独立视图页面：
+           高雅水晶微晶拟态美化体系（通透空灵、去白瓷砖补丁感、自然羽化防硬边、极佳清晰度）
+           ======================================================== */
+
+        /* 14.1 彻底保持主视图与滚动容器背景 100% 透明（杜绝大面积死白雾与 Y=35px 标题栏硬切断边） */
+        div.relative.z-0.flex-1.flex.min-h-0.h-full:has([data-testid="conversation-row-history"]),
+        div.flex-1.min-h-0.overflow-y-auto:has([data-testid="conversation-row-history"]),
+        div.h-full.w-full.flex.flex-col.items-center.overflow-y-auto:has([data-testid="conversation-row-history"]),
+        [data-testid="sidecars-view"],
+        [data-testid="sidecars-view"] > div,
+        div.flex-1.flex.flex-col.overflow-hidden.h-full.min-h-0:has([data-testid="customizations-marketplace"]),
+        div:has(> [data-testid="customizations-marketplace"]) {
+          background-color: transparent !important;
+          background: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+        }
+
+        /* 14.2 顶部吸顶区域 (Sticky Header) 彻底透明无缝（告别顶部暗色横条切边，保持壁纸纯净流动） */
+        .sticky.top-0.z-20:has(input[data-testid="history-search-input"]),
+        .sticky.top-0.z-20.bg-background:has([data-testid="conversation-row-history"]),
+        .sticky.top-0.z-20:has(.max-w-4xl) {
+          background: transparent !important;
+          background-color: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          border-bottom: none !important;
+        }
+
+        /* 14.3 提示卡片横幅 (This page is going away soon Banner) 晶莹水滴微胶囊 */
+        .sticky.top-0:has(input[data-testid="history-search-input"]) div.flex.items-start.gap-2\.5.rounded-lg.border,
+        div.w-full.max-w-2xl div.flex.items-start.gap-2\.5.rounded-lg.border {
+          background-color: rgba(255, 255, 255, 0.38) !important;
+          background: rgba(255, 255, 255, 0.38) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.65) !important;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
+          border-radius: 14px !important;
+        }
+
+        .theme-dark .sticky.top-0:has(input[data-testid="history-search-input"]) div.flex.items-start.gap-2\.5.rounded-lg.border,
+        .dark .sticky.top-0:has(input[data-testid="history-search-input"]) div.flex.items-start.gap-2\.5.rounded-lg.border,
+        .theme-dark div.w-full.max-w-2xl div.flex.items-start.gap-2\.5.rounded-lg.border,
+        .dark div.w-full.max-w-2xl div.flex.items-start.gap-2\.5.rounded-lg.border {
+          background-color: rgba(26, 32, 48, 0.45) !important;
+          background: rgba(26, 32, 48, 0.45) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+          border-radius: 14px !important;
+        }
+
+        /* 14.4 搜索输入框与快捷按钮：精致通透水晶胶囊与立体内发光 */
+        div.relative.flex.items-center:has(> input[data-testid="history-search-input"]),
+        [data-testid="sidecars-view"] div.relative.flex.items-center:has(> input),
+        div.sticky.top-0:has(.max-w-4xl) div.relative.flex.items-center:has(> input) {
+          background-color: rgba(255, 255, 255, 0.38) !important;
+          background: rgba(255, 255, 255, 0.38) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.65) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+          border-radius: 12px !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+        div.relative.flex.items-center:has(> input[data-testid="history-search-input"]):focus-within,
+        [data-testid="sidecars-view"] div.relative.flex.items-center:has(> input):focus-within,
+        div.sticky.top-0:has(.max-w-4xl) div.relative.flex.items-center:has(> input):focus-within {
+          background-color: rgba(255, 255, 255, 0.65) !important;
+          background: rgba(255, 255, 255, 0.65) !important;
+          border-color: rgba(255, 255, 255, 0.95) !important;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06), 0 0 0 2px rgba(255, 255, 255, 0.5) !important;
+        }
+
+        .theme-dark div.relative.flex.items-center:has(> input[data-testid="history-search-input"]),
+        .dark div.relative.flex.items-center:has(> input[data-testid="history-search-input"]),
+        .theme-dark [data-testid="sidecars-view"] div.relative.flex.items-center:has(> input),
+        .dark [data-testid="sidecars-view"] div.relative.flex.items-center:has(> input),
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) div.relative.flex.items-center:has(> input),
+        .dark div.sticky.top-0:has(.max-w-4xl) div.relative.flex.items-center:has(> input) {
+          background-color: rgba(26, 32, 48, 0.5) !important;
+          background: rgba(26, 32, 48, 0.5) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          border-radius: 12px !important;
+        }
+
+        /* 搜索框右侧快捷功能按钮（筛选、更多等） */
+        button[data-tooltip-id="history-display-options"],
+        button[data-testid="chat-history-overflow-menu"] {
+          background-color: rgba(255, 255, 255, 0.38) !important;
+          background: rgba(255, 255, 255, 0.38) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.6) !important;
+          border-radius: 12px !important;
+          color: #0f172a !important;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+          transition: all 0.18s ease !important;
+        }
+        button[data-tooltip-id="history-display-options"]:hover,
+        button[data-testid="chat-history-overflow-menu"]:hover {
+          background-color: rgba(255, 255, 255, 0.72) !important;
+          border-color: rgba(255, 255, 255, 0.95) !important;
+          color: #000000 !important;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07) !important;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark button[data-tooltip-id="history-display-options"],
+        .dark button[data-tooltip-id="history-display-options"],
+        .theme-dark button[data-testid="chat-history-overflow-menu"],
+        .dark button[data-testid="chat-history-overflow-menu"] {
+          background-color: rgba(26, 32, 48, 0.5) !important;
+          background: rgba(26, 32, 48, 0.5) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          color: #f8fafc !important;
+        }
+        .theme-dark button[data-tooltip-id="history-display-options"]:hover,
+        .dark button[data-tooltip-id="history-display-options"]:hover,
+        .theme-dark button[data-testid="chat-history-overflow-menu"]:hover,
+        .dark button[data-testid="chat-history-overflow-menu"]:hover {
+          background-color: rgba(45, 60, 85, 0.8) !important;
+          color: #ffffff !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+          transform: translateY(-1px);
+        }
+
+        /* 14.5 核心美化：对话历史条目 (Conversation Row History) */
+        /* 精致水晶微晶卡片：适度半透底色（0.32），温润纯净，字迹完美易读 */
+        [data-testid="conversation-row-history"] {
+          background-color: rgba(255, 255, 255, 0.32) !important;
+          background: rgba(255, 255, 255, 0.32) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.55) !important;
+          border-radius: 12px !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.65) !important;
+          margin-bottom: 5px !important;
+          --row-bg: rgba(255, 255, 255, 0.55) !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+
+        /* 鼠标悬停 (Hover)：平滑微浮并透出温润高光 */
+        [data-testid="conversation-row-history"]:hover {
+          background-color: rgba(255, 255, 255, 0.68) !important;
+          background: rgba(255, 255, 255, 0.68) !important;
+          border: 1px solid rgba(255, 255, 255, 0.9) !important;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+          transform: translateY(-1px);
+          --row-bg: rgba(255, 255, 255, 0.78) !important;
+        }
+
+        /* 选中状态 (Selected)：优雅白金水晶高光卡片 */
+        [data-testid="conversation-row-history"][data-selected="true"] {
+          background-color: rgba(255, 255, 255, 0.88) !important;
+          background: rgba(255, 255, 255, 0.88) !important;
+          border: 1px solid rgba(255, 255, 255, 1) !important;
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.09), 0 0 0 1px rgba(255, 255, 255, 0.8) !important;
+          --row-bg: rgba(255, 255, 255, 0.88) !important;
+        }
+
+        /* 深色模式下历史条目卡片 */
+        .theme-dark [data-testid="conversation-row-history"],
+        .dark [data-testid="conversation-row-history"] {
+          background-color: rgba(22, 28, 44, 0.42) !important;
+          background: rgba(22, 28, 44, 0.42) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+          --row-bg: rgba(22, 28, 44, 0.6) !important;
+        }
+
+        .theme-dark [data-testid="conversation-row-history"]:hover,
+        .dark [data-testid="conversation-row-history"]:hover {
+          background-color: rgba(36, 46, 68, 0.7) !important;
+          background: rgba(36, 46, 68, 0.7) !important;
+          border: 1px solid rgba(255, 255, 255, 0.18) !important;
+          box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4) !important;
+          transform: translateY(-1px);
+          --row-bg: rgba(36, 46, 68, 0.8) !important;
+        }
+
+        .theme-dark [data-testid="conversation-row-history"][data-selected="true"],
+        .dark [data-testid="conversation-row-history"][data-selected="true"] {
+          background-color: rgba(45, 60, 85, 0.85) !important;
+          background: rgba(45, 60, 85, 0.85) !important;
+          border: 1px solid rgba(255, 255, 255, 0.25) !important;
+          box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5) !important;
+          --row-bg: rgba(45, 60, 85, 0.9) !important;
+        }
+
+        /* 条目内快捷操作按钮（更多、固定等） */
+        [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"],
+        [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"] {
+          border-radius: 8px !important;
+          color: #1e293b !important;
+          transition: all 0.15s ease !important;
+        }
+        [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"]:hover,
+        [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"]:hover {
+          background-color: rgba(255, 255, 255, 0.6) !important;
+          color: #000000 !important;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"],
+        .dark [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"],
+        .theme-dark [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"],
+        .dark [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"] {
+          color: #cbd5e1 !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"]:hover,
+        .dark [data-testid="conversation-row-history"] button[data-testid="conversation-kebab"]:hover,
+        .theme-dark [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"]:hover,
+        .dark [data-testid="conversation-row-history"] button[data-testid="conversation-pin-button"]:hover {
+          background-color: rgba(255, 255, 255, 0.22) !important;
+          color: #ffffff !important;
+        }
+
+        /* 14.6 自定义页面 (Customizations) 扩展插件卡片：VisionOS 晶莹微透小组件 */
+        [data-testid="customization-card"],
+        .relative.isolate:has(img[src*="gstatic.com"]) {
+          background-color: rgba(255, 255, 255, 0.3) !important;
+          background: rgba(255, 255, 255, 0.3) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.55) !important;
+          border-radius: 16px !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.65) !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+        [data-testid="customization-card"]:hover,
+        .relative.isolate:has(img[src*="gstatic.com"]):hover {
+          background-color: rgba(255, 255, 255, 0.65) !important;
+          background: rgba(255, 255, 255, 0.65) !important;
+          border: 1px solid rgba(255, 255, 255, 0.9) !important;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+          transform: translateY(-2px);
+        }
+
+        /* 插件分类大标题高亮立体感：浅色模式严格纯黑 */
+        div:has(> [data-testid="customizations-marketplace"]) h2,
+        div:has(> [data-testid="customizations-marketplace"]) h3,
+        [data-testid="customizations-marketplace"] ~ div h2,
+        div.max-w-4xl h2,
+        div.max-w-4xl h3 {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.8) !important;
+        }
+
+        /* 插件分类副描述小字（用户红框特别指出）：浅色模式严格纯黑立体高对比 */
+        div:has(> [data-testid="customizations-marketplace"]) p,
+        div.max-w-4xl p,
+        div.max-w-4xl p.text-muted-foreground,
+        [data-testid="customizations-marketplace"] p,
+        [data-testid="customizations-marketplace"] .text-muted-foreground {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.85) !important;
+        }
+
+        /* 插件 Logo 图标容器微晶底座 */
+        [data-testid="customization-card"] div:has(> img),
+        .relative.isolate div:has(> img[src*="gstatic.com"]) {
+          background: rgba(255, 255, 255, 0.65) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.8) !important;
+          border-radius: 14px !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+          padding: 2px !important;
+        }
+
+        .theme-dark [data-testid="customization-card"],
+        .dark [data-testid="customization-card"],
+        .theme-dark .relative.isolate:has(img[src*="gstatic.com"]),
+        .dark .relative.isolate:has(img[src*="gstatic.com"]) {
+          background-color: rgba(24, 30, 46, 0.42) !important;
+          background: rgba(24, 30, 46, 0.42) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+        }
+        .theme-dark [data-testid="customization-card"]:hover,
+        .dark [data-testid="customization-card"]:hover,
+        .theme-dark .relative.isolate:has(img[src*="gstatic.com"]):hover,
+        .dark .relative.isolate:has(img[src*="gstatic.com"]):hover {
+          background-color: rgba(36, 46, 68, 0.7) !important;
+          background: rgba(36, 46, 68, 0.7) !important;
+          border: 1px solid rgba(255, 255, 255, 0.18) !important;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4) !important;
+          transform: translateY(-2px);
+        }
+
+        .theme-dark [data-testid="customization-card"] div:has(> img),
+        .dark [data-testid="customization-card"] div:has(> img) {
+          background: rgba(255, 255, 255, 0.14) !important;
+          border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        }
+
+        /* 14.7 Automations 页面按钮与空状态美化 */
+        [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        [data-testid="sidecar-create-with-prompt"] {
+          background-color: rgba(255, 255, 255, 0.45) !important;
+          background: rgba(255, 255, 255, 0.45) !important;
+          backdrop-filter: blur(16px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.7) !important;
+          color: #0f172a !important;
+          font-weight: 550 !important;
+          border-radius: 10px !important;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
+          transition: all 0.18s ease !important;
+        }
+        [data-testid="sidecars-view"] div.flex.items-center.gap-2 button:hover,
+        [data-testid="sidecar-create-with-prompt"]:hover {
+          background-color: rgba(255, 255, 255, 0.8) !important;
+          background: rgba(255, 255, 255, 0.8) !important;
+          border-color: rgba(255, 255, 255, 0.98) !important;
+          color: #000000 !important;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+          transform: translateY(-1px);
+        }
+
+        .theme-dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        .dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        .theme-dark [data-testid="sidecar-create-with-prompt"],
+        .dark [data-testid="sidecar-create-with-prompt"] {
+          background-color: rgba(30, 41, 59, 0.6) !important;
+          background: rgba(30, 41, 59, 0.6) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          color: #f8fafc !important;
+        }
+        .theme-dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button:hover,
+        .dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button:hover,
+        .theme-dark [data-testid="sidecar-create-with-prompt"]:hover,
+        .dark [data-testid="sidecar-create-with-prompt"]:hover {
+          background-color: rgba(45, 60, 85, 0.8) !important;
+          border-color: rgba(255, 255, 255, 0.22) !important;
+          color: #ffffff !important;
+          transform: translateY(-1px);
+        }
+
+        /* Automations 页面优雅空状态浮板 */
+        [data-testid="sidecar-list-empty"] {
+          opacity: 1 !important;
+          background: rgba(255, 255, 255, 0.24) !important;
+          backdrop-filter: blur(24px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+          border: 1px dashed rgba(255, 255, 255, 0.55) !important;
+          border-radius: 16px !important;
+          padding: 48px 24px !important;
+          margin-top: 24px !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+        }
+        [data-testid="sidecar-list-empty"] span,
+        [data-testid="sidecar-list-empty"] p,
+        [data-testid="sidecar-list-empty"] div {
+          color: #1e293b !important;
+          font-weight: 550 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .theme-dark [data-testid="sidecar-list-empty"],
+        .dark [data-testid="sidecar-list-empty"] {
+          background: rgba(24, 30, 46, 0.38) !important;
+          border: 1px dashed rgba(255, 255, 255, 0.12) !important;
+        }
+        .theme-dark [data-testid="sidecar-list-empty"] span,
+        .dark [data-testid="sidecar-list-empty"] span,
+        .theme-dark [data-testid="sidecar-list-empty"] p,
+        .dark [data-testid="sidecar-list-empty"] p,
+        .theme-dark [data-testid="sidecar-list-empty"] div,
+        .dark [data-testid="sidecar-list-empty"] div {
+          color: #cbd5e1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7) !important;
+        }
+
+        /* ========================================================
+           14.8 严格对比色文字系统 (Strict Contrast: 浅色纯黑 / 深色浅银灰)
+           彻底解决对话历史、Automations、自定义市场三大视图及分类小字的可读性问题
+           ======================================================== */
+
+        /* ==================== 浅色模式 (Light Theme) ==================== */
+        /* 1. 大标题与各级标题（全黑 700 + 柔光外发光衬光） */
+        .w-full.max-w-2xl h1,
+        [data-testid="sidecars-view"] h1,
+        .max-w-4xl h1,
+        div:has(> [data-testid="customizations-marketplace"]) h2,
+        div:has(> [data-testid="customizations-marketplace"]) h3,
+        [data-testid="customizations-marketplace"] ~ div h2,
+        div.max-w-4xl h2,
+        div.max-w-4xl h3 {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.8) !important;
+        }
+
+        /* 2. 分类说明小字与段落（重点修复：Build with Google 等副标题描述） */
+        div.max-w-4xl p,
+        div.max-w-4xl p.text-muted-foreground,
+        [data-testid="customizations-marketplace"] p,
+        [data-testid="customizations-marketplace"] .text-muted-foreground,
+        div:has(> [data-testid="customizations-marketplace"]) p,
+        [data-testid="sidecars-view"] p,
+        [data-testid="sidecars-view"] .text-muted-foreground,
+        div.w-full.max-w-2xl p,
+        div.w-full.max-w-2xl .text-muted-foreground {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 6px rgba(255, 255, 255, 0.85) !important;
+        }
+
+        /* 3. 自定义页面顶部导航 Tab 栏（“插件市场 / Installed” 全黑清晰） */
+        div.sticky.top-0:has(.max-w-4xl) nav,
+        div.sticky.top-0:has(.max-w-4xl) nav a,
+        div.sticky.top-0:has(.max-w-4xl) nav a span,
+        div.sticky.top-0:has(.max-w-4xl) nav a.text-secondary-foreground,
+        div.sticky.top-0:has(.max-w-4xl) button,
+        div.sticky.top-0:has(.max-w-4xl) [role="tab"] {
+          color: #000000 !important;
+          font-weight: 650 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        div.sticky.top-0:has(.max-w-4xl) nav a.active,
+        div.sticky.top-0:has(.max-w-4xl) button[data-state="active"],
+        div.sticky.top-0:has(.max-w-4xl) [role="tab"][data-state="active"] {
+          background: rgba(255, 255, 255, 0.75) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        /* 4. 插件卡片内部所有文字（标题、描述、图标全黑） */
+        [data-testid="customization-card"] [class*="font-medium"],
+        [data-testid="customization-card"] [class*="font-medium"] a {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.9) !important;
+        }
+        [data-testid="customization-card"] .text-muted-foreground,
+        [data-testid="customization-card"] div.text-xs,
+        [data-testid="customization-card"] [class*="text-xs"],
+        [data-testid="customization-card"] p {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.85) !important;
+        }
+        [data-testid="customization-card"] button svg,
+        [data-testid="customization-card"] svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* 5. 展开更多与交互按钮（如 “See 6 more”） */
+        div.max-w-4xl button.text-muted-foreground,
+        [data-testid="customizations-marketplace"] button,
+        [data-testid="customizations-marketplace"] button span {
+          color: #000000 !important;
+          font-weight: 650 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* 6. 对话历史页面提示横幅内部文字与图标 */
+        div.flex.items-start.gap-2\.5.rounded-lg.border span,
+        div.flex.items-start.gap-2\.5.rounded-lg.border p,
+        div.flex.items-start.gap-2\.5.rounded-lg.border a,
+        div.flex.items-start.gap-2\.5.rounded-lg.border div {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.85) !important;
+        }
+        div.flex.items-start.gap-2\.5.rounded-lg.border svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* 7. 对话历史条目（标题、项目名、时间标签全黑） */
+        [data-testid="conversation-row-history"] span.truncate,
+        [data-testid="conversation-row-history"] .text-secondary-foreground {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        [data-testid="conversation-row-history"] [data-subtext] span.truncate,
+        [data-testid="conversation-row-history"] .text-muted-foreground,
+        [data-testid="conversation-row-history"] .text-muted-foreground span,
+        [data-testid="conversation-row-history"] span.min-w-0 {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+        }
+        [data-testid="conversation-row-history"] [data-subtext] svg,
+        [data-testid="conversation-row-history"] .text-muted-foreground svg,
+        [data-testid="conversation-row-history"] svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+        [data-testid="conversation-row-history"] [data-screenshot-volatile="true"],
+        [data-testid="conversation-row-history"] span.text-xs.text-foreground,
+        [data-testid="conversation-row-history"] span.opacity-60 {
+          color: #000000 !important;
+          opacity: 1 !important;
+          font-weight: 650 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        [data-testid="conversation-row-history"] button svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* 8. Automations 页面按钮与空状态文字 */
+        [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        [data-testid="sidecars-view"] div.flex.items-center.gap-2 button span,
+        [data-testid="sidecar-create-with-prompt"],
+        [data-testid="sidecar-create-with-prompt"] span {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          opacity: 1 !important;
+        }
+        [data-testid="sidecars-view"] div.flex.items-center.gap-2 button svg,
+        [data-testid="sidecar-create-with-prompt"] svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+        [data-testid="sidecar-list-empty"],
+        [data-testid="sidecar-list-empty"] span,
+        [data-testid="sidecar-list-empty"] p,
+        [data-testid="sidecar-list-empty"] div {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95) !important;
+        }
+
+        /* 9. 搜索框文字与 Placeholder 占位符 */
+        input[data-testid="history-search-input"],
+        [data-testid="sidecars-view"] input,
+        div.sticky.top-0:has(.max-w-4xl) input {
+          color: #000000 !important;
+          font-weight: 600 !important;
+        }
+        input[data-testid="history-search-input"]::placeholder,
+        [data-testid="sidecars-view"] input::placeholder,
+        div.sticky.top-0:has(.max-w-4xl) input::placeholder {
+          color: #000000 !important;
+          opacity: 0.8 !important;
+          font-weight: 550 !important;
+        }
+        div.relative.flex.items-center svg,
+        .sticky.top-0.z-20 svg {
+          color: #000000 !important;
+          opacity: 1 !important;
+        }
+
+        /* ==================== 深色模式 (Dark Theme: .theme-dark, .dark) ==================== */
+        /* 1. 大标题与各级标题（偏白色的浅银灰 #f8fafc + 暗色微投影） */
+        .theme-dark .w-full.max-w-2xl h1,
+        .dark .w-full.max-w-2xl h1,
+        .theme-dark [data-testid="sidecars-view"] h1,
+        .dark [data-testid="sidecars-view"] h1,
+        .theme-dark .max-w-4xl h1,
+        .dark .max-w-4xl h1,
+        .theme-dark div:has(> [data-testid="customizations-marketplace"]) h2,
+        .dark div:has(> [data-testid="customizations-marketplace"]) h2,
+        .theme-dark div:has(> [data-testid="customizations-marketplace"]) h3,
+        .dark div:has(> [data-testid="customizations-marketplace"]) h3,
+        .theme-dark div.max-w-4xl h2,
+        .dark div.max-w-4xl h2,
+        .theme-dark div.max-w-4xl h3,
+        .dark div.max-w-4xl h3 {
+          color: #f8fafc !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
+        }
+
+        /* 2. 分类说明小字与段落（偏白色的浅灰 #e2e8f0） */
+        .theme-dark div.max-w-4xl p,
+        .dark div.max-w-4xl p,
+        .theme-dark div.max-w-4xl p.text-muted-foreground,
+        .dark div.max-w-4xl p.text-muted-foreground,
+        .theme-dark [data-testid="customizations-marketplace"] p,
+        .dark [data-testid="customizations-marketplace"] p,
+        .theme-dark [data-testid="customizations-marketplace"] .text-muted-foreground,
+        .dark [data-testid="customizations-marketplace"] .text-muted-foreground,
+        .theme-dark div:has(> [data-testid="customizations-marketplace"]) p,
+        .dark div:has(> [data-testid="customizations-marketplace"]) p,
+        .theme-dark [data-testid="sidecars-view"] p,
+        .dark [data-testid="sidecars-view"] p,
+        .theme-dark [data-testid="sidecars-view"] .text-muted-foreground,
+        .dark [data-testid="sidecars-view"] .text-muted-foreground,
+        .theme-dark div.w-full.max-w-2xl p,
+        .dark div.w-full.max-w-2xl p,
+        .theme-dark div.w-full.max-w-2xl .text-muted-foreground,
+        .dark div.w-full.max-w-2xl .text-muted-foreground {
+          color: #e2e8f0 !important;
+          font-weight: 550 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85) !important;
+        }
+
+        /* 3. 自定义页面顶部导航 Tab 栏（深色模式浅白银灰） */
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) nav,
+        .dark div.sticky.top-0:has(.max-w-4xl) nav,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) nav a,
+        .dark div.sticky.top-0:has(.max-w-4xl) nav a,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) nav a span,
+        .dark div.sticky.top-0:has(.max-w-4xl) nav a span,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) nav a.text-secondary-foreground,
+        .dark div.sticky.top-0:has(.max-w-4xl) nav a.text-secondary-foreground,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) button,
+        .dark div.sticky.top-0:has(.max-w-4xl) button,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) [role="tab"],
+        .dark div.sticky.top-0:has(.max-w-4xl) [role="tab"] {
+          color: #e2e8f0 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+        }
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) nav a.active,
+        .dark div.sticky.top-0:has(.max-w-4xl) nav a.active,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) button[data-state="active"],
+        .dark div.sticky.top-0:has(.max-w-4xl) button[data-state="active"],
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) [role="tab"][data-state="active"],
+        .dark div.sticky.top-0:has(.max-w-4xl) [role="tab"][data-state="active"] {
+          color: #ffffff !important;
+          background: rgba(255, 255, 255, 0.18) !important;
+        }
+
+        /* 4. 插件卡片内部所有文字（深色模式浅银白与高亮） */
+        .theme-dark [data-testid="customization-card"] [class*="font-medium"],
+        .dark [data-testid="customization-card"] [class*="font-medium"],
+        .theme-dark [data-testid="customization-card"] [class*="font-medium"] a,
+        .dark [data-testid="customization-card"] [class*="font-medium"] a {
+          color: #ffffff !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) !important;
+        }
+        .theme-dark [data-testid="customization-card"] .text-muted-foreground,
+        .dark [data-testid="customization-card"] .text-muted-foreground,
+        .theme-dark [data-testid="customization-card"] div.text-xs,
+        .dark [data-testid="customization-card"] div.text-xs,
+        .theme-dark [data-testid="customization-card"] [class*="text-xs"],
+        .dark [data-testid="customization-card"] [class*="text-xs"],
+        .theme-dark [data-testid="customization-card"] p,
+        .dark [data-testid="customization-card"] p {
+          color: #e2e8f0 !important;
+          font-weight: 500 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7) !important;
+        }
+        .theme-dark [data-testid="customization-card"] button svg,
+        .dark [data-testid="customization-card"] button svg,
+        .theme-dark [data-testid="customization-card"] svg,
+        .dark [data-testid="customization-card"] svg {
+          color: #f1f5f9 !important;
+          opacity: 1 !important;
+        }
+
+        /* 5. 展开更多与交互按钮 */
+        .theme-dark div.max-w-4xl button.text-muted-foreground,
+        .dark div.max-w-4xl button.text-muted-foreground,
+        .theme-dark [data-testid="customizations-marketplace"] button,
+        .dark [data-testid="customizations-marketplace"] button,
+        .theme-dark [data-testid="customizations-marketplace"] button span,
+        .dark [data-testid="customizations-marketplace"] button span {
+          color: #e2e8f0 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+        }
+
+        /* 6. 对话历史页面提示横幅内部文字与图标 */
+        .theme-dark div.flex.items-start.gap-2\.5.rounded-lg.border span,
+        .dark div.flex.items-start.gap-2\.5.rounded-lg.border span,
+        .theme-dark div.flex.items-start.gap-2\.5.rounded-lg.border p,
+        .dark div.flex.items-start.gap-2\.5.rounded-lg.border p,
+        .theme-dark div.flex.items-start.gap-2\.5.rounded-lg.border a,
+        .dark div.flex.items-start.gap-2\.5.rounded-lg.border a,
+        .theme-dark div.flex.items-start.gap-2\.5.rounded-lg.border div,
+        .dark div.flex.items-start.gap-2\.5.rounded-lg.border div {
+          color: #e2e8f0 !important;
+          font-weight: 550 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7) !important;
+        }
+        .theme-dark div.flex.items-start.gap-2\.5.rounded-lg.border svg,
+        .dark div.flex.items-start.gap-2\.5.rounded-lg.border svg {
+          color: #e2e8f0 !important;
+          opacity: 1 !important;
+        }
+
+        /* 7. 对话历史条目（深色模式浅白银灰） */
+        .theme-dark [data-testid="conversation-row-history"] span.truncate,
+        .dark [data-testid="conversation-row-history"] span.truncate,
+        .theme-dark [data-testid="conversation-row-history"] .text-secondary-foreground,
+        .dark [data-testid="conversation-row-history"] .text-secondary-foreground {
+          color: #f8fafc !important;
+          font-weight: 650 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9) !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] [data-subtext] span.truncate,
+        .dark [data-testid="conversation-row-history"] [data-subtext] span.truncate,
+        .theme-dark [data-testid="conversation-row-history"] .text-muted-foreground,
+        .dark [data-testid="conversation-row-history"] .text-muted-foreground,
+        .theme-dark [data-testid="conversation-row-history"] .text-muted-foreground span,
+        .dark [data-testid="conversation-row-history"] .text-muted-foreground span,
+        .theme-dark [data-testid="conversation-row-history"] span.min-w-0,
+        .dark [data-testid="conversation-row-history"] span.min-w-0 {
+          color: #e2e8f0 !important;
+          font-weight: 500 !important;
+          opacity: 1 !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] [data-subtext] svg,
+        .dark [data-testid="conversation-row-history"] [data-subtext] svg,
+        .theme-dark [data-testid="conversation-row-history"] .text-muted-foreground svg,
+        .dark [data-testid="conversation-row-history"] .text-muted-foreground svg,
+        .theme-dark [data-testid="conversation-row-history"] svg,
+        .dark [data-testid="conversation-row-history"] svg {
+          color: #cbd5e1 !important;
+          opacity: 0.95 !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] [data-screenshot-volatile="true"],
+        .dark [data-testid="conversation-row-history"] [data-screenshot-volatile="true"],
+        .theme-dark [data-testid="conversation-row-history"] span.text-xs.text-foreground,
+        .dark [data-testid="conversation-row-history"] span.text-xs.text-foreground,
+        .theme-dark [data-testid="conversation-row-history"] span.opacity-60,
+        .dark [data-testid="conversation-row-history"] span.opacity-60 {
+          color: #cbd5e1 !important;
+          opacity: 1 !important;
+          font-weight: 550 !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"] button svg,
+        .dark [data-testid="conversation-row-history"] button svg {
+          color: #e2e8f0 !important;
+          opacity: 0.95 !important;
+        }
+
+        /* 8. Automations 页面按钮与空状态文字 */
+        .theme-dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        .dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button,
+        .theme-dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button span,
+        .dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button span,
+        .theme-dark [data-testid="sidecar-create-with-prompt"],
+        .dark [data-testid="sidecar-create-with-prompt"],
+        .theme-dark [data-testid="sidecar-create-with-prompt"] span,
+        .dark [data-testid="sidecar-create-with-prompt"] span {
+          color: #f8fafc !important;
+          font-weight: 650 !important;
+        }
+        .theme-dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button svg,
+        .dark [data-testid="sidecars-view"] div.flex.items-center.gap-2 button svg,
+        .theme-dark [data-testid="sidecar-create-with-prompt"] svg,
+        .dark [data-testid="sidecar-create-with-prompt"] svg {
+          color: #f8fafc !important;
+        }
+        .theme-dark [data-testid="sidecar-list-empty"],
+        .dark [data-testid="sidecar-list-empty"],
+        .theme-dark [data-testid="sidecar-list-empty"] span,
+        .dark [data-testid="sidecar-list-empty"] span,
+        .theme-dark [data-testid="sidecar-list-empty"] p,
+        .dark [data-testid="sidecar-list-empty"] p,
+        .theme-dark [data-testid="sidecar-list-empty"] div,
+        .dark [data-testid="sidecar-list-empty"] div {
+          color: #e2e8f0 !important;
+          font-weight: 650 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85) !important;
+        }
+
+        /* 9. 搜索框文字与 Placeholder 占位符 */
+        .theme-dark input[data-testid="history-search-input"],
+        .dark input[data-testid="history-search-input"],
+        .theme-dark [data-testid="sidecars-view"] input,
+        .dark [data-testid="sidecars-view"] input,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) input,
+        .dark div.sticky.top-0:has(.max-w-4xl) input {
+          color: #f8fafc !important;
+        }
+        .theme-dark input[data-testid="history-search-input"]::placeholder,
+        .dark input[data-testid="history-search-input"]::placeholder,
+        .theme-dark [data-testid="sidecars-view"] input::placeholder,
+        .dark [data-testid="sidecars-view"] input::placeholder,
+        .theme-dark div.sticky.top-0:has(.max-w-4xl) input::placeholder,
+        .dark div.sticky.top-0:has(.max-w-4xl) input::placeholder {
+          color: #cbd5e1 !important;
+          opacity: 0.85 !important;
+        }
+        .theme-dark div.relative.flex.items-center svg,
+        .dark div.relative.flex.items-center svg,
+        .theme-dark .sticky.top-0.z-20 svg,
+        .dark .sticky.top-0.z-20 svg {
+          color: #e2e8f0 !important;
+          opacity: 0.95 !important;
+        }
+
+        /* 10. 悬停状态文字加强 */
+        [data-testid="conversation-row-history"]:hover span.truncate,
+        [data-testid="conversation-row-history"]:hover .text-secondary-foreground,
+        [data-testid="customization-card"]:hover [class*="font-medium"] a {
+          color: #000000 !important;
+          font-weight: 700 !important;
+        }
+        .theme-dark [data-testid="conversation-row-history"]:hover span.truncate,
+        .dark [data-testid="conversation-row-history"]:hover span.truncate,
+        .theme-dark [data-testid="conversation-row-history"]:hover .text-secondary-foreground,
+        .dark [data-testid="conversation-row-history"]:hover .text-secondary-foreground,
+        .theme-dark [data-testid="customization-card"]:hover [class*="font-medium"] a,
+        .dark [data-testid="customization-card"]:hover [class*="font-medium"] a {
+          color: #ffffff !important;
+          font-weight: 700 !important;
+        }
+
+        /* ========================================================
+           14.9 插件市场具体插件详情页 (Plugin Detail Page)：悬浮微晶毛玻璃卡片
+           - 左右留出通透边距（不全屏死遮，透出背景二次元插画）
+           - 水润晶莹毛玻璃面板与微发光内边框（不突兀）
+           - 浅色纯黑高对比 / 深色浅银灰高对比
+           ======================================================== */
+
+        /* 外部主滚动视图与外壳保持透明 */
+        div.flex-1.flex.flex-col:has(button[id^="plugin-detail-tab-"]),
+        div.flex-1.overflow-y-auto:has(button[id^="plugin-detail-tab-"]),
+        div:has(> div.w-full.max-w-4xl:has(button[id^="plugin-detail-tab-"])) {
+          background: transparent !important;
+          background-color: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+        }
+
+        /* 插件详情主卡片：居中悬浮微晶面板，左右保留呼吸边距 */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]),
+        div.w-full.max-w-4xl.mx-auto:has(button[id^="plugin-detail-tab-"]) {
+          max-width: 820px !important;
+          margin: 24px auto 48px auto !important;
+          padding: 32px 36px !important;
+          border-radius: 24px !important;
+          box-sizing: border-box !important;
+
+          /* 浅色模式：水润微晶毛玻璃背板 */
+          background-color: rgba(255, 255, 255, 0.46) !important;
+          background: rgba(255, 255, 255, 0.46) !important;
+          backdrop-filter: blur(28px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.68) !important;
+          box-shadow: 0 16px 44px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+          transition: all 0.25s ease !important;
+        }
+
+        /* 深色模式：黑曜石微晶背板 */
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]),
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]),
+        .theme-dark div.w-full.max-w-4xl.mx-auto:has(button[id^="plugin-detail-tab-"]),
+        .dark div.w-full.max-w-4xl.mx-auto:has(button[id^="plugin-detail-tab-"]) {
+          background-color: rgba(20, 26, 42, 0.52) !important;
+          background: rgba(20, 26, 42, 0.52) !important;
+          backdrop-filter: blur(28px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          box-shadow: 0 16px 44px rgba(0, 0, 0, 0.38) !important;
+        }
+
+        /* 插件详情大标题（H1，如 Google Docs） */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h1 {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          font-size: 1.5rem !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h1,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h1 {
+          color: #ffffff !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) !important;
+        }
+
+        /* 插件副标题（读取, draft, and edit docs.） */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.flex.flex-col.gap-3 > div:last-child,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.flex.flex-col.gap-3 p,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.flex.flex-col.gap-3 span {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.flex.flex-col.gap-3 > div:last-child,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.flex.flex-col.gap-3 > div:last-child {
+          color: #e2e8f0 !important;
+          font-weight: 500 !important;
+        }
+
+        /* 提示横幅 (This is a preview of the plugin's source...) 与卡片 */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border {
+          background-color: rgba(255, 255, 255, 0.35) !important;
+          background: rgba(255, 255, 255, 0.35) !important;
+          border: 1px solid rgba(255, 255, 255, 0.6) !important;
+          border-radius: 12px !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+        }
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border *,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border * {
+          color: #000000 !important;
+          font-weight: 550 !important;
+          opacity: 1 !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border {
+          background-color: rgba(255, 255, 255, 0.08) !important;
+          background: rgba(255, 255, 255, 0.08) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border *,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-lg.border *,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border *,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.rounded-xl.border * {
+          color: #e2e8f0 !important;
+        }
+
+        /* 选项卡 (Overview / 技能 Tab) */
+        button[id^="plugin-detail-tab-"] {
+          border-radius: 10px !important;
+          font-weight: 600 !important;
+          transition: all 0.18s ease !important;
+        }
+        /* 浅色模式 Tab 激活态与未激活态 */
+        button[id^="plugin-detail-tab-"] {
+          color: #000000 !important;
+          background: rgba(255, 255, 255, 0.28) !important;
+          border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        }
+        button[id^="plugin-detail-tab-"].bg-secondary,
+        button[id^="plugin-detail-tab-"][data-state="active"],
+        button[id^="plugin-detail-tab-"][aria-selected="true"] {
+          background: rgba(255, 255, 255, 0.85) !important;
+          color: #000000 !important;
+          border: 1px solid rgba(255, 255, 255, 0.95) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+        }
+        /* 深色模式 Tab 激活态与未激活态 */
+        .theme-dark button[id^="plugin-detail-tab-"],
+        .dark button[id^="plugin-detail-tab-"] {
+          color: #cbd5e1 !important;
+          background: rgba(255, 255, 255, 0.06) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+        .theme-dark button[id^="plugin-detail-tab-"].bg-secondary,
+        .dark button[id^="plugin-detail-tab-"].bg-secondary,
+        .theme-dark button[id^="plugin-detail-tab-"][data-state="active"],
+        .dark button[id^="plugin-detail-tab-"][data-state="active"],
+        .theme-dark button[id^="plugin-detail-tab-"][aria-selected="true"],
+        .dark button[id^="plugin-detail-tab-"][aria-selected="true"] {
+          background: rgba(255, 255, 255, 0.18) !important;
+          color: #ffffff !important;
+          border: 1px solid rgba(255, 255, 255, 0.22) !important;
+        }
+
+        /* 正文内容、段落与 Commands 区域文本（包含参数说明与小字） */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) p,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-sm,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) span.text-muted-foreground,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-muted-foreground,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-muted-foreground"],
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-xs"],
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-sm"] {
+          color: #000000 !important;
+          font-weight: 550 !important;
+          line-height: 1.6 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) p,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) p,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-sm,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-sm,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) span.text-muted-foreground,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) span.text-muted-foreground,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-muted-foreground,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) div.text-muted-foreground,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-muted-foreground"],
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-muted-foreground"],
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-xs"],
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-xs"],
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-sm"],
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) [class*="text-sm"] {
+          color: #e2e8f0 !important;
+          font-weight: 450 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7) !important;
+        }
+
+        /* 插件详情顶部面包屑导航 */
+        div.flex.items-center.whitespace-nowrap.text-secondary-foreground,
+        div.flex.items-center.gap-1.text-secondary-foreground {
+          color: #000000 !important;
+          font-weight: 600 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        .theme-dark div.flex.items-center.whitespace-nowrap.text-secondary-foreground,
+        .dark div.flex.items-center.whitespace-nowrap.text-secondary-foreground,
+        .theme-dark div.flex.items-center.gap-1.text-secondary-foreground,
+        .dark div.flex.items-center.gap-1.text-secondary-foreground {
+          color: #e2e8f0 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+        }
+
+        /* Commands 大标题与小标 */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h2,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h3 {
+          color: #000000 !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h2,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h2,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h3,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) h3 {
+          color: #f8fafc !important;
+          font-weight: 700 !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8) !important;
+        }
+
+        /* 指令代码块高亮（如 /gdocs） */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) code,
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) pre {
+          background-color: rgba(0, 0, 0, 0.06) !important;
+          color: #000000 !important;
+          font-weight: 650 !important;
+          border-radius: 6px !important;
+          padding: 2px 6px !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) code,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) code,
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) pre,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) pre {
+          background-color: rgba(255, 255, 255, 0.12) !important;
+          color: #f8fafc !important;
+        }
+
+        /* 底部 Footer（版本号等） */
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer {
+          border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+        }
+        div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer * {
+          color: #000000 !important;
+          opacity: 0.85 !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer {
+          border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+        .theme-dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer *,
+        .dark div.max-w-4xl:has(button[id^="plugin-detail-tab-"]) footer * {
+          color: #94a3b8 !important;
+        }
+
+
 

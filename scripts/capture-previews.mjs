@@ -84,33 +84,30 @@ async function main() {
   await send('Runtime.enable');
 
   // ==========================================
-  // 1. 截取 550C 开机终端全屏动效 (展开 HUD 终端)
+  // 1. 截取开机引导动效
   // ==========================================
-  console.log('[1/3] 正在截取【流浪地球 550C 量子计算机开机引导动效】(展开态)...');
+  console.log('[1/3] 正在截取【开机引导动画】...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       if (typeof window.__triggerBootAnimation === 'function') {
-        window.__triggerBootAnimation('550c');
-      } else if (typeof window.__trigger550C === 'function') {
-        window.__trigger550C();
+        window.__triggerBootAnimation('video');
       }
     })()`
   });
 
-  // 等待 550C 全屏展开量子计算数据终端面板
-  await sleep(3600);
+  await sleep(1500);
 
   const shot1 = await send('Page.captureScreenshot', { format: 'png' });
-  const file1 = path.join(IMAGES_DIR, 'preview-550c-boot.png');
+  const file1 = path.join(IMAGES_DIR, 'preview-boot.png');
   fs.writeFileSync(file1, Buffer.from(shot1.data, 'base64'));
-  console.log(`  [√] 550C 开机动效截图已生成: ${file1}`);
+  console.log(`  [√] 开机动效截图已生成: ${file1}`);
 
-  // 关闭 550C 动效
+  // 关闭开机动效
   await send('Runtime.evaluate', {
     expression: `(() => {
       const esc = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
       window.dispatchEvent(esc);
-      const host = document.querySelector('.dsh550c-host') || document.getElementById('agy-550c-host');
+      const host = document.getElementById('agy-video-boot-host') || document.getElementById('agy-custom-code-boot-host');
       if (host) host.remove();
     })()`
   });

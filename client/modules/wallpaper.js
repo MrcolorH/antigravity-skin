@@ -31,7 +31,6 @@ function syncTitleBarOverlay(force = false) {
 
     // 核心规范：在自定义皮肤与动效增强开启时，右上角 win 栏三个按钮必须始终保持强制完全透明！
     const isBootPlaying = !!window.__agyBootPlaying ||
-                          !!document.querySelector('.dsh550c-host') ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
                           (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
@@ -45,8 +44,8 @@ function syncTitleBarOverlay(force = false) {
         document.body.classList.contains('dark') ||
         document.body.classList.contains('theme-dark')
       )) || (document.documentElement && document.documentElement.classList.contains('dark'));
-      // 主界面非开机时：根据深浅色自适应图标颜色，浅色主题使用深色图标保证在浅色天空/亮色壁纸下清晰可辨
-      symbolColor = isDark ? '#f8fafc' : '#334155';
+      // 主界面非开机时：根据深浅色自适应图标颜色，浅色主题使用纯黑色图标保证在浅色天空/亮色壁纸下清晰可辨
+      symbolColor = isDark ? '#f8fafc' : '#000000';
     }
 
     const cacheKey = `custom_trans__${color}__${symbolColor}`;
@@ -147,8 +146,7 @@ export function initWallpaper(options = {}) {
   function shouldDeferWallpaperForBoot() {
     if (window.__agyBootPlaying) return true;
     const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
-    const hasBootDom = !!document.querySelector('.dsh550c-host') ||
-                       !!document.getElementById('agy-video-boot-host') ||
+    const hasBootDom = !!document.getElementById('agy-video-boot-host') ||
                        !!document.getElementById('agy-custom-code-boot-host');
     if (hasBootDom) return true;
     if (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
@@ -181,7 +179,7 @@ export function initWallpaper(options = {}) {
     }
   };
 
-  function realMountVideo(fadeIn = false) {
+  function realMountVideo(fadeIn = true) {
     if (!enableVideo || !videoUrl) {
       const v = document.getElementById('agy-dynamic-video');
       if (v) {
@@ -204,10 +202,9 @@ export function initWallpaper(options = {}) {
       videoEl.setAttribute('autoplay', '');
       videoEl.setAttribute('loop', '');
       videoEl.setAttribute('playsinline', '');
-      if (fadeIn) {
-        videoEl.style.opacity = '0';
-        videoEl.style.transition = 'opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
-      }
+      // 关键修复：初始状态严格保持 opacity 0，杜绝视频流缓冲解码第一帧期间的全屏纯黑画面闪现
+      videoEl.style.opacity = '0';
+      videoEl.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
       const parent = document.body || document.documentElement;
       if (parent) {
         if (parent === document.body) {
@@ -234,13 +231,14 @@ export function initWallpaper(options = {}) {
         isSame = (videoEl.src === videoUrl);
       }
       if (!isSame) {
+        videoEl.style.opacity = '0';
         videoEl.src = videoUrl;
         try { videoEl.load(); } catch(e) {}
       }
     }
 
     const onPlayReady = () => {
-      if (fadeIn && videoEl) {
+      if (videoEl && videoEl.style.opacity !== '1') {
         requestAnimationFrame(() => {
           videoEl.style.opacity = '1';
         });
@@ -250,7 +248,9 @@ export function initWallpaper(options = {}) {
     videoEl.addEventListener('canplay', onPlayReady, { once: true });
     videoEl.addEventListener('playing', onPlayReady, { once: true });
 
-    if (videoEl.paused) {
+    if (videoEl.readyState >= 2 && !videoEl.paused) {
+      onPlayReady();
+    } else if (videoEl.paused) {
       videoEl.play().then(onPlayReady).catch(() => {});
     }
 
@@ -287,7 +287,7 @@ export function initWallpaper(options = {}) {
       return null;
     }
 
-    return realMountVideo(false);
+    return realMountVideo(true);
   }
 
   mountVideo();
@@ -458,7 +458,7 @@ export function initWallpaper(options = {}) {
     },
     setVideoEnabled: (enabled, newUrl) => {
       enableVideo = !!enabled;
-      if (newUrl) videoUrl = newUrl;
+      if (newUrl !== undefined) videoUrl = newUrl;
       if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
         isWallpaperDeferred = false;
       }

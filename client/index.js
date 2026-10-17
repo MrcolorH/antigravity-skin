@@ -9,17 +9,16 @@
     features: {
       bootAnimation: false,
       bootAnimationConfig: {
-        type: 'code',
-        codeMode: '550c',
+        type: 'video',
         customCodePath: '',
-        videoPath: 'assets/videos/default-bg.mp4'
+        videoPath: ''
       },
       themeStyles: true,
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {
-        enabled: true,
-        videoPath: "assets/videos/default-bg.mp4",
+        enabled: false,
+        videoPath: '',
         brightness: 0.85,
         contrast: 1.05
       }
@@ -67,8 +66,6 @@
       window.__agyBootPlaying = true;
       if (typeof window.__triggerBootAnimation === 'function') {
         window.__triggerBootAnimation();
-      } else if (typeof window.__trigger550C === 'function') {
-        window.__trigger550C();
       }
     }
   }
@@ -92,18 +89,23 @@
     }
     // 关键自愈：如果视频或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
     const needStyle = currentConfig.features?.themeStyles !== false;
-    const needWallpaper = needStyle && currentConfig.features?.dynamicWallpaper?.enabled !== false;
+    const needWallpaper = needStyle && currentConfig.features?.dynamicWallpaper?.enabled === true && !!currentConfig.features?.dynamicWallpaper?.videoPath;
     const isBootPlaying = !!window.__agyBootPlaying ||
-                          !!document.querySelector('.dsh550c-host') ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
                           (currentConfig.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
     const hasVideo = !!document.getElementById('agy-dynamic-video');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
-    if (!isBootPlaying && ((needWallpaper && !hasVideo) || (needStyle && !hasStyle))) {
-      console.log('[Antigravity Skin] Missing video or style in DOM, re-applying features immediately...');
-      if (typeof window.__agyApplyFeatures === 'function') {
-        window.__agyApplyFeatures(currentConfig);
+    if (!isBootPlaying) {
+      if (!needWallpaper && hasVideo) {
+        const oldVid = document.getElementById('agy-dynamic-video');
+        if (oldVid) { try { oldVid.pause(); } catch(e){} oldVid.remove(); }
+      }
+      if ((needWallpaper && !hasVideo) || (needStyle && !hasStyle)) {
+        console.log('[Antigravity Skin] Missing video or style in DOM, re-applying features immediately...');
+        if (typeof window.__agyApplyFeatures === 'function') {
+          window.__agyApplyFeatures(currentConfig);
+        }
       }
     }
 
@@ -127,18 +129,18 @@
     // A. 背景视频与毛玻璃增量细粒度更新
     const isCustomTheme = f.themeStyles !== false;
     if (isCustomTheme) {
-      const isVideoOn = dw.enabled !== false;
-      const videoPath = dw.videoPath || 'assets/videos/default-bg.mp4';
+      const isVideoOn = dw.enabled === true;
+      const videoPath = dw.videoPath || '';
       const brightness = dw.brightness || 0.85;
       const contrast = dw.contrast || 1.05;
-      const videoUrl = isVideoOn ? `${API_BASE}/wallpaper.mp4?path=${encodeURIComponent(videoPath)}` : '';
+      const videoUrl = (isVideoOn && videoPath) ? `${API_BASE}/wallpaper.mp4?path=${encodeURIComponent(videoPath)}` : '';
 
       try {
         if (!wallpaperHandle) {
           if (typeof window.__agyInitWallpaper === 'function') {
             wallpaperHandle = window.__agyInitWallpaper({
               videoUrl,
-              enableVideo: isVideoOn,
+              enableVideo: isVideoOn && !!videoPath,
               brightness,
               contrast,
               glassThemeCss: window.__AG_SKIN_GLASS_CSS__ || ''
@@ -161,9 +163,10 @@
                                   lastWallpaperState.videoPath !== videoPath ||
                                   lastWallpaperState.isCustomTheme !== isCustomTheme;
           if (needVideoUpdate) {
+            const shouldRunVideo = isVideoOn && !!videoPath;
             if (typeof wallpaperHandle.setVideoEnabled === 'function') {
-              wallpaperHandle.setVideoEnabled(isVideoOn, videoUrl);
-            } else if (!isVideoOn) {
+              wallpaperHandle.setVideoEnabled(shouldRunVideo, videoUrl);
+            } else if (!shouldRunVideo) {
               const oldVid = document.getElementById('agy-dynamic-video');
               if (oldVid) {
                 try { oldVid.pause(); } catch(e) {}
