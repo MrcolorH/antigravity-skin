@@ -106,11 +106,16 @@ try {
     Set-Content -Path $configFile -Value $updatedJson -Encoding UTF8
 
     Write-Host "==================================================" -ForegroundColor Cyan
-    Write-Host " [√] 安装成功完成！" -ForegroundColor Green
-    Write-Host " 插件已部署至: $targetDir"
-    Write-Host " 提示：解压出来的临时文件/文件夹现已可直接安全删除。" -ForegroundColor Yellow
+    Write-Host " [√] 安装部署完成！" -ForegroundColor Green
+    Write-Host " 插件已部署至: $targetDir" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host " 🔔 重要提示：" -ForegroundColor Yellow
+    Write-Host " 插件核心文件已全部复制到上述持久化目录。" -ForegroundColor Yellow
+    Write-Host " 当前解压出来的安装包文件夹【已不需要，请直接删除】！" -ForegroundColor Yellow
+    Write-Host " 本地无需保留任何多余文件，完全不影响插件正常运行。" -ForegroundColor Yellow
+    Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
     Write-Host " 请完全退出并重新打开 Antigravity 客户端即可生效！" -ForegroundColor Cyan
-    Write-Host "=================================================="
+    Write-Host "==================================================" -ForegroundColor Cyan
 } finally {
     if ($tempCleanup) {
         Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
