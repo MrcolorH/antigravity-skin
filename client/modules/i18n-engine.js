@@ -911,30 +911,40 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
     return next;
   }
 
+  // 高性能子树快速跳过判定（支持 TreeWalker 的 FILTER_REJECT 整体剪枝）
+  function isPrunableSubtree(element) {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
+    const tag = element.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'CODE' || tag === 'PRE') {
+      return true;
+    }
+    const cls = element.className;
+    if (typeof cls === 'string' && (cls.includes('xterm') || cls.includes('monaco-editor') || cls.includes('md-code-block'))) {
+      return true;
+    }
+    if (element.hasAttribute('contenteditable')) {
+      const ce = element.getAttribute('contenteditable');
+      if (ce === '' || ce === 'true') return true;
+    }
+    if (element.getAttribute('data-testid') === 'user-input-step' || element.getAttribute('aria-label') === 'User message') {
+      return true;
+    }
+    return false;
+  }
+
   function shouldSkip(node) {
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
     if (!element) return false;
 
-    // 跳过代码与编辑区
-    if (element.closest('script, style, textarea, code, pre, .xterm, .monaco-editor')) {
+    if (isPrunableSubtree(element)) return true;
+
+    // 跳过代码与编辑区祖先
+    if (element.closest('script, style, textarea, code, pre, .xterm, .monaco-editor, [contenteditable="true"]')) {
       return true;
     }
 
-    // 跳过输入框
-    if (node.nodeType === Node.TEXT_NODE) {
-      if (element.closest('[contenteditable="true"], [contenteditable=""], input')) {
-        return true;
-      }
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      // 跳过编辑框子节点
-      const parent = node.parentElement;
-      if (parent && parent.closest('[contenteditable="true"], [contenteditable=""], input')) {
-        return true;
-      }
-    }
-
-    // 跳过会话历史
-    const historyItem = element.closest('.past-conversations, .conversation-list, .history-list, .conversations-list, [data-testid="history-list"], [data-testid="past-conversations"], .conversation-item, .convo-item, .history-item, [class*="history-item"], [class*="convo-item"]');
+    // 跳过会话历史中非操作按钮的文本
+    const historyItem = element.closest('.past-conversations, .conversation-list, .history-list, .conversations-list, [data-testid="history-list"], [data-testid="past-conversations"], .conversation-item, .convo-item, .history-item');
     if (historyItem) {
       const isActionBtn = element.closest('button[aria-label], button[title], [class*="delete"], [class*="pin"], [class*="archive"]');
       if (!isActionBtn) return true;
@@ -945,7 +955,7 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
       return true;
     }
 
-    // 跳过回复正文（保留控件）
+    // 跳过回复正文（保留控件操作按钮）
     const agentResponse = element.closest('[aria-label="Agent response"], [aria-label="智能体回复"]');
     if (agentResponse) {
       const isInteractive = element.closest('button, [role="button"], [class*="action"], [class*="button-container"]');
@@ -959,12 +969,11 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
     if (!element) return false;
 
-    // 主窗口白名单
+    // 主窗口白名单（针对 VSCode workbench.html 独立架构，非主窗口一律放行）
     const isMainWindow = window.location.pathname.endsWith('workbench.html') ||
       window.location.href.indexOf('/workbench.html') >= 0 ||
       window.location.href.indexOf('\\workbench.html') >= 0;
     if (!isMainWindow) return true;
-
 
     const containerSelector = [
       '[class*="antigravity"]',
@@ -988,8 +997,6 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
       '.quick-input-widget',
       '.notification-toast',
       '.notifications-toasts',
-      // VS Code/Antigravity IDE 设置页是异步渲染的，页面本身不一定带有
-      // antigravity/jetski 类名；显式纳入设置容器，避免 Settings 页面被白名单过滤。
       '.settings-editor',
       '.settings-body',
       '[class*="settings"]',
@@ -1006,51 +1013,82 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
     return !!element.closest(containerSelector);
   }
 
-function translateElement(element) {
-    if (!isInAntigravityContainer(element)) return;
+  function translateElement(element) {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
     for (const attr of ['aria-label', 'title', 'placeholder', 'alt']) {
-      const value = element.getAttribute?.(attr);
-      if (!value) continue;
-      const translated = translate(value);
+      const value = element.getAttribute(attr);
+      if (!value || !/[a-zA-Z]/.test(value)) continue;
+      const originalKey = `__orig_${attr}`;
+      if (element[originalKey] === undefined) {
+        element[originalKey] = value;
+      }
+      const translated = translate(element[originalKey]);
       if (translated !== value) element.setAttribute(attr, translated);
     }
   }
 
+  function translateSingleTextNode(node) {
+    if (!node || node.nodeType !== Node.TEXT_NODE || node.__zh_patched) return;
+    const val = node.nodeValue || '';
+    // 快速短路：如果不含英文单词字符，直接打标跳过，绝不进入重型字典匹配
+    if (val.length === 0 || !/[a-zA-Z]/.test(val)) {
+      node.__zh_patched = true;
+      return;
+    }
+    if (shouldSkip(node)) return;
+    if (!isInAntigravityContainer(node)) return;
+
+    if (node.__original_en === undefined) {
+      node.__original_en = val;
+    }
+    const translated = translate(node.__original_en);
+    if (translated !== val) {
+      node.nodeValue = translated;
+    }
+    node.__zh_patched = true;
+  }
+
   function translateNode(root) {
-    if (!root) return;
-    if (shouldSkip(root)) return;
+    if (!root || !root.isConnected) return;
     if (root.nodeType === Node.TEXT_NODE) {
-      if (!isInAntigravityContainer(root)) return;
-      if (root.__zh_patched) return;
-      const val = root.nodeValue || '';
-      const translated = translate(val);
-      if (translated !== val) root.nodeValue = translated;
-      root.__zh_patched = true;
+      translateSingleTextNode(root);
       return;
     }
     if (root.nodeType !== Node.ELEMENT_NODE && root.nodeType !== Node.DOCUMENT_NODE) return;
+
     if (root.nodeType === Node.ELEMENT_NODE) {
+      if (isPrunableSubtree(root)) return;
       if (!root.__zh_patched) {
-        // 节点可能先被插入、后被 React/Vue 补上容器 class。未处于目标容器时
-        // 不能标记为已处理，否则后续容器就绪后不会再翻译它的子树。
         if (isInAntigravityContainer(root)) {
           translateElement(root);
           root.__zh_patched = true;
         }
       }
     }
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+
+    // 使用带有 FILTER_REJECT 的 TreeWalker，遇到代码/编辑器/输入区直接跳过整棵子树！
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode(node) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (isPrunableSubtree(node)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (shouldSkip(node)) continue;
       if (node.nodeType === Node.TEXT_NODE) {
-        if (!isInAntigravityContainer(node)) continue;
-        if (node.__zh_patched) continue;
-        const val = node.nodeValue || '';
-        const translated = translate(val);
-        if (translated !== val) node.nodeValue = translated;
-        node.__zh_patched = true;
+        translateSingleTextNode(node);
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         if (node.__zh_patched) continue;
+        if (shouldSkip(node)) continue;
         if (!isInAntigravityContainer(node)) continue;
         translateElement(node);
         node.__zh_patched = true;
@@ -1058,61 +1096,116 @@ function translateElement(element) {
     }
   }
 
-  function run() {
-    document.documentElement.lang = 'zh-CN';
-    translateNode(document);
-
-    new MutationObserver((mutations) => {
-      const nodesToTranslate = [];
-      const elementsToTranslate = [];
-
-      for (const mutation of mutations) {
-        if (mutation.type === 'characterData') {
-          const target = mutation.target;
-          target.__zh_patched = false;
-          nodesToTranslate.push(target);
-        } else if (mutation.type === 'attributes') {
-          const target = mutation.target;
-          target.__zh_patched = false;
-          // 容器身份变化时要重新扫描整个子树；仅翻译属性本身会漏掉此前
-          // 因未命中白名单而尚未处理的 Settings 子节点。
-          if (mutation.attributeName === 'class' || mutation.attributeName === 'id' ||
-              mutation.attributeName === 'role' || mutation.attributeName === 'data-testid') {
-            nodesToTranslate.push(target);
-          } else {
-            elementsToTranslate.push(target);
-          }
-        } else {
-          for (const node of mutation.addedNodes) {
-            nodesToTranslate.push(node);
+  function revertToEnglish(root = document) {
+    document.documentElement.lang = 'en';
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (node.__original_en !== undefined) {
+          node.nodeValue = node.__original_en;
+        }
+        node.__zh_patched = false;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        for (const attr of ['aria-label', 'title', 'placeholder', 'alt']) {
+          const orig = node[`__orig_${attr}`];
+          if (orig !== undefined) {
+            node.setAttribute(attr, orig);
           }
         }
+        node.__zh_patched = false;
       }
+    }
+  }
 
-      if (nodesToTranslate.length > 0 || elementsToTranslate.length > 0) {
-        setTimeout(() => {
-          for (const node of nodesToTranslate) {
-            translateNode(node);
-          }
-          for (const el of elementsToTranslate) {
-            translateElement(el);
-          }
-        }, 0);
+  let i18nObserver = null;
+  let i18nTimer = null;
+  const pendingNodes = new Set();
+
+  function flushPendingTranslations() {
+    i18nTimer = null;
+    if (window.__agyCurrentLang === 'en' || pendingNodes.size === 0) {
+      pendingNodes.clear();
+      return;
+    }
+    const nodes = Array.from(pendingNodes);
+    pendingNodes.clear();
+
+    for (const node of nodes) {
+      if (node.isConnected) {
+        translateNode(node);
       }
-    }).observe(document, {
+    }
+  }
+
+  function scheduleIncrementalTranslation(node) {
+    if (!node) return;
+    pendingNodes.add(node);
+    if (!i18nTimer) {
+      i18nTimer = setTimeout(flushPendingTranslations, 60);
+    }
+  }
+
+  function startObserver() {
+    if (i18nObserver) {
+      try { i18nObserver.disconnect(); } catch (e) {}
+    }
+    i18nObserver = new MutationObserver((mutations) => {
+      if (window.__agyCurrentLang === 'en') return;
+      for (let i = 0; i < mutations.length; i++) {
+        const m = mutations[i];
+        if (m.type === 'childList') {
+          for (let j = 0; j < m.addedNodes.length; j++) {
+            scheduleIncrementalTranslation(m.addedNodes[j]);
+          }
+        } else if (m.type === 'characterData') {
+          scheduleIncrementalTranslation(m.target);
+        } else if (m.type === 'attributes') {
+          scheduleIncrementalTranslation(m.target);
+        }
+      }
+    });
+
+    const targetRoot = document.body || document.documentElement || document;
+    i18nObserver.observe(targetRoot, {
       childList: true,
       subtree: true,
       characterData: true,
       attributes: true,
-      // 监听容器身份变化。Settings 页面经常先挂载空节点，再异步补 class/id。
-      attributeFilter: ['aria-label', 'title', 'placeholder', 'alt', 'class', 'id', 'role', 'data-testid'],
+      attributeFilter: ['aria-label', 'title', 'placeholder', 'alt', 'data-testid']
     });
   }
 
+  function applyLanguage(lang) {
+    window.__agyCurrentLang = lang;
+    if (lang === 'en') {
+      if (i18nObserver) {
+        try { i18nObserver.disconnect(); } catch (e) {}
+        i18nObserver = null;
+      }
+      if (typeof document !== 'undefined') {
+        revertToEnglish(document);
+      }
+    } else {
+      if (document && document.documentElement) {
+        document.documentElement.lang = 'zh-CN';
+      }
+      if (typeof document !== 'undefined') {
+        translateNode(document);
+      }
+      startObserver();
+    }
+  }
+
+  window.__agyI18n = {
+    getLanguage: () => window.__agyCurrentLang || 'zh-CN',
+    setLanguage: (lang) => applyLanguage(lang)
+  };
+
+  const initialLang = (window.__AG_SKIN_CONFIG__ && window.__AG_SKIN_CONFIG__.features?.language) || 'zh-CN';
   if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', run, { once: true });
+    window.addEventListener('DOMContentLoaded', () => applyLanguage(initialLang), { once: true });
   } else {
-    run();
+    applyLanguage(initialLang);
   }
 })();
 

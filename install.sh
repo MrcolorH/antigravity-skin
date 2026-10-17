@@ -2,6 +2,14 @@
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# 优先使用统一规范的 Node.js 纯净白名单安装引擎
+if command -v node >/dev/null 2>&1; then
+    node "$PROJECT_DIR/scripts/install.mjs"
+    exit 0
+fi
+
+# 回退机制：系统无 node 运行时的标准符号链接安装
 TARGET_DIR="$HOME/.gemini/config/plugins/antigravity-skin"
 CONFIG_FILE="$HOME/.gemini/config/config.json"
 
@@ -9,10 +17,8 @@ echo "=================================================="
 echo " 正在安装 Antigravity 主题与皮肤官方集成插件..."
 echo "=================================================="
 
-# 1. 确保插件目录存在
 mkdir -p "$HOME/.gemini/config/plugins"
 
-# 2. 创建软链接
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
     echo "[1/3] 移除旧的插件链接/目录..."
     rm -rf "$TARGET_DIR"
@@ -21,7 +27,6 @@ fi
 echo "[2/3] 链接插件至 $TARGET_DIR..."
 ln -s "$PROJECT_DIR" "$TARGET_DIR"
 
-# 3. 启用插件配置到 config.json
 echo "[3/3] 在 ~/.gemini/config/config.json 中启用插件..."
 python3 -c "
 import json, os

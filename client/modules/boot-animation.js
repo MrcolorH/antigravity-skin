@@ -106,27 +106,40 @@ let booting = false, launched = false;
 /* ===== 开机动画 ===== */
 function playBoot(){
   const logo = stage.querySelector('#logo');
-  const bootText = stage.querySelector('#bootText');
-  const paths = Array.from(logo.querySelectorAll('path'));
+  const bootText = stage.querySelector('.boot-text, #bootText');
+  const paths = logo ? Array.from(logo.querySelectorAll('path')) : [];
 
+  // 1. 底模轮廓：挂载瞬间呈现清晰科技质感，避免纯黑死机假死感
   paths.forEach(p => {
-    p.style.opacity = '0.08';
+    p.style.opacity = '0.22';
+    p.style.filter = 'drop-shadow(0 0 2px rgba(255,255,255,0.2))';
     p.style.clipPath = 'inset(0 0 0 0)';
     p.style.webkitClipPath = 'inset(0 0 0 0)';
   });
 
-  const sorted = paths.map(p => ({el: p, x: p.getBBox().x})).sort((a, b) => a.x - b.x);
+  const sorted = paths.map((p, idx) => {
+    let x = idx * 10;
+    try {
+      if (typeof p.getBBox === 'function') {
+        const b = p.getBBox();
+        if (b && typeof b.x === 'number') x = b.x;
+      }
+    } catch (e) {}
+    return { el: p, x };
+  }).sort((a, b) => a.x - b.x);
 
+  // 2. 紧凑高燃的科技划亮节奏（30ms 起步，每 75ms 划亮一格，极速呈现）
   sorted.forEach((item, i) => {
-    const delay = 250 + i * 300;
+    const delay = 30 + i * 75;
     later(() => {
       const p = item.el;
       p.style.clipPath = 'inset(0 100% 0 0)';
       p.style.webkitClipPath = 'inset(0 100% 0 0)';
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          p.style.transition = 'clip-path .6s cubic-bezier(.4,0,.2,1), opacity .35s ease';
+          p.style.transition = 'clip-path .26s cubic-bezier(.4,0,.2,1), opacity .18s ease';
           p.style.opacity = '1';
+          p.style.filter = '';
           p.style.clipPath = 'inset(0 0 0 0)';
           p.style.webkitClipPath = 'inset(0 0 0 0)';
         });
@@ -134,10 +147,15 @@ function playBoot(){
     }, delay);
   });
 
-  later(() => bootText.classList.add('show'), 2400);
-  const totalMs = 250 + sorted.length * 300 + 400;
-  later(() => logo.classList.add('finished'), totalMs);
-  return totalMs + 600;
+  const textDelay = 30 + sorted.length * 75 + 80;
+  if (bootText) {
+    later(() => bootText.classList.add('show'), textDelay);
+  }
+  const totalMs = textDelay + 250;
+  if (logo) {
+    later(() => logo.classList.add('finished'), totalMs);
+  }
+  return totalMs + 200;
 }
 
 /* ===== 主终端日志 ===== */
@@ -1084,6 +1102,46 @@ const HOST_CSS = `
 
 let hasFinished = false;
 
+function pauseWallpaperVideo() {
+  const v = document.getElementById('agy-dynamic-video');
+  if (v) {
+    try {
+      v.dataset.bootPaused = '1';
+      v.style.transition = 'opacity 0.2s ease';
+      v.style.opacity = '0';
+      v.pause();
+    } catch(e) {}
+  }
+}
+
+function resumeWallpaperVideo() {
+  const v = document.getElementById('agy-dynamic-video');
+  if (v && v.dataset.bootPaused === '1') {
+    delete v.dataset.bootPaused;
+    try {
+      v.style.transition = 'opacity 0.6s ease';
+      v.style.opacity = '1';
+      v.play().catch(() => {});
+    } catch(e) {}
+  }
+}
+
+function setBootTitleBarOverlay() {
+  if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+    window.electronNative.setTitleBarOverlay({
+      color: 'rgba(0, 0, 0, 0)',
+      symbolColor: '#f8fafc',
+      height: 35
+    }).catch(() => {});
+  }
+}
+
+function restoreTitleBarOverlay() {
+  if (typeof window !== 'undefined' && typeof window.__agySyncTitleBar === 'function') {
+    window.__agySyncTitleBar();
+  }
+}
+
 function notifyNative(action) {
   if (hasFinished) return;
   hasFinished = true;
@@ -1094,68 +1152,258 @@ function notifyNative(action) {
     host.style.pointerEvents = 'none';
     setTimeout(() => {
       try { host.remove(); } catch(e) {}
+      resumeWallpaperVideo();
+      restoreTitleBarOverlay();
     }, 600);
+  } else {
+    resumeWallpaperVideo();
+    restoreTitleBarOverlay();
   }
 }
 
 function start550C() {
   if (document.querySelector('.dsh550c-host')) return;
+  hasFinished = false;
 
-  const host = document.createElement('div');
-  host.className = 'dsh550c-host';
-  host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;overflow:hidden;background:#050403;transition:opacity 420ms cubic-bezier(.4,0,.2,1);';
-  host.dataset.mode = 'full';
+  // 关键：在挂载的第 0 毫秒，立即将右上角原生窗口控制按钮染成纯黑，与全屏 550C 背景完全同化，彻底消除白色色块与闪烁！
+  setBootTitleBarOverlay();
 
-  if (document.body) {
-    document.body.appendChild(host);
-  } else if (document.documentElement) {
-    document.documentElement.appendChild(host);
-  }
+  const runMount = () => {
+    if (document.querySelector('.dsh550c-host')) return;
+    pauseWallpaperVideo();
+    setBootTitleBarOverlay();
 
-  const shadow = host.attachShadow({ mode: 'open' });
-  const style = document.createElement('style');
-  style.textContent = HOST_CSS + CSS_550C;
-  shadow.appendChild(style);
+    const host = document.createElement('div');
+    host.className = 'dsh550c-host';
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;overflow:hidden;background:#050403;transition:opacity 420ms cubic-bezier(.4,0,.2,1);';
+    host.dataset.mode = 'full';
 
-  const stage = document.createElement('div');
-  stage.className = 'dsh550c-stage';
-  stage.innerHTML = BOOT_MARKUP + APP_MARKUP + '<div id="esc-hint">按下 <kbd>ESC</kbd> 或点击跳过</div>';
-  shadow.appendChild(stage);
+    const parent = document.body || document.documentElement;
+    parent.appendChild(host);
 
-  const CANCELLED = Symbol('cancelled');
-  const enhance = enhanceShow(stage, { mode: 'full' });
-  const show = createShow(stage, { mode: 'full', cancelled: CANCELLED });
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = HOST_CSS + CSS_550C;
+    shadow.appendChild(style);
 
-  // Skip handlers
-  const handleSkip = () => {
-    try { show.cancel(); } catch(e) {}
-    notifyNative('skip');
+    const stage = document.createElement('div');
+    stage.className = 'dsh550c-stage';
+    stage.innerHTML = BOOT_MARKUP + APP_MARKUP + '<div id="esc-hint">按下 <kbd>ESC</kbd> 或点击跳过</div>';
+    shadow.appendChild(stage);
+
+    const CANCELLED = Symbol('cancelled');
+    const enhance = enhanceShow(stage, { mode: 'full' });
+    const show = createShow(stage, { mode: 'full', cancelled: CANCELLED });
+
+    const animStartTime = Date.now();
+    const handleSkip = () => {
+      try { show.cancel(); } catch(e) {}
+      notifyNative('skip');
+    };
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        window.removeEventListener('keydown', onKeyDown, true);
+        handleSkip();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+
+    host.addEventListener('click', () => {
+      // 启动前 800ms 内点击不跳过，避免窗口初始聚焦误触
+      if (Date.now() - animStartTime < 800) return;
+      window.removeEventListener('keydown', onKeyDown, true);
+      handleSkip();
+    });
+
+    requestAnimationFrame(() => {
+      show.start().then(() => {
+        notifyNative('finish');
+      }, () => {
+        notifyNative('finish');
+      });
+    });
   };
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' || e.code === 'Escape') {
-      handleSkip();
+  if (document.body || document.documentElement) {
+    runMount();
+  } else {
+    document.addEventListener('DOMContentLoaded', runMount, { once: true });
+  }
+}
+
+function startVideoBoot(videoSrc) {
+  if (document.getElementById('agy-video-boot-host')) return;
+  pauseWallpaperVideo();
+  setBootTitleBarOverlay();
+
+  const host = document.createElement('div');
+  host.id = 'agy-video-boot-host';
+  host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:opacity 400ms ease;';
+
+  const video = document.createElement('video');
+  video.style.cssText = 'width:100%;height:100%;object-fit:contain;outline:none;';
+  video.autoplay = true;
+  video.playsInline = true;
+  video.src = videoSrc;
+
+  const hint = document.createElement('div');
+  hint.style.cssText = 'position:absolute;bottom:24px;right:32px;padding:6px 14px;border-radius:6px;background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:12px;font-family:monospace;pointer-events:none;z-index:10;';
+  hint.innerHTML = '按下 <kbd style="padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:4px;color:#fff;">ESC</kbd> 或点击任意处跳过';
+
+  host.appendChild(video);
+  host.appendChild(hint);
+  (document.body || document.documentElement).appendChild(host);
+
+  let cleaned = false;
+  function closeVideoBoot() {
+    if (cleaned) return;
+    cleaned = true;
+    host.style.opacity = '0';
+    setTimeout(() => {
+      try { video.pause(); } catch(e) {}
+      host.remove();
+      resumeWallpaperVideo();
+      restoreTitleBarOverlay();
+    }, 400);
+    window.removeEventListener('keydown', onKeyDown, true);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Escape' || e.code === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+      closeVideoBoot();
     }
-  }, true);
+  }
 
+  const animStartTime = Date.now();
+  window.addEventListener('keydown', onKeyDown, true);
   host.addEventListener('click', () => {
-    handleSkip();
+    if (Date.now() - animStartTime < 800) return;
+    closeVideoBoot();
   });
+  video.addEventListener('ended', closeVideoBoot);
 
-  // Execute show
-  show.start().then(() => {
-    notifyNative('finish');
-  }, () => {
-    notifyNative('finish');
+  video.play().catch(err => {
+    console.warn('[Boot Video] Playback failed or blocked, closing:', err);
+    closeVideoBoot();
   });
 }
 
 window.__trigger550C = start550C;
+window.__triggerVideoBoot = startVideoBoot;
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', start550C);
-} else {
-  start550C();
+async function startCustomCodeBoot(scriptPath) {
+  if (document.getElementById('agy-custom-code-boot-host')) return;
+  pauseWallpaperVideo();
+  setBootTitleBarOverlay();
+
+  const host = document.createElement('div');
+  host.id = 'agy-custom-code-boot-host';
+  host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;overflow:hidden;transition:opacity 400ms ease;';
+
+  const hint = document.createElement('div');
+  hint.id = 'agy-custom-boot-hint';
+  hint.style.cssText = 'position:absolute;bottom:24px;right:32px;padding:6px 14px;border-radius:6px;background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:12px;font-family:monospace;pointer-events:none;z-index:99999;';
+  hint.innerHTML = '按下 <kbd style="padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:4px;color:#fff;">ESC</kbd> 或点击跳过';
+
+  host.appendChild(hint);
+  (document.body || document.documentElement).appendChild(host);
+
+  let cleaned = false;
+  let customCleanup = null;
+
+  function closeCustomBoot() {
+    if (cleaned) return;
+    cleaned = true;
+    if (typeof customCleanup === 'function') {
+      try { customCleanup(); } catch(e) {}
+    }
+    host.style.opacity = '0';
+    setTimeout(() => {
+      host.remove();
+      resumeWallpaperVideo();
+      restoreTitleBarOverlay();
+    }, 400);
+    window.removeEventListener('keydown', onKeyDown, true);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Escape' || e.code === 'Escape') {
+      closeCustomBoot();
+    }
+  }
+
+  window.addEventListener('keydown', onKeyDown, true);
+  host.addEventListener('click', (e) => {
+    if (e.target === host || e.target === hint) {
+      closeCustomBoot();
+    }
+  });
+
+  try {
+    const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
+    const url = (scriptPath && (scriptPath.startsWith('http://') || scriptPath.startsWith('https://')))
+      ? scriptPath
+      : `${API_BASE}/api/script?path=${encodeURIComponent(scriptPath)}&t=${Date.now()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`无法读取动效脚本 (${res.status}): ${await res.text()}`);
+    }
+    const code = await res.text();
+
+    const execFn = new Function('container', 'close', 'exports', code);
+    const exportsObj = {};
+    const ret = execFn(host, closeCustomBoot, exportsObj);
+    if (typeof ret === 'function') {
+      customCleanup = ret;
+    } else if (exportsObj.cleanup && typeof exportsObj.cleanup === 'function') {
+      customCleanup = exportsObj.cleanup;
+    } else if (window.__customBootAnimation && typeof window.__customBootAnimation === 'function') {
+      const cleanupFn = window.__customBootAnimation(host, closeCustomBoot);
+      if (typeof cleanupFn === 'function') customCleanup = cleanupFn;
+    }
+  } catch (err) {
+    console.error('[Boot Animation] Custom code execution error:', err);
+    const errBox = document.createElement('div');
+    errBox.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:24px 32px;background:rgba(20,10,10,0.92);border:1px solid #ef4444;border-radius:12px;color:#fca5a5;font-family:monospace;max-width:80vw;box-shadow:0 20px 40px rgba(0,0,0,0.85);z-index:999999;';
+    errBox.innerHTML = `
+      <div style="font-size:16px;font-weight:bold;margin-bottom:12px;color:#f87171;display:flex;align-items:center;gap:8px;">❌ 自定义动效代码加载或执行失败</div>
+      <div style="font-size:12px;opacity:0.9;white-space:pre-wrap;word-break:break-all;">${err.message}</div>
+      <div style="font-size:11px;opacity:0.6;margin-top:16px;">按 ESC 或点击任意处退出</div>
+    `;
+    host.appendChild(errBox);
+    host.onclick = closeCustomBoot;
+  }
 }
+
+window.__triggerCustomCodeBoot = startCustomCodeBoot;
+
+window.__triggerBootAnimation = function(customType, customPath, customCodeMode, customCodePath) {
+  const config = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+  const bootCfg = config.features?.bootAnimationConfig || {};
+  const type = customType || bootCfg.type || 'code';
+  const videoPath = customPath || bootCfg.videoPath || 'assets/videos/default-bg.mp4';
+  const codeMode = customCodeMode || bootCfg.codeMode || (type === '550c' ? '550c' : (bootCfg.customCodePath ? 'custom' : '550c'));
+  const codePath = customCodePath || bootCfg.customCodePath || '';
+
+  if (type === 'video') {
+    const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
+    let src = `${API_BASE}/boot-video.mp4?t=${Date.now()}`;
+    if (videoPath && (videoPath.startsWith('http://') || videoPath.startsWith('https://'))) {
+      src = videoPath;
+    } else if (videoPath) {
+      src = `${API_BASE}/api/video?path=${encodeURIComponent(videoPath)}&t=${Date.now()}`;
+    }
+    startVideoBoot(src);
+  } else {
+    // type is 'code' or '550c'
+    if (codeMode === 'custom' && codePath) {
+      startCustomCodeBoot(codePath);
+    } else {
+      start550C();
+    }
+  }
+};
 
 })();

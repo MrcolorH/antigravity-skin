@@ -2,8 +2,13 @@
   "enabled": true,
   "features": {
     "bootAnimation": false,
+    "bootAnimationConfig": {
+      "type": "code",
+      "codeMode": "550c",
+      "customCodePath": "",
+      "videoPath": "assets/videos/default-bg.mp4"
+    },
     "themeStyles": true,
-    "crtScanlines": false,
     "chineseLocalization": true,
     "dynamicWallpaper": {
       "enabled": true,

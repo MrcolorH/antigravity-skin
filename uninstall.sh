@@ -1,21 +1,28 @@
 #!/bin/bash
 set -e
 
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# 优先使用统一规范的 Node.js 卸载引擎
+if command -v node >/dev/null 2>&1; then
+    node "$PROJECT_DIR/scripts/uninstall.mjs"
+    exit 0
+fi
+
+# 回退机制：系统无 node 运行时
 TARGET_DIR="$HOME/.gemini/config/plugins/antigravity-skin"
 CONFIG_FILE="$HOME/.gemini/config/config.json"
 
 echo "=================================================="
-echo " 正在卸载 Antigravity 主题与皮肤插件..."
+echo " 正在卸载 Antigravity 主题与皮肤官方集成插件..."
 echo "=================================================="
 
-# 1. 移除软链接
 if [ -e "$TARGET_DIR" ] || [ -L "$TARGET_DIR" ]; then
-    echo "[1/2] 正在清理插件链接 $TARGET_DIR..."
+    echo "[1/2] 移除插件目录/链接..."
     rm -rf "$TARGET_DIR"
 fi
 
-# 2. 从 config.json 中停用或移除
-echo "[2/2] 正在更新配置 ~/.gemini/config/config.json..."
+echo "[2/2] 从 ~/.gemini/config/config.json 中移除插件..."
 python3 -c "
 import json, os
 
@@ -33,5 +40,5 @@ if os.path.exists(config_file):
 "
 
 echo "=================================================="
-echo " [√] 卸载完成！重启客户端后将完全恢复原生界面。"
+echo " [√] 卸载完成！重启客户端即可完全恢复官方原生状态。"
 echo "=================================================="

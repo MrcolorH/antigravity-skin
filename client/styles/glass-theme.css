@@ -6,14 +6,22 @@
           z-index: -999999;
           pointer-events: none;
           filter: brightness(var(--agy-bg-brightness, 0.85)) contrast(var(--agy-bg-contrast, 1.05));
+          will-change: transform;
+          transform: translateZ(0);
+          contain: strict;
         }
 
-        /* 1. 恢复用户气泡吸顶悬浮能力：贴死顶部(top: 0)，彻底消除粘性外层容器底色与顶部空隙 */
+        /* ==========================================================================
+           1. 吸顶悬浮外层容器：贴死顶部 (top: 0) 与两翼透明穿透 (Zero-Gap Sticky Top)
+           ========================================================================== */
+        div[role="article"][aria-label="User message"],
         div.sticky:has(.md-sticky-message-bleed),
+        div.sticky:has([data-testid="user-input-step"]),
         div.sticky:has([class*="user-input"]),
         div[class*="sticky"]:has([class*="user-input"]),
         div:has(> .md-sticky-message-bleed),
-        div[class*="sticky"][class*="top-0"] {
+        div[class*="sticky"][class*="top-0"],
+        .user-bubble-sticky-wrapper {
           position: sticky !important;
           top: 0px !important;
           z-index: 30 !important;
@@ -21,6 +29,8 @@
           background-color: transparent !important;
           margin-top: 0 !important;
           padding-top: 0 !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
         }
         div[role="article"][aria-label="User message"],
         div[aria-label="User message"],
@@ -35,16 +45,31 @@
           -webkit-backdrop-filter: none !important;
           padding: 0 !important;
           margin: 0 !important;
+          width: 100% !important;
         }
         [class*="group/user-input-step"],
-        [class*="user-input-step"] {
+        [class*="user-input-step"],
+        [data-testid="user-input-step"] {
           padding-top: 0 !important;
+          margin-top: 0 !important;
         }
+        /* 消除一切外层粘性遮罩渐变与缝隙 (完全透明穿透到底层背景或动态视频) */
+        .user-bubble-sticky-wrapper::before,
+        .user-bubble-sticky-wrapper::after,
+        .md-sticky-message-bleed::before,
         .md-sticky-message-bleed::after,
+        div[role="article"][aria-label="User message"]::before,
+        div[role="article"][aria-label="User message"]::after,
+        div.sticky:has([class*="user-input"])::before,
+        div.sticky:has([class*="user-input"])::after,
         [class*="after:from-background"]::after,
         [class*="after:bg-gradient"]::after {
           display: none !important;
           content: none !important;
+        }
+        div[role="article"][aria-label="User message"].mb-4,
+        div.sticky.mb-4:has([class*="user-input"]) {
+          margin-bottom: 8px !important;
         }
 
         /* 消除吸顶时对用户提问的高度截断与渐变遮罩 (解除 max-h-[10vh] 与 mask-image) */
@@ -73,6 +98,60 @@
         .theme-standalone {
           background-color: transparent !important;
           background: transparent !important;
+        }
+
+        /* 2.5 Windows 顶部窗口栏 / 标题菜单栏 (Title Menu Bar) 100% 纯透明沉浸式 */
+        div.shrink-0:has(> [data-testid="title-menu-bar"]),
+        [data-testid="title-menu-bar"] {
+          background-color: transparent !important;
+          background: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          border: none !important;
+          border-bottom: none !important;
+          box-shadow: none !important;
+        }
+
+        .theme-dark div.shrink-0:has(> [data-testid="title-menu-bar"]),
+        .dark div.shrink-0:has(> [data-testid="title-menu-bar"]),
+        .theme-dark [data-testid="title-menu-bar"],
+        .dark [data-testid="title-menu-bar"] {
+          background-color: transparent !important;
+          background: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+          border: none !important;
+          border-bottom: none !important;
+          box-shadow: none !important;
+        }
+
+        /* 标题菜单项按钮微调与悬停微光胶囊效果 */
+        [data-testid="title-menu-bar-item"] {
+          color: #334155 !important;
+          font-weight: 500 !important;
+          font-size: 12.5px !important;
+          border-radius: 6px !important;
+          transition: all 0.15s ease !important;
+        }
+
+        [data-testid="title-menu-bar-item"]:hover {
+          background-color: rgba(255, 255, 255, 0.45) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          color: #0f172a !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .theme-dark [data-testid="title-menu-bar-item"],
+        .dark [data-testid="title-menu-bar-item"] {
+          color: #cbd5e1 !important;
+        }
+
+        .theme-dark [data-testid="title-menu-bar-item"]:hover,
+        .dark [data-testid="title-menu-bar-item"]:hover {
+          background-color: rgba(255, 255, 255, 0.14) !important;
+          color: #ffffff !important;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
         }
 
         /* 3. 消灭一切粗笨硬边框 */
@@ -514,90 +593,160 @@
         }
 
         /* ========================================================
-           5. 用户提问气泡：方案二（珠光微冷白 65% · 科技灵动）+ 贴顶悬浮 + 折叠/展开
+           5. 用户提问气泡：方案二（微冷白 65% · 科技珠光毛玻璃）+ 零间隙吸顶 + 智能折叠展开
+           规范来源：floating_user_bubble_spec.md v1.2.0
            ======================================================== */
-        /* 用户提问气泡卡片主体（方案二：微冷蓝紫高透珠光毛玻璃，20px圆角，微光边框） */
+        /* 用户提问气泡卡片主体（方案二：微冷浅蓝渐变 + 细腻毛玻璃 + 微光边框 + 20px 大圆角） */
+        .user-bubble-card,
         [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
         [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
         [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border,
         div[class*="bg-card-border"]:has([data-testid="user-input-step"]) {
+          display: block !important;
+          position: relative !important;
+          margin-top: 0 !important;
+          margin-bottom: 8px !important;
+          padding: 12px 16px !important;
+          box-sizing: border-box !important;
+
+          /* 方案二核心材质：微冷浅蓝渐变 + 细腻毛玻璃 + 微光边框 */
           background: linear-gradient(135deg, rgba(255, 255, 255, 0.72) 0%, rgba(240, 246, 255, 0.60) 100%) !important;
           backdrop-filter: blur(36px) saturate(200%) !important;
           -webkit-backdrop-filter: blur(36px) saturate(200%) !important;
-          border: 1px solid rgba(199, 210, 254, 0.7) !important;
+          border: 1px solid rgba(199, 210, 254, 0.70) !important;
           border-radius: 20px !important;
           box-shadow: 0 8px 32px rgba(99, 102, 241, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04) !important;
-          overflow: hidden !important;
-          margin-top: 0 !important;
-          margin-bottom: 8px !important;
-          transition: all 0.2s ease !important;
-          position: relative !important;
+
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          overflow: visible !important;
         }
-        .theme-dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
-        .theme-dark [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+
+        /* 深色模式适配 (Dark Mode) */
+        @media (prefers-color-scheme: dark) {
+          .user-bubble-card,
+          [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+          [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+          [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border {
+            background: linear-gradient(135deg, rgba(32, 38, 58, 0.75) 0%, rgba(22, 28, 44, 0.65) 100%) !important;
+            border: 1px solid rgba(165, 180, 252, 0.25) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+          }
+        }
+        .dark .user-bubble-card,
+        .theme-dark .user-bubble-card,
         .dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
-        .theme-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border,
-        .dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border {
+        .theme-dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+        .dark [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+        .theme-dark [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+        .dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border,
+        .theme-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border {
           background: linear-gradient(135deg, rgba(32, 38, 58, 0.75) 0%, rgba(22, 28, 44, 0.65) 100%) !important;
           border: 1px solid rgba(165, 180, 252, 0.25) !important;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.2) !important;
         }
 
-        /* 用户气泡内层重置为通透无边框，排版与内边距与回复气泡完全统一，杜绝实体底色 */
-        [data-testid="user-input-step"] .bg-card,
-        [class*="user-input-step"] .bg-card,
-        [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"] > div {
+        /* 用户气泡内层重置为通透无边框且取消相对定位上下文（position: static），使操作胶囊直接与外层卡片及折叠按钮对齐 */
+        [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"] > .bg-card,
+        [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"] > .bg-card,
+        [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border > .bg-card,
+        [data-testid="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border > .bg-card,
+        [class*="user-input-step"] div[class*="bg-card-border"] > .bg-card,
+        [data-testid="user-input-step"] div[class*="bg-card-border"] > .bg-card,
+        [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"] > div:not(.user-input-buttons-container):not(.user-bubble-toggle-btn) {
           background: transparent !important;
           background-color: transparent !important;
           border: none !important;
           box-shadow: none !important;
-          padding: 14px 18px !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+          overflow: visible !important;
+          position: static !important;
         }
 
-        /* 用户提问文字与内容顺序：文字在先 (order: 1 优先展示)，图片在后 (order: 2) */
+        /* 气泡内容容器 (Flex 纵向布局) 与保护空间：纯文本内容绝对避开右上角控制胶囊 */
+        .user-bubble-content,
+        [data-testid="user-input-step"] .flex-1,
         [class*="user-input-step"] .flex-1 {
           display: flex !important;
           flex-direction: column !important;
-          padding-right: 36px !important;
+          width: 100% !important;
+          box-sizing: border-box !important;
+          padding-right: 125px !important; /* 默认无折叠按钮时留出 125px 操作区保护间隙 */
         }
-        [class*="user-input-step"] .flex-1 > [data-quotable="true"],
-        [class*="user-input-step"] .flex-1 > [class*="whitespace-pre-wrap"],
+
+        /* 当有折叠/展开按钮时，右侧预留更宽的专属避让区（操作列 + 折叠按钮） */
+        [data-user-collapsible="true"] .user-bubble-content,
+        [data-user-collapsible="true"] [data-testid="user-input-step"] .flex-1,
+        [data-user-collapsible="true"] [class*="user-input-step"] .flex-1,
+        div:has(> .agy-user-collapse-btn) .flex-1,
+        div:has(> .user-bubble-toggle-btn) .flex-1 {
+          padding-right: 155px !important;
+        }
+
+        /* 用户提问文字排版：文字在先 (order: 1 优先级最高) */
+        .user-bubble-text,
+        [data-testid="user-input-step"] [data-quotable="true"],
         [class*="user-input-step"] [data-quotable="true"],
+        [data-testid="user-input-step"] [class*="whitespace-pre-wrap"],
         [class*="user-input-step"] [class*="whitespace-pre-wrap"] {
           order: 1 !important;
-          color: #0f172a !important;
           font-size: 14.5px !important;
-          font-weight: 500 !important;
           line-height: 1.65 !important;
+          font-weight: 500 !important;
+          color: #0f172a !important;
+          word-break: break-word !important;
+          transition: max-height 0.2s ease !important;
         }
-        .theme-dark [class*="user-input-step"] [class*="whitespace-pre-wrap"],
-        .theme-dark [class*="user-input-step"] [data-quotable="true"],
+        .dark .user-bubble-text,
+        .theme-dark .user-bubble-text,
+        .dark [data-testid="user-input-step"] [data-quotable="true"],
+        .theme-dark [data-testid="user-input-step"] [data-quotable="true"],
         .dark [class*="user-input-step"] [class*="whitespace-pre-wrap"],
-        .dark [class*="user-input-step"] [data-quotable="true"] {
+        .theme-dark [class*="user-input-step"] [class*="whitespace-pre-wrap"] {
           color: #f8fafc !important;
         }
-        [class*="user-input-step"] .flex-1 > div[data-no-scroll-jump="true"],
-        [class*="user-input-step"] .flex-1 > div:has(img),
-        [class*="user-input-step"] .flex-1 > [class*="flex-wrap"]:has(button),
+
+        /* 附件容器排版：图片在后 (order: 2 排在文字下方) */
+        .user-bubble-attachments,
+        [data-testid="user-input-step"] div[data-no-scroll-jump="true"],
+        [class*="user-input-step"] div[data-no-scroll-jump="true"],
+        [data-testid="user-input-step"] [class*="flex-wrap"]:has(button),
         [class*="user-input-step"] [class*="flex-wrap"]:has(button),
-        [class*="user-input-step"] div:has(> button > img) {
+        [data-testid="user-input-step"] div:has(> button > img) {
           order: 2 !important;
+          display: flex !important;
+          flex-wrap: wrap !important;
+          gap: 8px !important;
           margin-top: 10px !important;
           margin-bottom: 2px !important;
         }
 
-        /* 用户提问中的图片缩略图展示优化：圆角、高质感微光边框、优雅阴影与比例 */
-        [data-testid="user-input-step"] img,
-        [class*="user-input-step"] img {
+        /* 用户上传图片与附件缩略图高质感微光卡片展示 */
+        .user-bubble-attachments img,
+        [data-testid="user-input-step"] img:not(.context-scope-mention img),
+        [class*="user-input-step"] img:not(.context-scope-mention img) {
           border-radius: 12px !important;
           border: 1px solid rgba(255, 255, 255, 0.6) !important;
           box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1) !important;
           max-height: 220px !important;
+          max-width: 100% !important;
           object-fit: cover !important;
         }
+        .dark .user-bubble-attachments img,
+        .theme-dark .user-bubble-attachments img,
+        .dark [data-testid="user-input-step"] img:not(.context-scope-mention img),
+        .theme-dark [data-testid="user-input-step"] img:not(.context-scope-mention img),
+        .dark [class*="user-input-step"] img:not(.context-scope-mention img),
+        .theme-dark [class*="user-input-step"] img:not(.context-scope-mention img) {
+          border-color: rgba(255, 255, 255, 0.15) !important;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+        }
+
         [data-testid="user-input-step"] button[aria-label*=".png"],
         [data-testid="user-input-step"] button[aria-label*=".jpg"],
         [data-testid="user-input-step"] button[aria-label*=".jpeg"],
+        [data-testid="user-input-step"] button[aria-label*=".webp"],
         [data-testid="user-input-step"] button[data-no-scroll-jump="true"] {
           border-radius: 12px !important;
           border: none !important;
@@ -605,11 +754,15 @@
           background: transparent !important;
         }
 
-        /* 收起状态 (data-user-collapsed="true")：最多展示两行文字，图片彻底隐藏 */
+        /* ==========================================================================
+           收起态 (data-user-collapsed="true")：限制两行文字，图片附件彻底隐藏
+           ========================================================================== */
+        [data-user-collapsed="true"] .user-bubble-text,
         [data-user-collapsed="true"] [data-quotable="true"],
         [data-user-collapsed="true"] [class*="whitespace-pre-wrap"],
         [class*="user-input-step"][data-user-collapsed="true"] [data-quotable="true"],
-        [class*="user-input-step"][data-user-collapsed="true"] [class*="whitespace-pre-wrap"] {
+        [class*="user-input-step"][data-user-collapsed="true"] [class*="whitespace-pre-wrap"],
+        .user-bubble-card[data-user-collapsed="true"] .user-bubble-text {
           display: -webkit-box !important;
           -webkit-line-clamp: 2 !important;
           -webkit-box-orient: vertical !important;
@@ -618,22 +771,26 @@
           word-break: break-word !important;
           max-height: calc(1.65em * 2 + 2px) !important;
         }
-        [data-user-collapsed="true"] div[data-no-scroll-jump="true"],
-        [data-user-collapsed="true"] div:has(img),
-        [data-user-collapsed="true"] [class*="flex-wrap"]:has(button),
-        [data-user-collapsed="true"] img,
-        [class*="user-input-step"][data-user-collapsed="true"] div[data-no-scroll-jump="true"],
-        [class*="user-input-step"][data-user-collapsed="true"] div:has(img),
-        [class*="user-input-step"][data-user-collapsed="true"] [class*="flex-wrap"]:has(button),
-        [class*="user-input-step"][data-user-collapsed="true"] img {
+
+        /* 附件容器彻底隐藏（精准匹配附件，绝不误伤用户气泡卡片主体） */
+        .user-bubble-card[data-user-collapsed="true"] .user-bubble-attachments,
+        [data-user-collapsed="true"] .user-bubble-attachments,
+        [data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
+        [data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button),
+        [class*="user-input-step"][data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
+        [class*="user-input-step"][data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button) {
           display: none !important;
         }
 
-        /* 展开状态 (data-user-collapsed="false")：完全展开文字与图片 */
+        /* ==========================================================================
+           展开态 (data-user-collapsed="false")：全文展开与附件呈现
+           ========================================================================== */
+        [data-user-collapsed="false"] .user-bubble-text,
         [data-user-collapsed="false"] [data-quotable="true"],
         [data-user-collapsed="false"] [class*="whitespace-pre-wrap"],
         [class*="user-input-step"][data-user-collapsed="false"] [data-quotable="true"],
-        [class*="user-input-step"][data-user-collapsed="false"] [class*="whitespace-pre-wrap"] {
+        [class*="user-input-step"][data-user-collapsed="false"] [class*="whitespace-pre-wrap"],
+        .user-bubble-card[data-user-collapsed="false"] .user-bubble-text {
           display: block !important;
           -webkit-line-clamp: unset !important;
           max-height: none !important;
@@ -645,18 +802,21 @@
           max-height: none !important;
           overflow: visible !important;
         }
-        [data-user-collapsed="false"] div[data-no-scroll-jump="true"],
-        [data-user-collapsed="false"] div:has(img),
-        [data-user-collapsed="false"] [class*="flex-wrap"]:has(button),
-        [data-user-collapsed="false"] img,
-        [class*="user-input-step"][data-user-collapsed="false"] div[data-no-scroll-jump="true"],
-        [class*="user-input-step"][data-user-collapsed="false"] div:has(img),
-        [class*="user-input-step"][data-user-collapsed="false"] [class*="flex-wrap"]:has(button),
-        [class*="user-input-step"][data-user-collapsed="false"] img {
+
+        /* 附件容器完整呈现 */
+        .user-bubble-card[data-user-collapsed="false"] .user-bubble-attachments,
+        [data-user-collapsed="false"] .user-bubble-attachments,
+        [data-user-collapsed="false"] .flex-1 > div[data-no-scroll-jump="true"],
+        [data-user-collapsed="false"] .flex-1 > div[class*="flex-wrap"]:has(button),
+        [class*="user-input-step"][data-user-collapsed="false"] .flex-1 > div[data-no-scroll-jump="true"],
+        [class*="user-input-step"][data-user-collapsed="false"] .flex-1 > div[class*="flex-wrap"]:has(button) {
           display: flex !important;
         }
 
-        /* 折叠/展开控制按钮 (位于气泡右上角，精致毛玻璃微光小胶囊) */
+        /* ==========================================================================
+           右上角智能折叠/展开胶囊按钮 (26px * 26px 半透明微光圆形按钮)
+           ========================================================================== */
+        .user-bubble-toggle-btn,
         .agy-user-collapse-btn {
           position: absolute !important;
           top: 10px !important;
@@ -664,43 +824,174 @@
           width: 26px !important;
           height: 26px !important;
           border-radius: 13px !important;
+          box-sizing: border-box !important;
+
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
           cursor: pointer !important;
+
           background-color: rgba(255, 255, 255, 0.45) !important;
-          border: 1px solid rgba(199, 210, 254, 0.7) !important;
+          border: 1px solid rgba(199, 210, 254, 0.70) !important;
           color: #475569 !important;
+          box-shadow: 0 1px 4px rgba(99, 102, 241, 0.08) !important;
+          backdrop-filter: blur(10px) !important;
+          -webkit-backdrop-filter: blur(10px) !important;
+
           padding: 0 !important;
           margin: 0 !important;
           z-index: 20 !important;
-          box-shadow: 0 1px 4px rgba(99, 102, 241, 0.08) !important;
-          backdrop-filter: blur(8px) !important;
-          -webkit-backdrop-filter: blur(8px) !important;
           transition: all 0.15s ease !important;
         }
+
+        .user-bubble-toggle-btn:hover,
         .agy-user-collapse-btn:hover {
-          background-color: rgba(255, 255, 255, 0.85) !important;
+          background-color: rgba(255, 255, 255, 0.90) !important;
           color: #0f172a !important;
           transform: scale(1.08) !important;
-          box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15) !important;
+          box-shadow: 0 2px 8px rgba(99, 102, 241, 0.18) !important;
         }
-        .theme-dark .agy-user-collapse-btn,
-        .dark .agy-user-collapse-btn {
+
+        .dark .user-bubble-toggle-btn,
+        .theme-dark .user-bubble-toggle-btn,
+        .dark .agy-user-collapse-btn,
+        .theme-dark .agy-user-collapse-btn {
           background-color: rgba(30, 36, 56, 0.6) !important;
           border-color: rgba(165, 180, 252, 0.25) !important;
           color: #cbd5e1 !important;
         }
-        .theme-dark .agy-user-collapse-btn:hover,
-        .dark .agy-user-collapse-btn:hover {
+
+        .dark .user-bubble-toggle-btn:hover,
+        .theme-dark .user-bubble-toggle-btn:hover,
+        .dark .agy-user-collapse-btn:hover,
+        .theme-dark .agy-user-collapse-btn:hover {
           background-color: rgba(45, 52, 80, 0.85) !important;
           color: #ffffff !important;
         }
 
+        /* ==========================================================================
+           复制、撤回按钮与时间戳胶囊栏：直接放置于右上角（有展开按钮时自动置于其左侧）
+           ========================================================================== */
         .user-input-buttons-container,
         [class*="user-input-buttons"] {
-          background-color: transparent !important;
-          box-shadow: none !important;
+          position: absolute !important;
+          top: 10px !important;
+          right: 12px !important; /* 默认无展开按钮时，直接靠右上角最右侧 */
+          bottom: auto !important;
+          left: auto !important;
+
+          width: auto !important;
+          min-width: 0 !important;
+          max-width: max-content !important;
+          height: 26px !important;
+
+          display: inline-flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 5px !important;
+          padding: 0 8px !important;
+          border-radius: 9999px !important;
+          box-sizing: border-box !important;
+
+          /* 方案二同源微光材质：半透明高透毛玻璃小胶囊，直接常驻呈现 */
+          background-color: rgba(255, 255, 255, 0.72) !important;
+          backdrop-filter: blur(14px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(14px) saturate(180%) !important;
+          border: 1px solid rgba(199, 210, 254, 0.70) !important;
+          box-shadow: 0 1px 4px rgba(99, 102, 241, 0.08) !important;
+
+          z-index: 25 !important;
+          white-space: nowrap !important;
+          opacity: 1 !important; /* 直接常驻显示在右上角，用户随手可用 */
+          pointer-events: auto !important;
+          transform: none !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+
+        /* 当存在折叠/展开按钮时：操作列自动无缝置于展开按钮左边 */
+        [data-user-collapsible="true"] .user-input-buttons-container,
+        [data-user-collapsible="true"] [class*="user-input-buttons"],
+        div:has(> .agy-user-collapse-btn) .user-input-buttons-container,
+        div:has(> .agy-user-collapse-btn) [class*="user-input-buttons"],
+        div:has(> .user-bubble-toggle-btn) .user-input-buttons-container,
+        div:has(> .user-bubble-toggle-btn) [class*="user-input-buttons"] {
+          right: 44px !important; /* 位于展开按钮左边 */
+        }
+
+        /* 鼠标悬停在卡片或操作列时微光高亮 */
+        .user-input-buttons-container:hover,
+        [class*="user-input-buttons"]:hover,
+        [class*="user-input-step"]:hover .user-input-buttons-container,
+        [class*="user-input-step"]:hover [class*="user-input-buttons"] {
+          background-color: rgba(255, 255, 255, 0.90) !important;
+          box-shadow: 0 2px 8px rgba(99, 102, 241, 0.16) !important;
+        }
+
+        /* 深色模式适配 */
+        .dark .user-input-buttons-container,
+        .dark [class*="user-input-buttons"],
+        .theme-dark .user-input-buttons-container,
+        .theme-dark [class*="user-input-buttons"] {
+          background-color: rgba(30, 36, 56, 0.75) !important;
+          border: 1px solid rgba(165, 180, 252, 0.25) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important;
+        }
+        .dark .user-input-buttons-container:hover,
+        .dark [class*="user-input-buttons"]:hover,
+        .theme-dark .user-input-buttons-container:hover,
+        .theme-dark [class*="user-input-buttons"]:hover {
+          background-color: rgba(45, 52, 80, 0.90) !important;
+          box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        /* 时间文字独立样式 */
+        .user-input-buttons-container span,
+        [class*="user-input-buttons"] span {
+          font-size: 11px !important;
+          font-weight: 500 !important;
+          color: #64748b !important;
+          margin-right: 3px !important;
+          user-select: none !important;
+          letter-spacing: 0.02em !important;
+          line-height: 1 !important;
+          font-variant-numeric: tabular-nums !important;
+        }
+        .dark .user-input-buttons-container span,
+        .theme-dark .user-input-buttons-container span {
+          color: #94a3b8 !important;
+        }
+
+        /* 复制与撤回按钮图标与交互 */
+        .user-input-buttons-container button,
+        [class*="user-input-buttons"] button {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 20px !important;
+          height: 20px !important;
+          border-radius: 5px !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          color: #475569 !important;
+          background: transparent !important;
+          border: none !important;
+          cursor: pointer !important;
+          transition: all 0.15s ease !important;
+        }
+        .user-input-buttons-container button:hover,
+        [class*="user-input-buttons"] button:hover {
+          background: rgba(99, 102, 241, 0.12) !important;
+          color: #0f172a !important;
+          transform: scale(1.1) !important;
+        }
+        .dark .user-input-buttons-container button,
+        .theme-dark .user-input-buttons-container button {
+          color: #cbd5e1 !important;
+        }
+        .dark .user-input-buttons-container button:hover,
+        .theme-dark .user-input-buttons-container button:hover {
+          background: rgba(255, 255, 255, 0.15) !important;
+          color: #ffffff !important;
         }
 
         /* 助理回复消息气泡主体 (Agent Response Bubble) - 样式与输入框一致，通透毛玻璃 */
@@ -962,7 +1253,7 @@
           border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
         }
 
-        /* 10. 右侧辅助侧边栏（概览、评审、终端）与左侧红框完全一致的毛玻璃底板 */
+        /* 10. 右侧辅助侧边栏（审计审查、终端、文件树）与毛玻璃清晰度加固 */
         /* 清除内部嵌套层，防止多层堆叠变成白死墙 */
         div:has(> [data-aux-pane-open]),
         [data-aux-pane-open] > div,
@@ -973,22 +1264,117 @@
           -webkit-backdrop-filter: none !important;
         }
 
-        /* 仅对右侧侧边栏唯一顶层容器应用与左侧侧边栏 100% 相同配比的毛玻璃 */
+        /* 10.1 顶层容器防眩光微调（微调 8%~10% 雾面底衬，压制背景视频与高光壁纸光斑） */
         [data-aux-pane-open="true"],
         div[data-aux-pane-open="true"] {
-          background-color: rgba(255, 255, 255, 0.18) !important;
-          backdrop-filter: blur(32px) saturate(190%) !important;
-          -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
-          border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
+          background-color: rgba(255, 255, 255, 0.28) !important;
+          backdrop-filter: blur(36px) saturate(195%) !important;
+          -webkit-backdrop-filter: blur(36px) saturate(195%) !important;
+          border-left: 1px solid rgba(255, 255, 255, 0.22) !important;
         }
 
         .theme-dark [data-aux-pane-open="true"],
-        .theme-dark div[data-aux-pane-open="true"] {
-          background-color: rgba(12, 15, 22, 0.38) !important;
-          border-left: 1px solid rgba(255, 255, 255, 0.06) !important;
+        .dark [data-aux-pane-open="true"],
+        .theme-dark div[data-aux-pane-open="true"],
+        .dark div[data-aux-pane-open="true"] {
+          background-color: rgba(15, 20, 30, 0.48) !important;
+          backdrop-filter: blur(36px) saturate(195%) !important;
+          -webkit-backdrop-filter: blur(36px) saturate(195%) !important;
+          border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
         }
 
-        /* 终端容器透光，原版字色与组件风格 100% 保持原生，不擅自乱加底色与白色文字 */
+        /* 10.2 标题、激活 Tab 与操作主按钮字色加固 */
+        [data-aux-pane-open] [data-active-tab-id],
+        [data-aux-pane-open] button[data-tab-id].bg-secondary,
+        [data-aux-pane-open] h1, [data-aux-pane-open] h2, [data-aux-pane-open] h3,
+        [data-aux-pane-open] span.font-medium,
+        [data-aux-pane-open] span.font-semibold {
+          color: #0f172a !important;
+        }
+        .theme-dark [data-aux-pane-open] [data-active-tab-id],
+        .dark [data-aux-pane-open] [data-active-tab-id],
+        .theme-dark [data-aux-pane-open] button[data-tab-id].bg-secondary,
+        .dark [data-aux-pane-open] button[data-tab-id].bg-secondary,
+        .theme-dark [data-aux-pane-open] span.font-medium,
+        .dark [data-aux-pane-open] span.font-medium,
+        .theme-dark [data-aux-pane-open] span.font-semibold,
+        .dark [data-aux-pane-open] span.font-semibold {
+          color: #f8fafc !important;
+        }
+
+        /* 10.3 核心修复：消除半透明，将两端灰色次级文字（路径、状态、快捷键、未选中 Tab）提纯 */
+        [data-aux-pane-open] [class*="text-secondary-foreground"],
+        [data-aux-pane-open] [class*="text-muted-foreground"],
+        [data-aux-pane-open] .opacity-50,
+        [data-aux-pane-open] .opacity-60,
+        [data-aux-pane-open] button[data-tab-id]:not(.bg-secondary) {
+          opacity: 0.95 !important;
+          color: #334155 !important; /* 亮色高对比冷炭灰 */
+          font-weight: 500 !important;
+        }
+
+        .theme-dark [data-aux-pane-open] [class*="text-secondary-foreground"],
+        .dark [data-aux-pane-open] [class*="text-secondary-foreground"],
+        .theme-dark [data-aux-pane-open] [class*="text-muted-foreground"],
+        .dark [data-aux-pane-open] [class*="text-muted-foreground"],
+        .theme-dark [data-aux-pane-open] .opacity-50,
+        .dark [data-aux-pane-open] .opacity-50,
+        .theme-dark [data-aux-pane-open] .opacity-60,
+        .dark [data-aux-pane-open] .opacity-60,
+        .theme-dark [data-aux-pane-open] button[data-tab-id]:not(.bg-secondary),
+        .dark [data-aux-pane-open] button[data-tab-id]:not(.bg-secondary) {
+          opacity: 0.95 !important;
+          color: #cbd5e1 !important; /* 暗色高明度 Slate-300 */
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+        }
+
+        /* 10.4 审计审查中的差异比较行号（Diff Line Numbers）与代码行清晰化 */
+        [data-aux-pane-open] .text-right:not(:empty),
+        [data-aux-pane-open] [class*="line-number"],
+        [data-aux-pane-open] [class*="diffEditor"] [class*="margin"] {
+          color: #475569 !important;
+          font-weight: 500 !important;
+          opacity: 0.95 !important;
+        }
+
+        .theme-dark [data-aux-pane-open] .text-right:not(:empty),
+        .dark [data-aux-pane-open] .text-right:not(:empty),
+        .theme-dark [data-aux-pane-open] [class*="line-number"],
+        .dark [data-aux-pane-open] [class*="line-number"],
+        .theme-dark [data-aux-pane-open] [class*="diffEditor"] [class*="margin"],
+        .dark [data-aux-pane-open] [class*="diffEditor"] [class*="margin"] {
+          color: #94a3b8 !important;
+          font-weight: 500 !important;
+          opacity: 0.95 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        /* 10.5 审计文件行与列表条目微光岛屿底衬（解决两端文字浮空无依托问题） */
+        [data-aux-pane-open] .group\/file-row,
+        [data-aux-pane-open] div:has(> span.truncate) {
+          background-color: rgba(255, 255, 255, 0.22) !important;
+          border-radius: 6px !important;
+          transition: all 0.15s ease !important;
+        }
+        [data-aux-pane-open] .group\/file-row:hover,
+        [data-aux-pane-open] div:has(> span.truncate):hover {
+          background-color: rgba(255, 255, 255, 0.45) !important;
+        }
+
+        .theme-dark [data-aux-pane-open] .group\/file-row,
+        .dark [data-aux-pane-open] .group\/file-row,
+        .theme-dark [data-aux-pane-open] div:has(> span.truncate),
+        .dark [data-aux-pane-open] div:has(> span.truncate) {
+          background-color: rgba(255, 255, 255, 0.04) !important;
+        }
+        .theme-dark [data-aux-pane-open] .group\/file-row:hover,
+        .dark [data-aux-pane-open] .group\/file-row:hover,
+        .theme-dark [data-aux-pane-open] div:has(> span.truncate):hover,
+        .dark [data-aux-pane-open] div:has(> span.truncate):hover {
+          background-color: rgba(255, 255, 255, 0.09) !important;
+        }
+
+        /* 10.6 终端容器透光，原版字色与组件风格 100% 保持原生 */
         .terminal, .xterm, .xterm-viewport, .xterm-screen, .xterm-scrollable-element {
           background-color: transparent !important;
           background: transparent !important;
@@ -1360,3 +1746,174 @@
           background-color: rgba(255, 255, 255, 0.15) !important;
           color: #ffffff !important;
         }
+
+        /* ========================================================
+           12. 右上角概览面板 (Overview Panel) 及全局浮动菜单/弹窗毛玻璃样式
+           ======================================================== */
+        /* 12.1 概览面板浮层外壳：与侧边栏同源雾面毛玻璃质感 */
+        [data-testid="overview-panel-host-sibling"],
+        div:has(> [data-testid="overview-panel"]),
+        .animate-overview-panel {
+          background-color: rgba(255, 255, 255, 0.35) !important;
+          background: rgba(255, 255, 255, 0.35) !important;
+          backdrop-filter: blur(32px) saturate(190%) !important;
+          -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.5) !important;
+          border-radius: 14px !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        .theme-dark [data-testid="overview-panel-host-sibling"],
+        .dark [data-testid="overview-panel-host-sibling"],
+        .theme-dark div:has(> [data-testid="overview-panel"]),
+        .dark div:has(> [data-testid="overview-panel"]),
+        .theme-dark .animate-overview-panel,
+        .dark .animate-overview-panel {
+          background-color: rgba(14, 18, 26, 0.5) !important;
+          background: rgba(14, 18, 26, 0.5) !important;
+          backdrop-filter: blur(32px) saturate(190%) !important;
+          -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+        }
+
+        /* 12.2 概览面板内部区域透明化与精致内边距 */
+        [data-testid="overview-panel"],
+        [data-testid="overview-panel"] > div {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+
+        /* 12.3 标题栏与标题文字（“概览”等） */
+        [data-testid="overview-panel"] span.opacity-50 {
+          opacity: 0.85 !important;
+          font-weight: 600 !important;
+          color: #334155 !important;
+        }
+        .theme-dark [data-testid="overview-panel"] span.opacity-50,
+        .dark [data-testid="overview-panel"] span.opacity-50 {
+          color: #94a3b8 !important;
+        }
+
+        /* 12.4 内部按钮项（评审、文件、终端、插件、后台任务等） */
+        [data-testid="overview-panel"] button,
+        [data-testid="overview-panel"] [role="button"] {
+          border-radius: 8px !important;
+          transition: all 0.16s ease !important;
+          color: #1e293b !important;
+        }
+        .theme-dark [data-testid="overview-panel"] button,
+        .dark [data-testid="overview-panel"] button,
+        .theme-dark [data-testid="overview-panel"] [role="button"],
+        .dark [data-testid="overview-panel"] [role="button"] {
+          color: #e2e8f0 !important;
+        }
+
+        /* 12.45 概览面板中两端的次级图标与提示小字清晰化 */
+        [data-testid="overview-panel"] .text-muted-foreground,
+        [data-testid="overview-panel"] [class*="text-muted"] {
+          color: #475569 !important;
+          opacity: 0.9 !important;
+        }
+        .theme-dark [data-testid="overview-panel"] .text-muted-foreground,
+        .dark [data-testid="overview-panel"] .text-muted-foreground,
+        .theme-dark [data-testid="overview-panel"] [class*="text-muted"],
+        .dark [data-testid="overview-panel"] [class*="text-muted"] {
+          color: #cbd5e1 !important;
+          opacity: 0.9 !important;
+        }
+
+        /* 按钮 hover 悬停效果：精致微光胶囊 */
+        [data-testid="overview-panel"] button:hover,
+        [data-testid="overview-panel"] [role="button"]:hover {
+          background-color: rgba(255, 255, 255, 0.45) !important;
+          backdrop-filter: blur(14px) !important;
+          -webkit-backdrop-filter: blur(14px) !important;
+          color: #0f172a !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+        }
+        .theme-dark [data-testid="overview-panel"] button:hover,
+        .dark [data-testid="overview-panel"] button:hover,
+        .theme-dark [data-testid="overview-panel"] [role="button"]:hover,
+        .dark [data-testid="overview-panel"] [role="button"]:hover {
+          background-color: rgba(255, 255, 255, 0.12) !important;
+          backdrop-filter: blur(14px) !important;
+          -webkit-backdrop-filter: blur(14px) !important;
+          color: #ffffff !important;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* 12.5 分隔线与描边 */
+        [data-testid="overview-panel"] .border-border,
+        [data-testid="overview-panel"] [class*="border-border"],
+        [data-testid="overview-panel"] [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
+          border-color: rgba(255, 255, 255, 0.22) !important;
+        }
+        .theme-dark [data-testid="overview-panel"] .border-border,
+        .dark [data-testid="overview-panel"] .border-border,
+        .theme-dark [data-testid="overview-panel"] [class*="border-border"],
+        .dark [data-testid="overview-panel"] [class*="border-border"],
+        .theme-dark [data-testid="overview-panel"] [class*="divide-border"] > :not([hidden]) ~ :not([hidden]),
+        .dark [data-testid="overview-panel"] [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
+          border-color: rgba(255, 255, 255, 0.08) !important;
+        }
+
+        /* 12.6 全局弹出菜单/子菜单（Dropdown / Context Menu / Menu / Popover）毛玻璃风格 */
+        [role="menu"],
+        [data-radix-menu-content],
+        [data-radix-popper-content-wrapper] > div,
+        div[class*="animate-slideIn"][class*="bg-card"],
+        div[data-side][role="menu"] {
+          background-color: rgba(255, 255, 255, 0.5) !important;
+          background: rgba(255, 255, 255, 0.5) !important;
+          backdrop-filter: blur(32px) saturate(190%) !important;
+          -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.55) !important;
+          border-radius: 12px !important;
+          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.25) !important;
+        }
+
+        .theme-dark [role="menu"],
+        .dark [role="menu"],
+        .theme-dark [data-radix-menu-content],
+        .dark [data-radix-menu-content],
+        .theme-dark [data-radix-popper-content-wrapper] > div,
+        .dark [data-radix-popper-content-wrapper] > div,
+        .theme-dark div[class*="animate-slideIn"][class*="bg-card"],
+        .dark div[class*="animate-slideIn"][class*="bg-card"],
+        .theme-dark div[data-side][role="menu"],
+        .dark div[data-side][role="menu"] {
+          background-color: rgba(18, 22, 32, 0.65) !important;
+          background: rgba(18, 22, 32, 0.65) !important;
+          backdrop-filter: blur(32px) saturate(190%) !important;
+          -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.12) !important;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+        }
+
+        /* 菜单项悬停效果 */
+        [role="menu"] [role="menuitem"]:hover,
+        [role="menu"] button:hover,
+        [role="menu"] [data-highlighted],
+        [role="menu"] div[tabindex]:hover {
+          background-color: rgba(255, 255, 255, 0.45) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          border-radius: 7px !important;
+          color: #0f172a !important;
+        }
+        .theme-dark [role="menu"] [role="menuitem"]:hover,
+        .dark [role="menu"] [role="menuitem"]:hover,
+        .theme-dark [role="menu"] button:hover,
+        .dark [role="menu"] button:hover,
+        .theme-dark [role="menu"] [data-highlighted],
+        .dark [role="menu"] [data-highlighted],
+        .theme-dark [role="menu"] div[tabindex]:hover,
+        .dark [role="menu"] div[tabindex]:hover {
+          background-color: rgba(255, 255, 255, 0.14) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          border-radius: 7px !important;
+          color: #ffffff !important;
+        }
+

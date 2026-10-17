@@ -7,7 +7,8 @@ export function initCrtTheme(cssContent = '') {
   if (!styleEl) {
     styleEl = document.createElement('style');
     styleEl.id = 'agy-550c-theme';
-    (document.head || document.documentElement).appendChild(styleEl);
+    const container = document.head || document.documentElement || document.body;
+    if (container) container.appendChild(styleEl);
   }
   styleEl.textContent = cssContent;
 

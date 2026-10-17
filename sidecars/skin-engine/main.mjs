@@ -3,15 +3,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 // 1. 确保启用原生 WebSocket (Node 20+ --experimental-websocket)
-if (typeof WebSocket === 'undefined') {
-  const result = spawnSync(process.execPath, ['--experimental-websocket', fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
-    stdio: 'inherit'
+if (typeof WebSocket === 'undefined' && !process.env.__AG_WS_SPAWNED) {
+  process.env.__AG_WS_SPAWNED = '1';
+  const child = spawn(process.execPath, ['--experimental-websocket', fileURLToPath(import.meta.url), ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: process.env
   });
-  process.exit(result.status || 0);
-}
+  child.on('exit', (code) => process.exit(code ?? 0));
+  process.on('SIGINT', () => child.kill('SIGINT'));
+  process.on('SIGTERM', () => child.kill('SIGTERM'));
+  process.on('exit', () => child.kill());
+} else {
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,11 +89,18 @@ function resolveVideoPath(videoPath) {
   if (!videoPath) {
     return path.join(ASSETS_DIR, 'videos', 'default-bg.mp4');
   }
+  // 1. 绝对路径且存在
   if (path.isAbsolute(videoPath)) {
     if (fs.existsSync(videoPath)) return videoPath;
   } else {
+    // 2. 相对插件根目录路径（如 assets/videos/xxx.mp4）
     const rel = path.resolve(PLUGIN_ROOT, videoPath);
     if (fs.existsSync(rel)) return rel;
+
+    // 3. 如果是纯文件名或简写路径，优先在 assets/videos/ 中查找同名素材
+    const baseName = path.basename(videoPath);
+    const inAssets = path.join(ASSETS_DIR, 'videos', baseName);
+    if (fs.existsSync(inAssets)) return inAssets;
   }
   return path.join(ASSETS_DIR, 'videos', 'default-bg.mp4');
 }
@@ -131,11 +144,237 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 视频流服务
-  if (url.pathname === '/wallpaper.mp4') {
-    const config = readConfig();
-    const vidPath = resolveVideoPath(config.features?.dynamicWallpaper?.videoPath);
+  // API: 获取内置壁纸视频列表
+  if (url.pathname === '/api/wallpaper/list' && req.method === 'GET') {
+    try {
+      const videosDir = path.join(ASSETS_DIR, 'videos');
+      if (!fs.existsSync(videosDir)) {
+        fs.mkdirSync(videosDir, { recursive: true });
+      }
+      const files = fs.readdirSync(videosDir);
+      const validExts = ['.mp4', '.webm', '.mov', '.mkv'];
+      const videos = [];
+      for (const file of files) {
+        const ext = path.extname(file).toLowerCase();
+        if (validExts.includes(ext)) {
+          const fullPath = path.join(videosDir, file);
+          const stat = fs.statSync(fullPath);
+          const isDefault = file === 'default-bg.mp4';
+          videos.push({
+            name: file,
+            displayName: isDefault ? '🌟 默认动态壁纸 (default-bg.mp4)' : `🎬 ${file}`,
+            relPath: `assets/videos/${file}`,
+            size: stat.size,
+            isDefault
+          });
+        }
+      }
+      videos.sort((a, b) => {
+        if (a.isDefault) return -1;
+        if (b.isDefault) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, videos }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
 
+  // API: 直接二进制流上传外部视频到内置 assets/videos 目录
+  if (url.pathname === '/api/wallpaper/upload' && req.method === 'POST') {
+    try {
+      const fileNameParam = url.searchParams.get('name') || `custom_${Date.now()}.mp4`;
+      const cleanFileName = path.basename(decodeURIComponent(fileNameParam)).replace(/[^\w\d\.\-_\u4e00-\u9fa5]/g, '_');
+      const videosDir = path.join(ASSETS_DIR, 'videos');
+      if (!fs.existsSync(videosDir)) {
+        fs.mkdirSync(videosDir, { recursive: true });
+      }
+
+      const parsedPath = path.parse(cleanFileName);
+      let targetFileName = parsedPath.base;
+      let destPath = path.join(videosDir, targetFileName);
+
+      // 如果同名文件已存在，为避免覆盖生成不重复的文件名
+      if (fs.existsSync(destPath)) {
+        targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext || '.mp4'}`;
+        destPath = path.join(videosDir, targetFileName);
+      }
+
+      const fileWriteStream = fs.createWriteStream(destPath);
+      req.pipe(fileWriteStream);
+
+      fileWriteStream.on('finish', () => {
+        const relPath = `assets/videos/${targetFileName}`;
+        console.log(`[Skin Engine] Successfully uploaded video: ${relPath}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          relPath,
+          fileName: targetFileName,
+          message: '已成功上传并保存到插件内置素材库'
+        }));
+      });
+
+      fileWriteStream.on('error', (err) => {
+        console.error('[Skin Engine] Failed to write uploaded video:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: '写入文件失败: ' + err.message }));
+      });
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
+  // API: 导入外部视频到内置 assets/videos 目录（支持绝对路径复制）
+  if (url.pathname === '/api/wallpaper/import' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        let sourcePath = (parsed.sourcePath || '').trim();
+        if (!sourcePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '请提供有效的源视频文件路径' }));
+          return;
+        }
+
+        if (!path.isAbsolute(sourcePath)) {
+          const inCwd = path.resolve(process.cwd(), sourcePath);
+          if (fs.existsSync(inCwd)) {
+            sourcePath = inCwd;
+          }
+        }
+
+        if (!fs.existsSync(sourcePath)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `源视频文件未找到，请确认本地路径是否正确：${sourcePath}` }));
+          return;
+        }
+
+        const videosDir = path.join(ASSETS_DIR, 'videos');
+        if (!fs.existsSync(videosDir)) {
+          fs.mkdirSync(videosDir, { recursive: true });
+        }
+
+        const parsedPath = path.parse(sourcePath);
+        let targetFileName = parsedPath.base;
+        let destPath = path.join(videosDir, targetFileName);
+
+        if (fs.existsSync(destPath)) {
+          const srcStat = fs.statSync(sourcePath);
+          const destStat = fs.statSync(destPath);
+          if (srcStat.size !== destStat.size) {
+            targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext}`;
+            destPath = path.join(videosDir, targetFileName);
+            fs.copyFileSync(sourcePath, destPath);
+          }
+        } else {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+
+        const relPath = `assets/videos/${targetFileName}`;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          relPath,
+          fileName: targetFileName,
+          message: '已成功复制到插件内置素材库'
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API: 删除内置 assets/videos 中的视频素材
+  if ((url.pathname === '/api/wallpaper/delete' && req.method === 'POST') ||
+      (url.pathname === '/api/wallpaper' && req.method === 'DELETE')) {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        let targetRelPath = '';
+        if (body) {
+          try {
+            const parsed = JSON.parse(body);
+            targetRelPath = parsed.path || '';
+          } catch (e) {}
+        }
+        if (!targetRelPath) {
+          targetRelPath = url.searchParams.get('path') || '';
+        }
+
+        if (!targetRelPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '缺少要删除的文件路径参数' }));
+          return;
+        }
+
+        const baseName = path.basename(targetRelPath);
+        if (baseName === 'default-bg.mp4') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '默认素材受系统保护，不可删除' }));
+          return;
+        }
+
+        const videosDir = path.join(ASSETS_DIR, 'videos');
+        const targetFullPath = path.join(videosDir, baseName);
+
+        // 安全检查：防止目录穿越
+        if (!targetFullPath.startsWith(videosDir)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '非法路径，禁止访问素材库以外的文件' }));
+          return;
+        }
+
+        if (fs.existsSync(targetFullPath)) {
+          fs.unlinkSync(targetFullPath);
+          console.log(`[Skin Engine] Successfully deleted video file: ${targetFullPath}`);
+        }
+
+        // 检查并自动更新配置文件，如果正在使用的是被删除的文件，重置为默认壁纸
+        const config = readConfig();
+        let configChanged = false;
+        if (config.features?.dynamicWallpaper?.videoPath &&
+            (config.features.dynamicWallpaper.videoPath.includes(baseName) || config.features.dynamicWallpaper.videoPath === targetRelPath)) {
+          config.features.dynamicWallpaper.videoPath = 'assets/videos/default-bg.mp4';
+          configChanged = true;
+        }
+        if (config.features?.bootAnimationConfig?.videoPath &&
+            (config.features.bootAnimationConfig.videoPath.includes(baseName) || config.features.bootAnimationConfig.videoPath === targetRelPath)) {
+          config.features.bootAnimationConfig.videoPath = 'assets/videos/default-bg.mp4';
+          configChanged = true;
+        }
+        if (configChanged) {
+          writeConfig(config);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          message: `已成功删除素材：${baseName}`,
+          fallbackPath: 'assets/videos/default-bg.mp4',
+          configReset: configChanged
+        }));
+      } catch (err) {
+        console.error('[Skin Engine] Delete video error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: '删除失败: ' + err.message }));
+      }
+    });
+    return;
+  }
+
+  // 视频流服务核心函数
+  function streamVideoFile(vidPath, contentType = 'video/mp4') {
     if (!fs.existsSync(vidPath)) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Video not found');
@@ -158,19 +397,68 @@ const server = http.createServer((req, res) => {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': 'video/mp4'
+          'Content-Type': contentType
         });
         fileStream.pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': 'video/mp4'
+          'Content-Type': contentType
         });
         fs.createReadStream(vidPath).pipe(res);
       }
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Streaming error: ' + err.message);
+    }
+  }
+
+  // 1. 壁纸视频流
+  if (url.pathname === '/wallpaper.mp4') {
+    const queryPath = url.searchParams.get('path');
+    const config = readConfig();
+    const targetVideo = queryPath || config.features?.dynamicWallpaper?.videoPath;
+    const vidPath = resolveVideoPath(targetVideo);
+    return streamVideoFile(vidPath);
+  }
+
+  // 2. 开机动画视频流
+  if (url.pathname === '/boot-video.mp4') {
+    const queryPath = url.searchParams.get('path');
+    const config = readConfig();
+    const targetVideo = queryPath || config.features?.bootAnimationConfig?.videoPath;
+    const vidPath = resolveVideoPath(targetVideo);
+    return streamVideoFile(vidPath);
+  }
+
+  // 3. 通用本地视频代理
+  if (url.pathname === '/api/video') {
+    const targetPath = url.searchParams.get('path');
+    const vidPath = resolveVideoPath(targetPath);
+    return streamVideoFile(vidPath);
+  }
+
+  // 4. 自定义动效脚本读取接口
+  if (url.pathname === '/api/script') {
+    const targetPath = url.searchParams.get('path');
+    if (!targetPath) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing path parameter' }));
+      return;
+    }
+    const resolved = path.isAbsolute(targetPath) ? targetPath : path.resolve(PLUGIN_ROOT, targetPath);
+    if (!fs.existsSync(resolved)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Script file not found: ' + resolved }));
+      return;
+    }
+    try {
+      const content = fs.readFileSync(resolved, 'utf8');
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+      res.end(content);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }
@@ -208,8 +496,9 @@ function buildClientBundle() {
     const full = path.join(PLUGIN_ROOT, relPath);
     if (!fs.existsSync(full)) return '';
     let code = fs.readFileSync(full, 'utf8');
-    return code.replace(/^export\s+(function|const|let|var|class)\s+/gm, '$1 ');
+    return code.replace(/^export\s+(function|const|let|var|class)\s+/gm, (m, g1) => g1 + ' ');
   }
+
 
   const wallpaperMod = readClientModule('client/modules/wallpaper.js');
   const crtMod = readClientModule('client/modules/crt-theme.js');
@@ -229,17 +518,13 @@ function buildClientBundle() {
   bundleParts.push(crtMod);
   bundleParts.push(appearanceMenuMod);
 
-  // 汉化模块（如果开启）
-  if (config.features?.chineseLocalization !== false) {
-    const hansCode = readClientModule('client/modules/i18n-engine.js');
-    if (hansCode) bundleParts.push(hansCode);
-  }
+  // 汉化与多语言模块（由 window.__agyI18n 动态控制语言切换）
+  const hansCode = readClientModule('client/modules/i18n-engine.js');
+  if (hansCode) bundleParts.push(hansCode);
 
-  // 550C 开机引导动画（如果开启）
-  if (config.features?.bootAnimation) {
-    const bootCode = readClientModule('client/modules/boot-animation.js');
-    if (bootCode) bundleParts.push(bootCode);
-  }
+  // 550C 动画模块（始终载入以支持在设置中点击“立即预览”）
+  const bootCode = readClientModule('client/modules/boot-animation.js');
+  if (bootCode) bundleParts.push(bootCode);
 
   // 启动主入口
   bundleParts.push(indexMod);
@@ -261,68 +546,143 @@ function fetchJson(url) {
   });
 }
 
-function injectTargetViaCdp(wsUrl, bundleCode) {
-  return new Promise((resolve, reject) => {
-    let ws;
+// 6. 活跃 CDP 会话管理与持续巡检保活 (Persistent Keep-Alive & Auto-Heal)
+const activeSessions = new Map(); // targetId -> { ws, send, isAttached }
+
+function createCdpSession(target) {
+  const targetId = target.id;
+  const wsUrl = target.webSocketDebuggerUrl;
+
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    console.warn(`[Skin Engine] WebSocket creation failed for ${targetId}:`, e.message);
+    return null;
+  }
+
+  let idCounter = 1;
+  const pendingCalls = new Map();
+
+  function send(method, params = {}) {
+    return new Promise((res, rej) => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        return rej(new Error(`WebSocket not open (state: ${ws.readyState})`));
+      }
+      const callId = idCounter++;
+      pendingCalls.set(callId, { res, rej });
+      ws.send(JSON.stringify({ id: callId, method, params }));
+    });
+  }
+
+  const session = {
+    targetId,
+    ws,
+    send,
+    isHealthy: false,
+    injecting: false
+  };
+
+  async function executeInjection() {
+    if (session.injecting) return;
+    session.injecting = true;
     try {
-      ws = new WebSocket(wsUrl);
-    } catch (e) {
-      return reject(e);
+      const bundle = buildClientBundle();
+      await send('Page.enable');
+      await send('Runtime.enable');
+      // 保持长连接下的全生命周期自动预载（先移除旧版本，避免重复执行残留）
+      if (session.lastScriptId) {
+        try {
+          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: session.lastScriptId });
+        } catch (_) {}
+      }
+      const addRes = await send('Page.addScriptToEvaluateOnNewDocument', { source: bundle });
+      if (addRes && addRes.identifier) {
+        session.lastScriptId = addRes.identifier;
+      }
+      // 立即对当前 DOM 树执行挂载
+      await send('Runtime.evaluate', { expression: bundle, returnByValue: true });
+      session.isHealthy = true;
+      console.log(`[Skin Engine] Successfully attached skin to target ${targetId}`);
+    } catch (err) {
+      console.warn(`[Skin Engine] Injection error on ${targetId}:`, err.message);
+    } finally {
+      session.injecting = false;
     }
+  }
 
-    let id = 1;
-    const pending = new Map();
+  ws.onopen = async () => {
+    console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url})`);
+    await executeInjection();
+  };
 
-    const timer = setTimeout(() => {
-      try { ws.close(); } catch(e) {}
-      reject(new Error('CDP connection timeout'));
-    }, 5000);
-
-    ws.onopen = async () => {
-      function send(method, params = {}) {
-        return new Promise((res, rej) => {
-          const callId = id++;
-          pending.set(callId, { res, rej });
-          ws.send(JSON.stringify({ id: callId, method, params }));
-        });
+  ws.onmessage = async (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.id && pendingCalls.has(msg.id)) {
+        const { res, rej } = pendingCalls.get(msg.id);
+        pendingCalls.delete(msg.id);
+        if (msg.error) rej(new Error(msg.error.message || JSON.stringify(msg.error)));
+        else res(msg.result);
+        return;
       }
 
-      try {
-        await send('Page.enable');
-        // 保证刷新页面或新窗口打开时依然有效
-        await send('Page.addScriptToEvaluateOnNewDocument', { source: bundleCode });
-        // 对当前已载入的页面立即执行
-        await send('Runtime.evaluate', { expression: bundleCode, returnByValue: true });
-        clearTimeout(timer);
-        ws.close();
-        resolve(true);
-      } catch (err) {
-        clearTimeout(timer);
-        ws.close();
-        reject(err);
+      // 页面导航或加载完成后立即自动保活补注
+      if (msg.method === 'Page.loadEventFired' || msg.method === 'Page.frameNavigated') {
+        await executeInjection();
       }
-    };
+    } catch (e) {}
+  };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.id && pending.has(msg.id)) {
-          const { res, rej } = pending.get(msg.id);
-          pending.delete(msg.id);
-          if (msg.error) rej(new Error(msg.error.message || JSON.stringify(msg.error)));
-          else res(msg.result);
-        }
-      } catch (e) {}
-    };
+  ws.onclose = () => {
+    console.log(`[Skin Engine] CDP session closed for ${targetId}`);
+    activeSessions.delete(targetId);
+  };
 
-    ws.onerror = (err) => {
-      clearTimeout(timer);
-      reject(err);
-    };
-  });
+  ws.onerror = (err) => {
+    console.warn(`[Skin Engine] CDP session error on ${targetId}:`, err.message || err);
+    try { ws.close(); } catch (e) {}
+    activeSessions.delete(targetId);
+  };
+
+  session.checkHealthAndHeal = async () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const result = await send('Runtime.evaluate', {
+        expression: `(() => {
+          if (typeof window.__agySyncTitleBar === 'function') {
+            try { window.__agySyncTitleBar(); } catch (e) {}
+          }
+          if (!window.__AG_SKIN_ATTACHED__) return false;
+          // 关键防护：若开机动画正在全屏播放中，判定为健康活跃态，严禁重复注入打断动画或重绘标题栏！
+          if (document.querySelector('.dsh550c-host') ||
+              document.getElementById('agy-video-boot-host') ||
+              document.getElementById('agy-custom-code-boot-host')) {
+            return true;
+          }
+          const bridge = window.__agySkinBridge;
+          const cfg = bridge ? bridge.getConfig() : window.__AG_SKIN_CONFIG__;
+          const needStyle = cfg?.features?.themeStyles !== false;
+          const needWall = needStyle && cfg?.features?.dynamicWallpaper?.enabled !== false;
+          if (needWall && !document.getElementById("agy-dynamic-video")) return false;
+          if (needStyle && !document.getElementById("agy-dynamic-wallpaper-style")) return false;
+          return true;
+        })()`,
+        returnByValue: true
+      });
+
+      const isAlive = result?.result?.value === true;
+      if (!isAlive) {
+        console.log(`[Skin Engine] Target ${targetId} lost skin or state out-of-sync, auto-healing...`);
+        await executeInjection();
+      }
+    } catch (e) {
+      // 正在导航中，静默跳过
+    }
+  };
+
+  return session;
 }
-
-const injectedTargetIds = new Set();
 
 async function pollAndInject() {
   const portFile = getDevToolsPortPath();
@@ -343,20 +703,30 @@ async function pollAndInject() {
     const targets = await fetchJson(`http://127.0.0.1:${port}/json/list`);
     if (!Array.isArray(targets)) return;
 
+    const currentTargetIds = new Set();
+
     for (const target of targets) {
       if ((target.type === 'page' || !target.type) && target.webSocketDebuggerUrl) {
-        // 如果是主界面窗口且未曾注入
-        if (!injectedTargetIds.has(target.id)) {
-          console.log(`[Skin Engine] Found Antigravity target: ${target.id} (${target.title || target.url})`);
-          const bundle = buildClientBundle();
-          try {
-            await injectTargetViaCdp(target.webSocketDebuggerUrl, bundle);
-            injectedTargetIds.add(target.id);
-            console.log(`[Skin Engine] Successfully attached skin to target ${target.id}`);
-          } catch (injectErr) {
-            console.warn(`[Skin Engine] Injection failed on ${target.id}:`, injectErr.message);
+        currentTargetIds.add(target.id);
+
+        let session = activeSessions.get(target.id);
+        if (!session || session.ws.readyState !== WebSocket.OPEN) {
+          session = createCdpSession(target);
+          if (session) {
+            activeSessions.set(target.id, session);
           }
+        } else {
+          // 常驻会话定期巡检与自愈
+          await session.checkHealthAndHeal();
         }
+      }
+    }
+
+    // 清理已关闭的 target
+    for (const [id, session] of activeSessions.entries()) {
+      if (!currentTargetIds.has(id)) {
+        try { session.ws.close(); } catch (e) {}
+        activeSessions.delete(id);
       }
     }
   } catch (e) {
@@ -364,7 +734,30 @@ async function pollAndInject() {
   }
 }
 
-// 7. 定时巡检与保活（每 3 秒检测一次端口与窗口状态）
-console.log('[Skin Engine] Antigravity Skin daemon active.');
+// 7. 定时巡检与保活（每 3 秒低负载无感巡检）
+console.log('[Skin Engine] Antigravity Skin daemon active with persistent CDP keep-alive.');
 setInterval(pollAndInject, 3000);
 pollAndInject();
+
+// 8. 优雅退出与资源清理（杜绝重启客户端时形成僵尸进程占用端口）
+function gracefulShutdown(signal) {
+  console.log(`[Skin Engine] Received ${signal}, cleanly shutting down...`);
+  for (const [id, session] of activeSessions.entries()) {
+    try { session.ws.close(); } catch (e) {}
+  }
+  activeSessions.clear();
+  try {
+    server.close(() => {
+      process.exit(0);
+    });
+  } catch (e) {
+    process.exit(0);
+  }
+  setTimeout(() => process.exit(0), 1000).unref();
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
+}
+

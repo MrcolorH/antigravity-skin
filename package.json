@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node --experimental-websocket sidecars/skin-engine/main.mjs",
     "install-plugin": "./install.sh",
-    "uninstall-plugin": "./uninstall.sh"
+    "uninstall-plugin": "./uninstall.sh",
+    "install-win": "powershell -ExecutionPolicy Bypass -File install.ps1",
+    "uninstall-win": "powershell -ExecutionPolicy Bypass -File uninstall.ps1",
+    "pack": "node scripts/pack.mjs"
   },
   "keywords": [
     "antigravity",
