@@ -10,28 +10,18 @@
   if (typeof window === 'undefined') return;
   window.__antigravityBootInstalled = true;
 
-  // 极速冷启动优先级保障：若配置开启开机动画且本会话未播放过，第 0 毫秒置位全局播放标志（带超时与就绪熔断）
+  // 极速冷启动优先级保障：若配置开启开机动画且本会话未播放过，第 0 毫秒置位全局播放标志
   try {
     const _earlyCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     if (_earlyCfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
-      const _nav = (typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function')
-        ? performance.getEntriesByType('navigation')[0]
-        : null;
-      const _perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-        ? performance.now()
-        : 9999;
-      const _hasWorkbench = !!(
-        document.querySelector('.relative.w-screen') ||
-        document.querySelector('.bg-background') ||
-        document.querySelector('.monaco-workbench') ||
-        document.querySelector('[data-conversation-id]') ||
-        document.querySelector('main') ||
-        (document.body && document.body.children.length >= 3)
+      const activeEl = document.activeElement;
+      // 关键修复：页面初始自动获得焦点（如聊天输入框）不等于用户正在输入！必须有非空输入内容才判定为正在打字
+      const _hasTypedText = activeEl && (
+        (activeEl.tagName === 'TEXTAREA' && activeEl.value && activeEl.value.trim().length > 0) ||
+        (activeEl.tagName === 'INPUT' && activeEl.value && activeEl.value.trim().length > 0) ||
+        ((activeEl.isContentEditable || activeEl.getAttribute?.('contenteditable') === 'true') && activeEl.textContent && activeEl.textContent.trim().length > 0)
       );
-      const _shouldAbort = (document.readyState === 'complete' && _hasWorkbench) ||
-                           (_nav && _nav.loadEventEnd > 0 && _perfNow > 280) ||
-                           (_perfNow > 380);
-      if (!_shouldAbort) {
+      if (!_hasTypedText) {
         window.__agyBootPlaying = true;
       } else {
         sessionStorage.setItem('__agy_booted__', 'true');
@@ -106,23 +96,60 @@
     }
   }
 
+  function mountHost(el) {
+    if (!el || el.parentElement) return;
+    const target = document.body || document.documentElement;
+    if (target) {
+      target.appendChild(el);
+      return;
+    }
+    // 关键容错：若处于 document_start 等极早期生命周期，安全等待 DOM 根节点就绪
+    const observer = new MutationObserver(() => {
+      const t = document.body || document.documentElement;
+      if (t && !el.parentElement) {
+        observer.disconnect();
+        t.appendChild(el);
+      }
+    });
+    try {
+      observer.observe(document, { childList: true, subtree: true });
+    } catch (_) {}
+    document.addEventListener('DOMContentLoaded', () => {
+      try { observer.disconnect(); } catch (_) {}
+      const t = document.body || document.documentElement;
+      if (t && !el.parentElement) {
+        t.appendChild(el);
+      }
+    }, { once: true });
+  }
+
   function startVideoBoot(videoSrc) {
-    if (document.getElementById('agy-video-boot-host')) return;
+    let host = document.getElementById('agy-video-boot-host');
+    if (host && host.querySelector('video')) return;
+
     window.__agyBootPlaying = true;
     pauseWallpaperVideo();
     startBootTitleBarLock();
 
-    const host = document.createElement('div');
-    host.id = 'agy-video-boot-host';
-    host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:opacity 400ms ease;';
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'agy-video-boot-host';
+      host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:opacity 400ms ease;';
+      mountHost(host);
+    } else {
+      mountHost(host);
+    }
 
-    const hint = document.createElement('div');
-    hint.id = 'agy-video-boot-hint';
-    hint.style.cssText = 'position:absolute;bottom:24px;right:32px;padding:6px 14px;border-radius:6px;background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:12px;font-family:monospace;pointer-events:none;z-index:99999;';
-    hint.innerHTML = '按下 <kbd style="padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:4px;color:#fff;">ESC</kbd> 或点击跳过';
+    sessionStorage.setItem('__agy_booted__', 'true');
 
-    host.appendChild(hint);
-    (document.body || document.documentElement).appendChild(host);
+    let hint = document.getElementById('agy-video-boot-hint');
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'agy-video-boot-hint';
+      hint.style.cssText = 'position:absolute;bottom:24px;right:32px;padding:6px 14px;border-radius:6px;background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);font-size:12px;font-family:monospace;pointer-events:none;z-index:99999;';
+      hint.innerHTML = '按下 <kbd style="padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:4px;color:#fff;">ESC</kbd> 或点击跳过';
+      host.appendChild(hint);
+    }
 
     let cleaned = false;
     let video = null;
@@ -180,13 +207,30 @@
     video.autoplay = true;
     video.muted = true;
     video.playsInline = true;
+    video.preload = 'auto';
+    video.setAttribute('muted', '');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('preload', 'auto');
     video.src = videoSrc;
     host.prepend(video);
 
-    video.addEventListener('ended', closeVideoBoot);
+    video.addEventListener('ended', () => {
+      if (video.currentTime > 0.3 || (video.duration && video.currentTime >= video.duration - 0.5)) {
+        closeVideoBoot();
+      }
+    });
+    video.addEventListener('error', (e) => {
+      console.warn('[Boot Video] Video element error:', e, video.error);
+      setTimeout(closeVideoBoot, 1500);
+    });
     video.play().catch(err => {
-      console.warn('[Boot Video] Playback failed or blocked, closing:', err);
-      closeVideoBoot();
+      console.warn('[Boot Video] Playback failed or blocked, retrying muted:', err);
+      video.muted = true;
+      video.setAttribute('muted', '');
+      video.play().catch(() => {
+        setTimeout(closeVideoBoot, 1500);
+      });
     });
   }
 
@@ -206,7 +250,8 @@
     hint.innerHTML = '按下 <kbd style="padding:2px 6px;background:rgba(255,255,255,0.2);border-radius:4px;color:#fff;">ESC</kbd> 或点击跳过';
 
     host.appendChild(hint);
-    (document.body || document.documentElement).appendChild(host);
+    mountHost(host);
+    sessionStorage.setItem('__agy_booted__', 'true');
 
     let cleaned = false;
     let customCleanup = null;
@@ -316,7 +361,7 @@
       if (videoPath && (videoPath.startsWith('http://') || videoPath.startsWith('https://'))) {
         src = videoPath;
       } else if (videoPath) {
-        src = `${API_BASE}/api/video?path=${encodeURIComponent(videoPath)}&t=${Date.now()}`;
+        src = `${API_BASE}/boot-video.mp4?path=${encodeURIComponent(videoPath)}`;
       }
       startVideoBoot(src);
     } else {

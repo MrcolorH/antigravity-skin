@@ -155,27 +155,19 @@ export function initWallpaper(options = {}) {
     return false;
   }
 
-  // 核心：由开机动画结束时触发的动态壁纸唤醒接口（平滑 Cross-fade 淡入）
+  // 开机动画结束时与壁纸同步的平滑渐入接口
   window.__agyResumeBootWallpaper = function() {
-    if (bootFallbackTimer) {
-      clearTimeout(bootFallbackTimer);
-      bootFallbackTimer = null;
-    }
     window.__agyBootPlaying = false;
-    if (isWallpaperDeferred) {
-      isWallpaperDeferred = false;
-      console.log('[Antigravity Skin] Boot animation finished. Loading deferred dynamic wallpaper now...');
-      realMountVideo(true);
+    const v = document.getElementById('agy-dynamic-video');
+    if (v) {
+      delete v.dataset.bootPaused;
+      try {
+        v.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        v.style.opacity = '1';
+        v.play().catch(() => {});
+      } catch(e) {}
     } else {
-      const v = document.getElementById('agy-dynamic-video');
-      if (v) {
-        delete v.dataset.bootPaused;
-        try {
-          v.style.transition = 'opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
-          v.style.opacity = '1';
-          v.play().catch(() => {});
-        } catch(e) {}
-      }
+      realMountVideo(true);
     }
   };
 
@@ -198,11 +190,13 @@ export function initWallpaper(options = {}) {
       videoEl.loop = true;
       videoEl.muted = true;
       videoEl.playsInline = true;
+      videoEl.preload = 'auto';
       videoEl.setAttribute('muted', '');
       videoEl.setAttribute('autoplay', '');
       videoEl.setAttribute('loop', '');
       videoEl.setAttribute('playsinline', '');
-      // 关键修复：初始状态严格保持 opacity 0，杜绝视频流缓冲解码第一帧期间的全屏纯黑画面闪现
+      videoEl.setAttribute('preload', 'auto');
+      // 初始保持 opacity 0，首帧渲染就绪后立即 0.6s 平滑淡入
       videoEl.style.opacity = '0';
       videoEl.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
       const parent = document.body || document.documentElement;
@@ -245,8 +239,8 @@ export function initWallpaper(options = {}) {
       }
     };
 
-    videoEl.addEventListener('canplay', onPlayReady, { once: true });
-    videoEl.addEventListener('playing', onPlayReady, { once: true });
+    videoEl.addEventListener('canplay', onPlayReady);
+    videoEl.addEventListener('playing', onPlayReady);
 
     if (videoEl.readyState >= 2 && !videoEl.paused) {
       onPlayReady();
@@ -261,32 +255,6 @@ export function initWallpaper(options = {}) {
   // 挂载/卸载动态视频元素
   function mountVideo() {
     syncTitleBarOverlay();
-    if (!enableVideo || !videoUrl) {
-      const v = document.getElementById('agy-dynamic-video');
-      if (v) {
-        try { v.pause(); } catch(e) {}
-        v.remove();
-      }
-      ensureStyle();
-      return null;
-    }
-
-    // 核心优化：若开屏动画开关打开且处于开机播放期，开机优先加载开机动效素材，完全推迟动态壁纸资源的加载与播放！
-    if (shouldDeferWallpaperForBoot()) {
-      isWallpaperDeferred = true;
-      ensureStyle(); // 注入毛玻璃与暗色基础样式，界面不露白
-      if (!bootFallbackTimer) {
-        // 12秒安全超时兜底：无论开屏动效发生任何未捕获异常，绝不遗漏壁纸初始化
-        bootFallbackTimer = setTimeout(() => {
-          if (isWallpaperDeferred) {
-            console.log('[Antigravity Skin] Fallback timer fired: mounting deferred wallpaper now');
-            window.__agyResumeBootWallpaper && window.__agyResumeBootWallpaper();
-          }
-        }, 12000);
-      }
-      return null;
-    }
-
     return realMountVideo(true);
   }
 

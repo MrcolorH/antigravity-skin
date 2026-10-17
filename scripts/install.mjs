@@ -52,16 +52,38 @@ const WHITELIST_FILES = [
   'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh'
 ];
 
+function copyDirSafe(src, dest) {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.name.includes('.git') || entry.name.includes('node_modules') || entry.name.endsWith('.png.tmp')) continue;
+    if (entry.isDirectory()) {
+      copyDirSafe(srcPath, destPath);
+    } else {
+      try {
+        let isSame = false;
+        try {
+          if (fs.existsSync(destPath)) {
+            const sStat = fs.statSync(srcPath);
+            const dStat = fs.statSync(destPath);
+            if (sStat.size === dStat.size) isSame = true;
+          }
+        } catch (_) {}
+        if (!isSame) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      } catch (_) {}
+    }
+  }
+}
+
 for (const dir of WHITELIST_DIRS) {
   const src = path.join(PROJECT_ROOT, dir);
   const dest = path.join(targetPluginDir, dir);
-  if (fs.existsSync(src)) {
-    fs.cpSync(src, dest, {
-      recursive: true,
-      force: true,
-      filter: (item) => !item.includes('.git') && !item.includes('node_modules') && !item.endsWith('.png.tmp')
-    });
-  }
+  copyDirSafe(src, dest);
 }
 
 for (const file of WHITELIST_FILES) {

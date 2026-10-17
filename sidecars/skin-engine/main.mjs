@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 
 // 1. 确保启用原生 WebSocket (Node 20+ --experimental-websocket)
 if (typeof WebSocket === 'undefined' && !process.env.__AG_WS_SPAWNED) {
@@ -131,6 +131,66 @@ function resolveScriptPath(scriptPath) {
   return path.join(SCRIPTS_DIR, 'default-boot.js');
 }
 
+// 自动检测并无损前置 MP4 moov atom（实现 Web 极速秒开，无需等待全量缓冲）
+function ensureFastStart(filePath) {
+  if (!filePath || !fs.existsSync(filePath) || !filePath.toLowerCase().endsWith('.mp4')) return false;
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const stat = fs.statSync(filePath);
+    let pos = 0;
+    const buf = Buffer.alloc(8);
+    let moovBeforeMdat = false;
+    let foundMdat = false;
+
+    while (pos < stat.size) {
+      const bytesRead = fs.readSync(fd, buf, 0, 8, pos);
+      if (bytesRead < 8) break;
+      const size = buf.readUInt32BE(0);
+      const type = buf.toString('ascii', 4, 8);
+      if (type === 'moov') {
+        if (!foundMdat) moovBeforeMdat = true;
+        break;
+      }
+      if (type === 'mdat') {
+        foundMdat = true;
+      }
+      if (size === 0 || size === 1) break;
+      pos += size;
+    }
+    fs.closeSync(fd);
+
+    if (moovBeforeMdat) {
+      return true;
+    }
+
+    // 尝试调用 ffmpeg 进行零转码无损 faststart 封装优化 (耗时仅 10~50ms)
+    const tmpOut = filePath + '.faststart.tmp.mp4';
+    execSync(`ffmpeg -v error -i "${filePath}" -c copy -movflags +faststart "${tmpOut}" -y`, { timeout: 30000 });
+    if (fs.existsSync(tmpOut) && fs.statSync(tmpOut).size > 0) {
+      fs.unlinkSync(filePath);
+      fs.renameSync(tmpOut, filePath);
+      console.log(`[Skin Engine] FastStart optimized: ${path.basename(filePath)}`);
+      return true;
+    }
+  } catch (e) {
+    // 若系统无 ffmpeg 或优化失败，静默保持原样
+  }
+  return false;
+}
+
+function optimizeVideoAssets() {
+  try {
+    const vDir = path.join(ASSETS_DIR, 'videos');
+    if (!fs.existsSync(vDir)) return;
+    const files = fs.readdirSync(vDir);
+    for (const f of files) {
+      if (f.toLowerCase().endsWith('.mp4')) {
+        ensureFastStart(path.join(vDir, f));
+      }
+    }
+  } catch (_) {}
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
 
@@ -229,6 +289,7 @@ const server = http.createServer((req, res) => {
       req.pipe(fileWriteStream);
 
       fileWriteStream.on('finish', () => {
+        try { ensureFastStart(destPath); } catch (_) {}
         const relPath = `assets/videos/${targetFileName}`;
         console.log(`[Skin Engine] Successfully uploaded video: ${relPath}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -300,6 +361,7 @@ const server = http.createServer((req, res) => {
           fs.copyFileSync(sourcePath, destPath);
         }
 
+        try { ensureFastStart(destPath); } catch (_) {}
         const relPath = `assets/videos/${targetFileName}`;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -543,7 +605,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 视频流服务核心函数
+  // 视频流服务核心函数（高吞吐 512KB 缓冲、强缓存、HEAD 极速元数据响应）
   function streamVideoFile(vidPath, contentType = 'video/mp4') {
     if (!vidPath || !fs.existsSync(vidPath)) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -554,6 +616,30 @@ const server = http.createServer((req, res) => {
     try {
       const stat = fs.statSync(vidPath);
       const fileSize = stat.size;
+      const mtime = stat.mtime.toUTCString();
+      const etag = `"${stat.size}-${Math.floor(stat.mtimeMs)}"`;
+
+      // 强缓存与秒级 304 协商
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304);
+        res.end();
+        return;
+      }
+
+      // 浏览器 HEAD 请求（极速返回视频大小与 Range 支持情况，不读文件内容）
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'ETag': etag,
+          'Last-Modified': mtime
+        });
+        res.end();
+        return;
+      }
+
       const range = req.headers.range;
 
       if (range) {
@@ -561,21 +647,29 @@ const server = http.createServer((req, res) => {
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
         const chunkSize = (end - start) + 1;
-        const fileStream = fs.createReadStream(vidPath, { start, end });
+        // 扩充 highWaterMark 至 512KB，大幅压低 Windows 平台下的逐包传输开销
+        const fileStream = fs.createReadStream(vidPath, { start, end, highWaterMark: 1024 * 512 });
 
         res.writeHead(206, {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': contentType
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'ETag': etag,
+          'Last-Modified': mtime
         });
         fileStream.pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': contentType
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'ETag': etag,
+          'Last-Modified': mtime
         });
-        fs.createReadStream(vidPath).pipe(res);
+        fs.createReadStream(vidPath, { highWaterMark: 1024 * 512 }).pipe(res);
       }
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -634,6 +728,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(HTTP_PORT, '127.0.0.1', () => {
   console.log(`[Skin Engine] Local media & config server running on http://127.0.0.1:${HTTP_PORT}`);
+  try { optimizeVideoAssets(); } catch (_) {}
 });
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
@@ -805,12 +900,25 @@ function createCdpSession(target, port) {
 
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
-    // 关键优化：WebSocket 刚建立握手的第 0 毫秒，立即极速执行轻量透明指令，消除大 bundle 编译等待期间的视觉白块
+    // 关键优化：WebSocket 刚建立握手的第 0 毫秒，立即极速执行轻量透明与全屏黑底预埋，彻底消除白屏与原生界面
     try {
+      const cfg = readConfig();
+      const shouldBoot = (cfg.features?.bootAnimation !== false && cfg.features?.bootAnimation === true);
       await send('Runtime.evaluate', {
-        expression: `if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
-          window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
-        }`
+        expression: `(() => {
+          if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+            window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
+          }
+          if (${shouldBoot} && !sessionStorage.getItem('__agy_booted__')) {
+            const root = document.body || document.documentElement;
+            if (root && !document.getElementById('agy-video-boot-host') && !document.getElementById('agy-custom-code-boot-host')) {
+              const h = document.createElement('div');
+              h.id = 'agy-video-boot-host';
+              h.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;transition:opacity 400ms ease;';
+              root.appendChild(h);
+            }
+          }
+        })()`
       });
     } catch (_) {}
     await executeInjection();

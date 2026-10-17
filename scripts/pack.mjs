@@ -35,9 +35,23 @@ for (const dir of WHITELIST_DIRS) {
     fs.cpSync(src, dest, {
       recursive: true,
       force: true,
-      filter: (item) => !item.includes('.git') && !item.includes('node_modules') && !item.endsWith('.tmp')
+      filter: (item) => {
+        const lower = item.toLowerCase();
+        if (item.includes('.git') || item.includes('node_modules') || item.endsWith('.tmp')) return false;
+        // 关键过滤：严禁将用户私有音视频大文件打包进 Release 归档包
+        if (lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.endsWith('.mkv')) return false;
+        return true;
+      }
     });
   }
+}
+
+// 确保打包目录中具备 assets/videos 目录结构与 .gitkeep
+const destVideosDir = path.join(stagingDir, 'assets', 'videos');
+fs.mkdirSync(destVideosDir, { recursive: true });
+const gitkeepFile = path.join(destVideosDir, '.gitkeep');
+if (!fs.existsSync(gitkeepFile)) {
+  fs.writeFileSync(gitkeepFile, '', 'utf8');
 }
 
 for (const file of WHITELIST_FILES) {
@@ -67,9 +81,11 @@ try {
       stdio: 'inherit'
     });
   }
+  const size = fs.statSync(zipFile).size;
+  const sizeStr = size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(2)} MB` : `${(size / 1024).toFixed(1)} KB`;
   console.log('==================================================');
-  console.log(` [√] 打包成功！输出文件: ${zipFile}`);
-  console.log(' 该 zip 文件可直接作为 GitHub Release 的 Release Asset 上传发布！');
+  console.log(` [√] 打包成功！输出文件: ${zipFile} (${sizeStr})`);
+  console.log(' 该 zip 文件为纯净发行包（不含本地私有素材），可直接上传发布！');
   console.log('==================================================');
 } catch (e) {
   console.error('打包压缩失败:', e.message);

@@ -6,4 +6,9 @@ dist/
 *.tmp
 *.tmp.*
 
-
+# 排除用户本地私有音视频大文件（保留 .gitkeep 目录结构）
+assets/videos/*.mp4
+assets/videos/*.webm
+assets/videos/*.mov
+assets/videos/*.mkv
+!assets/videos/.gitkeep
