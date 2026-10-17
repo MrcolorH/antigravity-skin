@@ -500,6 +500,7 @@ function buildClientBundle() {
   }
 
 
+  const bootCode = readClientModule('client/modules/boot-animation.js');
   const wallpaperMod = readClientModule('client/modules/wallpaper.js');
   const crtMod = readClientModule('client/modules/crt-theme.js');
   const appearanceMenuMod = readClientModule('client/modules/appearance-menu.js');
@@ -513,20 +514,21 @@ function buildClientBundle() {
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
 
-  // 模块逻辑
+  // 1. 开机动画模块（优先载入就绪，确保开机最早期捕获播放状态与挂载素材）
+  if (bootCode) bundleParts.push(bootCode);
+
+  // 2. 动态壁纸与毛玻璃模块
   bundleParts.push(wallpaperMod);
+
+  // 3. CRT 及设置菜单模块
   bundleParts.push(crtMod);
   bundleParts.push(appearanceMenuMod);
 
-  // 汉化与多语言模块（由 window.__agyI18n 动态控制语言切换）
+  // 4. 汉化与多语言模块（由 window.__agyI18n 动态控制语言切换）
   const hansCode = readClientModule('client/modules/i18n-engine.js');
   if (hansCode) bundleParts.push(hansCode);
 
-  // 550C 动画模块（始终载入以支持在设置中点击“立即预览”）
-  const bootCode = readClientModule('client/modules/boot-animation.js');
-  if (bootCode) bundleParts.push(bootCode);
-
-  // 启动主入口
+  // 5. 启动主入口
   bundleParts.push(indexMod);
 
   return bundleParts.join('\n\n');
@@ -654,14 +656,16 @@ function createCdpSession(target) {
             try { window.__agySyncTitleBar(); } catch (e) {}
           }
           if (!window.__AG_SKIN_ATTACHED__) return false;
-          // 关键防护：若开机动画正在全屏播放中，判定为健康活跃态，严禁重复注入打断动画或重绘标题栏！
-          if (document.querySelector('.dsh550c-host') ||
-              document.getElementById('agy-video-boot-host') ||
-              document.getElementById('agy-custom-code-boot-host')) {
-            return true;
-          }
           const bridge = window.__agySkinBridge;
           const cfg = bridge ? bridge.getConfig() : window.__AG_SKIN_CONFIG__;
+          // 关键防护：若开机动画正在全屏播放中，判定为健康活跃态，严禁重复注入打断动画或提前挂载壁纸！
+          if (window.__agyBootPlaying ||
+              document.querySelector('.dsh550c-host') ||
+              document.getElementById('agy-video-boot-host') ||
+              document.getElementById('agy-custom-code-boot-host') ||
+              (cfg?.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'))) {
+            return true;
+          }
           const needStyle = cfg?.features?.themeStyles !== false;
           const needWall = needStyle && cfg?.features?.dynamicWallpaper?.enabled !== false;
           if (needWall && !document.getElementById("agy-dynamic-video")) return false;

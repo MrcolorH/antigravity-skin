@@ -31,7 +31,8 @@ function syncTitleBarOverlay() {
     }
 
     // 核心规范：在自定义皮肤与动效增强开启时，右上角 win 栏三个按钮必须始终保持强制完全透明！
-    const isBootPlaying = !!document.querySelector('.dsh550c-host') ||
+    const isBootPlaying = !!window.__agyBootPlaying ||
+                          !!document.querySelector('.dsh550c-host') ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
                           (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
@@ -139,9 +140,48 @@ export function initWallpaper(options = {}) {
   // 2.5 挂载时即刻同步一次
   syncTitleBarOverlay();
 
-  // 3. 挂载/卸载动态视频元素
-  function mountVideo() {
-    syncTitleBarOverlay();
+  // 3. 动态壁纸推迟加载状态与超时安全兜底
+  let isWallpaperDeferred = false;
+  let bootFallbackTimer = null;
+
+  function shouldDeferWallpaperForBoot() {
+    if (window.__agyBootPlaying) return true;
+    const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+    const hasBootDom = !!document.querySelector('.dsh550c-host') ||
+                       !!document.getElementById('agy-video-boot-host') ||
+                       !!document.getElementById('agy-custom-code-boot-host');
+    if (hasBootDom) return true;
+    if (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
+      return true;
+    }
+    return false;
+  }
+
+  // 核心：由开机动画结束时触发的动态壁纸唤醒接口（平滑 Cross-fade 淡入）
+  window.__agyResumeBootWallpaper = function() {
+    if (bootFallbackTimer) {
+      clearTimeout(bootFallbackTimer);
+      bootFallbackTimer = null;
+    }
+    window.__agyBootPlaying = false;
+    if (isWallpaperDeferred) {
+      isWallpaperDeferred = false;
+      console.log('[Antigravity Skin] Boot animation finished. Loading deferred dynamic wallpaper now...');
+      realMountVideo(true);
+    } else {
+      const v = document.getElementById('agy-dynamic-video');
+      if (v) {
+        delete v.dataset.bootPaused;
+        try {
+          v.style.transition = 'opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
+          v.style.opacity = '1';
+          v.play().catch(() => {});
+        } catch(e) {}
+      }
+    }
+  };
+
+  function realMountVideo(fadeIn = false) {
     if (!enableVideo || !videoUrl) {
       const v = document.getElementById('agy-dynamic-video');
       if (v) {
@@ -152,24 +192,21 @@ export function initWallpaper(options = {}) {
       return null;
     }
 
-    const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
-    const isBootPending = !window.__AG_SKIN_ATTACHED__ && cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__');
-
     let videoEl = document.getElementById('agy-dynamic-video');
     if (!videoEl) {
       videoEl = document.createElement('video');
       videoEl.id = 'agy-dynamic-video';
-      videoEl.autoplay = !isBootPending;
+      videoEl.autoplay = true;
       videoEl.loop = true;
       videoEl.muted = true;
       videoEl.playsInline = true;
       videoEl.setAttribute('muted', '');
-      if (!isBootPending) videoEl.setAttribute('autoplay', '');
+      videoEl.setAttribute('autoplay', '');
       videoEl.setAttribute('loop', '');
       videoEl.setAttribute('playsinline', '');
-      if (isBootPending) {
-        videoEl.dataset.bootPaused = '1';
+      if (fadeIn) {
         videoEl.style.opacity = '0';
+        videoEl.style.transition = 'opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
       }
       const parent = document.body || document.documentElement;
       if (parent) {
@@ -186,6 +223,7 @@ export function initWallpaper(options = {}) {
         }, { once: true });
       }
     }
+
     if (videoUrl) {
       let isSame = false;
       try {
@@ -200,11 +238,56 @@ export function initWallpaper(options = {}) {
         try { videoEl.load(); } catch(e) {}
       }
     }
-    if (!isBootPending && videoEl.paused) {
-      videoEl.play().catch(() => {});
+
+    const onPlayReady = () => {
+      if (fadeIn && videoEl) {
+        requestAnimationFrame(() => {
+          videoEl.style.opacity = '1';
+        });
+      }
+    };
+
+    videoEl.addEventListener('canplay', onPlayReady, { once: true });
+    videoEl.addEventListener('playing', onPlayReady, { once: true });
+
+    if (videoEl.paused) {
+      videoEl.play().then(onPlayReady).catch(() => {});
     }
+
     ensureStyle();
     return videoEl;
+  }
+
+  // 挂载/卸载动态视频元素
+  function mountVideo() {
+    syncTitleBarOverlay();
+    if (!enableVideo || !videoUrl) {
+      const v = document.getElementById('agy-dynamic-video');
+      if (v) {
+        try { v.pause(); } catch(e) {}
+        v.remove();
+      }
+      ensureStyle();
+      return null;
+    }
+
+    // 核心优化：若开屏动画开关打开且处于开机播放期，开机优先加载开机动效素材，完全推迟动态壁纸资源的加载与播放！
+    if (shouldDeferWallpaperForBoot()) {
+      isWallpaperDeferred = true;
+      ensureStyle(); // 注入毛玻璃与暗色基础样式，界面不露白
+      if (!bootFallbackTimer) {
+        // 12秒安全超时兜底：无论开屏动效发生任何未捕获异常，绝不遗漏壁纸初始化
+        bootFallbackTimer = setTimeout(() => {
+          if (isWallpaperDeferred) {
+            console.log('[Antigravity Skin] Fallback timer fired: mounting deferred wallpaper now');
+            window.__agyResumeBootWallpaper && window.__agyResumeBootWallpaper();
+          }
+        }, 12000);
+      }
+      return null;
+    }
+
+    return realMountVideo(false);
   }
 
   mountVideo();
@@ -329,6 +412,12 @@ export function initWallpaper(options = {}) {
     if (observerDebounceTimer) return;
     observerDebounceTimer = setTimeout(() => {
       observerDebounceTimer = null;
+      // 若处于开屏动画播放期间，严禁补挂动态壁纸
+      if (shouldDeferWallpaperForBoot()) {
+        scheduleEnhanceUserBubbles();
+        syncTitleBarOverlay();
+        return;
+      }
       const needVideo = enableVideo && videoUrl;
       const hasVid = !!document.getElementById('agy-dynamic-video');
       const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
@@ -370,6 +459,9 @@ export function initWallpaper(options = {}) {
     setVideoEnabled: (enabled, newUrl) => {
       enableVideo = !!enabled;
       if (newUrl) videoUrl = newUrl;
+      if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
+        isWallpaperDeferred = false;
+      }
       mountVideo();
     },
     updateStyle: (newCss) => {
@@ -384,6 +476,11 @@ export function initWallpaper(options = {}) {
       if (s) s.textContent = newCss;
     },
     destroy: () => {
+      if (bootFallbackTimer) {
+        clearTimeout(bootFallbackTimer);
+        bootFallbackTimer = null;
+      }
+      isWallpaperDeferred = false;
       if (window.__agyWallpaperObserver) {
         try { window.__agyWallpaperObserver.disconnect(); } catch(e) {}
         window.__agyWallpaperObserver = null;

@@ -52,6 +52,7 @@
     const activeCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || currentConfig || window.__AG_SKIN_CONFIG__ || {};
     if (activeCfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
       sessionStorage.setItem('__agy_booted__', 'true');
+      window.__agyBootPlaying = true;
       if (typeof window.__triggerBootAnimation === 'function') {
         window.__triggerBootAnimation();
       } else if (typeof window.__trigger550C === 'function') {
@@ -80,9 +81,11 @@
     // 关键自愈：如果视频或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
     const needStyle = currentConfig.features?.themeStyles !== false;
     const needWallpaper = needStyle && currentConfig.features?.dynamicWallpaper?.enabled !== false;
-    const isBootPlaying = !!document.querySelector('.dsh550c-host') ||
+    const isBootPlaying = !!window.__agyBootPlaying ||
+                          !!document.querySelector('.dsh550c-host') ||
                           !!document.getElementById('agy-video-boot-host') ||
-                          !!document.getElementById('agy-custom-code-boot-host');
+                          !!document.getElementById('agy-custom-code-boot-host') ||
+                          (currentConfig.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
     const hasVideo = !!document.getElementById('agy-dynamic-video');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
     if (!isBootPlaying && ((needWallpaper && !hasVideo) || (needStyle && !hasStyle))) {
@@ -239,7 +242,15 @@
 
   window.__agyApplyFeatures = applyFeatures;
 
-  // 3. 初始生效
+  // 3. 开机引导动画优先检测与极速呈现（若开启且本 Session 未播放过）
+  // 核心时序：优先挂载开屏动画素材，推迟动态壁纸资源的下载与渲染，彻底消除开机闪现壁纸的割裂感！
+  try {
+    checkAndTriggerBootAnimation();
+  } catch (err) {
+    console.warn('[Antigravity Skin] Error in early boot animation trigger:', err);
+  }
+
+  // 4. 初始生效其余主题与皮肤特性（若开屏动效正在播放，动态壁纸将自动进入推迟队列，仅注入毛玻璃与基础样式）
   try {
     applyFeatures(currentConfig);
   } catch (err) {
@@ -248,6 +259,7 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
+      checkAndTriggerBootAnimation();
       try { applyFeatures(currentConfig); } catch (e) {}
     }, { once: true });
     window.addEventListener('load', () => {
@@ -255,7 +267,7 @@
     }, { once: true });
   }
 
-  // 4. 挂载外观页面设置菜单
+  // 5. 挂载外观页面设置菜单
   try {
     if (typeof window.__agyInitAppearanceMenu === 'function') {
       menuHandle = window.__agyInitAppearanceMenu(
@@ -268,13 +280,6 @@
     }
   } catch (err) {
     console.warn('[Antigravity Skin] Error in __agyInitAppearanceMenu:', err);
-  }
-
-  // 5. 开机引导动画（如果开启且未在本 Session 播放过）
-  // 极速零延迟冷启动：第一时间即刻全屏呈现 550C 终端，绝不干等 window.load，消除死黑假死感！
-  checkAndTriggerBootAnimation();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkAndTriggerBootAnimation, { once: true });
   }
 
   console.log('[Antigravity Skin] Custom skin running smoothly.');
