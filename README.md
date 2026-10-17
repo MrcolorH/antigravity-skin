@@ -194,7 +194,15 @@ antigravity-skin/
 
 ---
 
+## 🤝 交流反馈与参与共建 (Feedback & Contributing)
+
+非常欢迎大家体验使用并提供宝贵的意见与灵感！
+- **遇到问题或有优化建议**：欢迎前往 [Issues](https://github.com/MrcolorH/antigravity-skin/issues) 提交反馈，我们会持续快速跟进与迭代优化；
+- **参与开发与特性贡献**：热烈欢迎大家多多提交 [Pull Requests (PR)](https://github.com/MrcolorH/antigravity-skin/pulls)！无论是动效素材扩展、毛玻璃细节打磨、隔离汉化词条补充还是性能优化，期待与大家一同共建更好看、更好用的 Antigravity！
+
+---
+
 ## 📄 开源许可证
 
 本项目基于 [MIT License](LICENSE) 开源发布。
-欢迎提交 Issue 和 Pull Request 共建更好看的 Antigravity！
+
