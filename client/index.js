@@ -13,7 +13,7 @@
         customCodePath: '',
         videoPath: ''
       },
-      themeStyles: true,
+      themeStyles: false,
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {
@@ -178,13 +178,14 @@
           if (typeof wallpaperHandle.updateStyle === 'function') {
             wallpaperHandle.updateStyle(window.__AG_SKIN_GLASS_CSS__ || '');
           }
-          // 仅当视频开启状态或视频素材路径真实发生变动时，才调用 setVideoEnabled
-          // 彻底阻断切换开机动画、切换语言等无关操作导致的背景视频重载与黑屏闪烁！
+          // 仅当视频开启状态、视频素材路径变动或视频元素未在播放时更新，杜绝无效重载同时保障开机自愈
+          const vidEl = document.getElementById('agy-dynamic-video');
+          const shouldRunVideo = isVideoOn && !!videoPath;
           const needVideoUpdate = lastWallpaperState.isVideoOn !== isVideoOn ||
                                   lastWallpaperState.videoPath !== videoPath ||
-                                  lastWallpaperState.isCustomTheme !== isCustomTheme;
+                                  lastWallpaperState.isCustomTheme !== isCustomTheme ||
+                                  (shouldRunVideo && (!vidEl || vidEl.paused || vidEl.style.opacity !== '1'));
           if (needVideoUpdate) {
-            const shouldRunVideo = isVideoOn && !!videoPath;
             if (typeof wallpaperHandle.setVideoEnabled === 'function') {
               wallpaperHandle.setVideoEnabled(shouldRunVideo, videoUrl);
             } else if (!shouldRunVideo) {
@@ -213,6 +214,11 @@
         if (oldVid) {
           try { oldVid.pause(); } catch(e) {}
           oldVid.remove();
+        }
+        const oldBackdrop = document.getElementById('agy-wallpaper-backdrop');
+        if (oldBackdrop) oldBackdrop.remove();
+        if (document.documentElement && document.documentElement.dataset) {
+          delete document.documentElement.dataset.agyHasVideo;
         }
         const oldStyle = document.getElementById('agy-dynamic-wallpaper-style');
         if (oldStyle) oldStyle.remove();

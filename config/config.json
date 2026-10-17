@@ -1,17 +1,17 @@
 {
   "enabled": true,
   "features": {
-    "bootAnimation": true,
+    "bootAnimation": false,
     "bootAnimationConfig": {
       "type": "video",
       "customCodePath": "",
-      "videoPath": "assets/videos/合成_1_3.mp4"
+      "videoPath": ""
     },
-    "themeStyles": true,
+    "themeStyles": false,
     "chineseLocalization": true,
     "dynamicWallpaper": {
-      "enabled": true,
-      "videoPath": "assets/videos/custom_wallpaper.mp4",
+      "enabled": false,
+      "videoPath": "",
       "brightness": 0.85,
       "contrast": 1.05
     },

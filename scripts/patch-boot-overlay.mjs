@@ -530,18 +530,106 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
 }
 
 /**
+ * 官方原版原生 Loading HTML 生成函数（100% 官方原汁原味）
+ */
+function getNativeLoadingHtml(foregroundColor, backgroundColor) {
+  return \`<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background: \${backgroundColor};
+    color: \${foregroundColor};
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    -webkit-app-region: drag;
+    -webkit-user-select: none;
+  }
+  .logo {
+    width: 64px;
+    height: 64px;
+    color: \${foregroundColor};
+    animation: logo-pulse 2.2s infinite ease-in-out;
+  }
+  @keyframes logo-pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.5; }
+  }
+</style>
+</head>
+<body>
+  <svg
+    class="logo"
+    viewBox="0 0 180 180"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M144.248 149.062C151.748 154.688 162.998 150.938 152.685 140.625C121.748 110.625 128.31 28.125 89.8727 28.125C51.4352 28.125 57.9977 110.625 27.0602 140.625C15.8102 151.875 27.9977 154.688 35.4977 149.062C64.5602 129.375 62.6852 94.6875 89.8727 94.6875C117.06 94.6875 115.185 129.375 144.248 149.062Z"
+      fill="currentColor"
+    />
+  </svg>
+</body>
+</html>\`;
+}
+
+/**
+ * 官方原版原生 LoadingOverlay 挂载逻辑（100% 还原官方原生，直接在 did-finish-load 移除，杜绝黑屏一闪而过）
+ */
+function attachNativeLoading(win, foregroundColor, backgroundColor) {
+  const view = new electron_1.WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  const html = getNativeLoadingHtml(foregroundColor, backgroundColor);
+  void view.webContents.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+  win.contentView.addChildView(view);
+
+  const updateBounds = () => {
+    try {
+      const [width, height] = win.getContentSize();
+      view.setBounds({ x: 0, y: 0, width, height });
+    } catch (_) {}
+  };
+  updateBounds();
+  win.on("resize", updateBounds);
+
+  win.webContents.once("did-finish-load", () => {
+    try {
+      win.contentView.removeChildView(view);
+    } catch (_) {}
+    try {
+      win.off("resize", updateBounds);
+    } catch (_) {}
+  });
+}
+
+/**
  * 挂载 Loading Overlay
  */
 function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
   try {
     const cfg = getPluginConfig();
-    if (cfg && cfg.features && cfg.features.bootAnimation === false) {
+    const isBootEnabled = !!(cfg?.features?.bootAnimation);
+
+    // 核心特性：如果开屏动画功能关闭，100% 完整复原反重力官方原生 loading！
+    if (!isBootEnabled) {
+      attachNativeLoading(win, foregroundColor, backgroundColor);
       return;
     }
 
     const isCustom = !!(cfg?.features?.bootAnimation && (cfg.features.bootAnimationConfig?.videoPath || cfg.features.bootAnimationConfig?.customCodePath || cfg.features.bootAnimationConfig?.type === 'code'));
 
-    // 关键修复 1：右上角窗口控制按钮 100% 纯透明
+    // 关键修复 1：仅在自定义开屏动效开启时，右上角窗口控制按钮保持 100% 纯透明
     if (isCustom && typeof win.setTitleBarOverlay === 'function') {
       try {
         win.setTitleBarOverlay({
@@ -552,15 +640,10 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       } catch (_) {}
     }
 
-    // 关键修复 2：主窗口底色绝对锁黑，并在底层主页面注入黑底防护，杜绝任何白底闪烁！
+    // 关键修复 2：自定义开机动效播放时窗口设为黑色舞台（绝不向主页面强塞黑底 CSS，杜绝无素材全黑）
     if (isCustom) {
       try {
         win.setBackgroundColor('#000000');
-      } catch (_) {}
-      try {
-        win.webContents.on('did-start-navigation', () => {
-          win.webContents.insertCSS("html, body { background: #000000 !important; background-color: #000000 !important; }").catch(() => {});
-        });
       } catch (_) {}
     }
 
@@ -621,6 +704,12 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
           if (h1) h1.remove();
           const h2 = document.getElementById('agy-custom-code-boot-host');
           if (h2) h2.remove();
+
+          // 核心联动：开机动画结束，立即全面激活并重新应用壁纸与主界面特性！
+          const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__;
+          if (cfg && typeof window.__agyApplyFeatures === 'function') {
+            try { window.__agyApplyFeatures(cfg); } catch (_) {}
+          }
           if (typeof window.__agyResumeBootWallpaper === 'function') {
             try { window.__agyResumeBootWallpaper(); } catch(_) {}
           }
@@ -747,18 +836,17 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
 
 fs.writeFileSync(targetOverlayFile, patchedOverlayCode, 'utf8');
 
-// B. 关键增强：对 dist/utils.js 中的 createWindow 进行纯黑物理加固，杜绝 BrowserWindow 浅色默认背景
+// B. 确保 dist/utils.js 维持原版深浅色自适应（开屏动画关闭时完整复原官方浅白/深色原生 loading 底色）
 const targetUtilsFile = path.join(tempExtractDir, 'dist', 'utils.js');
 if (fs.existsSync(targetUtilsFile)) {
   let utilsCode = fs.readFileSync(targetUtilsFile, 'utf8');
-  // 查找 backgroundColor 的定义处，将浅色回退锁定为 #000000
-  if (utilsCode.includes("const backgroundColor = isLight ? '#FAFAFA' : '#131313';")) {
+  if (utilsCode.includes("const backgroundColor = '#000000';")) {
     utilsCode = utilsCode.replace(
-      "const backgroundColor = isLight ? '#FAFAFA' : '#131313';",
-      "const backgroundColor = '#000000';"
+      "const backgroundColor = '#000000';",
+      "const backgroundColor = isLight ? '#FAFAFA' : '#131313';"
     );
     fs.writeFileSync(targetUtilsFile, utilsCode, 'utf8');
-    console.log('     ✅ 已对 utils.js createWindow 进行纯黑物理锁死 (原生 BrowserWindow 100% 黑底防闪)。');
+    console.log('     ✅ 已恢复 utils.js createWindow 原版深浅色自适应底色。');
   }
 }
 
@@ -778,7 +866,7 @@ try {
     console.log('');
     console.log('📌 本次真·零闪白终极升级：');
     console.log('  1. 【硬件合成图层锁死】：video 与舞台预先启用 3D 硬件图层 (translateZ)，绝不发生 DirectComposition 销毁闪白！');
-    console.log('  2. 【原生 BrowserWindow 物理锁黑】：修改 utils.js 原生窗口底色从诞生第一纳秒即锁定 #000000，彻底根除 #FAFAFA 浅色闪现！');
+    console.log('  2. 【原生自适应复原】：开机动效开启时智能进入专属舞台，功能关闭时 100% 完美复原官方原生 loading 动效与自适应浅白/深色底色！');
     console.log('  3. 【事件穿透阻断】：全屏 video 设置 pointer-events: none，点击全部由黑色舞台承接，消除媒体焦点闪烁！');
     console.log('  4. 【电影级溶图衔接】：450ms 贝塞尔曲线淡出完成后后台静默卸载视图，实现平滑溶出主界面。');
 

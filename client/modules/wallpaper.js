@@ -110,9 +110,34 @@ export function initWallpaper(options = {}) {
   }
   applyFilterVars();
 
+  // 1.5 确保全局默认背景底板存在（无素材时呈现优雅纯白底/深色底，杜绝透出全黑）
+  function ensureBackdrop() {
+    let backdropEl = document.getElementById('agy-wallpaper-backdrop');
+    if (!backdropEl) {
+      backdropEl = document.createElement('div');
+      backdropEl.id = 'agy-wallpaper-backdrop';
+      const parent = document.body || document.documentElement;
+      if (parent) {
+        if (parent === document.body) {
+          parent.prepend(backdropEl);
+        } else {
+          parent.appendChild(backdropEl);
+        }
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          if (!document.getElementById('agy-wallpaper-backdrop') && document.body) {
+            document.body.prepend(backdropEl);
+          }
+        }, { once: true });
+      }
+    }
+    return backdropEl;
+  }
+
   // 2. 注入全局毛玻璃样式
   function ensureStyle() {
     applyFilterVars();
+    ensureBackdrop();
     const cssToUse = glassThemeCss || window.__AG_SKIN_GLASS_CSS__ || '';
     if (!cssToUse) return;
     let styleEl = document.getElementById('agy-dynamic-wallpaper-style');
@@ -137,6 +162,7 @@ export function initWallpaper(options = {}) {
   }
 
   // 2.5 挂载时即刻同步一次
+  ensureBackdrop();
   syncTitleBarOverlay();
 
   // 3. 动态壁纸推迟加载状态与超时安全兜底
@@ -158,29 +184,50 @@ export function initWallpaper(options = {}) {
   // 开机动画结束时与壁纸同步的平滑渐入接口
   window.__agyResumeBootWallpaper = function() {
     window.__agyBootPlaying = false;
-    const v = document.getElementById('agy-dynamic-video');
+    let v = document.getElementById('agy-dynamic-video');
+    if (!v) {
+      v = realMountVideo(true);
+    }
     if (v) {
       delete v.dataset.bootPaused;
+      v.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+      v.style.opacity = '1';
       try {
-        v.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-        v.style.opacity = '1';
-        v.play().catch(() => {});
+        const p = v.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            const resumeOnInteraction = () => {
+              v.play().catch(() => {});
+              window.removeEventListener('click', resumeOnInteraction);
+              window.removeEventListener('keydown', resumeOnInteraction);
+            };
+            window.addEventListener('click', resumeOnInteraction, { once: true });
+            window.addEventListener('keydown', resumeOnInteraction, { once: true });
+          });
+        }
       } catch(e) {}
-    } else {
-      realMountVideo(true);
     }
   };
 
   function realMountVideo(fadeIn = true) {
     if (!enableVideo || !videoUrl) {
+      if (document.documentElement && document.documentElement.dataset) {
+        document.documentElement.dataset.agyHasVideo = 'false';
+      }
       const v = document.getElementById('agy-dynamic-video');
       if (v) {
         try { v.pause(); } catch(e) {}
         v.remove();
       }
+      ensureBackdrop();
       ensureStyle();
       return null;
     }
+
+    if (document.documentElement && document.documentElement.dataset) {
+      document.documentElement.dataset.agyHasVideo = 'true';
+    }
+    ensureBackdrop();
 
     let videoEl = document.getElementById('agy-dynamic-video');
     if (!videoEl) {
@@ -196,23 +243,23 @@ export function initWallpaper(options = {}) {
       videoEl.setAttribute('loop', '');
       videoEl.setAttribute('playsinline', '');
       videoEl.setAttribute('preload', 'auto');
-      // 初始保持 opacity 0，首帧渲染就绪后立即 0.6s 平滑淡入
-      videoEl.style.opacity = '0';
+      // 默认完全就绪呈现，避免被卡在 opacity 0
+      videoEl.style.opacity = '1';
       videoEl.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-      const parent = document.body || document.documentElement;
-      if (parent) {
-        if (parent === document.body) {
-          parent.prepend(videoEl);
-        } else {
-          parent.appendChild(videoEl);
-        }
+
+      if (document.body) {
+        document.body.prepend(videoEl);
       } else {
+        const parent = document.documentElement || document.head;
+        if (parent) parent.appendChild(videoEl);
         document.addEventListener('DOMContentLoaded', () => {
-          if (!document.getElementById('agy-dynamic-video') && document.body) {
+          if (videoEl && document.body && videoEl.parentNode !== document.body) {
             document.body.prepend(videoEl);
           }
         }, { once: true });
       }
+    } else if (document.body && videoEl.parentNode !== document.body) {
+      document.body.prepend(videoEl);
     }
 
     if (videoUrl) {
@@ -225,7 +272,6 @@ export function initWallpaper(options = {}) {
         isSame = (videoEl.src === videoUrl);
       }
       if (!isSame) {
-        videoEl.style.opacity = '0';
         videoEl.src = videoUrl;
         try { videoEl.load(); } catch(e) {}
       }
@@ -241,11 +287,24 @@ export function initWallpaper(options = {}) {
 
     videoEl.addEventListener('canplay', onPlayReady);
     videoEl.addEventListener('playing', onPlayReady);
+    videoEl.addEventListener('loadeddata', onPlayReady);
+    videoEl.addEventListener('timeupdate', onPlayReady);
 
     if (videoEl.readyState >= 2 && !videoEl.paused) {
       onPlayReady();
-    } else if (videoEl.paused) {
-      videoEl.play().then(onPlayReady).catch(() => {});
+    } else {
+      const p = videoEl.play();
+      if (p && typeof p.catch === 'function') {
+        p.then(onPlayReady).catch(() => {
+          const tryPlayOnGesture = () => {
+            videoEl.play().then(onPlayReady).catch(() => {});
+            window.removeEventListener('click', tryPlayOnGesture);
+            window.removeEventListener('keydown', tryPlayOnGesture);
+          };
+          window.addEventListener('click', tryPlayOnGesture, { once: true });
+          window.addEventListener('keydown', tryPlayOnGesture, { once: true });
+        });
+      }
     }
 
     ensureStyle();
@@ -459,6 +518,11 @@ export function initWallpaper(options = {}) {
       }
       const v = document.getElementById('agy-dynamic-video');
       if (v) v.remove();
+      const backdrop = document.getElementById('agy-wallpaper-backdrop');
+      if (backdrop) backdrop.remove();
+      if (document.documentElement && document.documentElement.dataset) {
+        delete document.documentElement.dataset.agyHasVideo;
+      }
       const s = document.getElementById('agy-dynamic-wallpaper-style');
       if (s) s.remove();
       document.querySelectorAll('.user-bubble-toggle-btn, .agy-user-collapse-btn, [data-agy-collapse-btn]').forEach(b => b.remove());

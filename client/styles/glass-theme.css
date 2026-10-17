@@ -11,6 +11,20 @@
           contain: strict;
         }
 
+        #agy-wallpaper-backdrop {
+          position: fixed;
+          top: 0; left: 0;
+          width: 100vw; height: 100vh;
+          z-index: -1000000;
+          background-color: #ffffff !important;
+          pointer-events: none;
+          contain: strict;
+        }
+        .dark #agy-wallpaper-backdrop,
+        .theme-dark #agy-wallpaper-backdrop {
+          background-color: #131313 !important;
+        }
+
         /* ==========================================================================
            1. 吸顶悬浮外层容器：贴死顶部 (top: 0) 与两翼透明穿透 (Zero-Gap Sticky Top)
            ========================================================================== */
@@ -92,13 +106,25 @@
           background: none transparent !important;
         }
 
-        /* 2. 全局底板 100% 透明 */
-        html, body, #root, #app, main,
+        /* 2. 全局底板：根节点默认白底（深色模式为深底），容器透明穿透 */
+        html {
+          background-color: #ffffff !important;
+          background: #ffffff !important;
+        }
+        html.dark, html.theme-dark,
+        .dark html, .theme-dark html {
+          background-color: #131313 !important;
+          background: #131313 !important;
+        }
+
+        body, #root, #app, main,
         .bg-background, [class*="bg-background"],
         .theme-standalone {
           background-color: transparent !important;
           background: transparent !important;
         }
+
+
 
         /* 2.5 Windows 顶部窗口栏 / 标题菜单栏 (Title Menu Bar) 100% 纯透明沉浸式 */
         div.shrink-0:has(> [data-testid="title-menu-bar"]),

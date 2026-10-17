@@ -63,7 +63,7 @@ function readConfig() {
         customCodePath: '',
         videoPath: ''
       },
-      themeStyles: true,
+      themeStyles: false,
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {

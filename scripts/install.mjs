@@ -95,11 +95,18 @@ for (const file of WHITELIST_FILES) {
   }
 }
 
-// 恢复用户的个性化配置
+// 恢复用户的个性化配置，若为首次安装则由出厂默认配置初始化
+const destConfigDir = path.join(targetPluginDir, 'config');
+fs.mkdirSync(destConfigDir, { recursive: true });
+const targetUserConfigFile = path.join(destConfigDir, 'config.json');
+
 if (savedUserConfig) {
-  const destConfigDir = path.join(targetPluginDir, 'config');
-  fs.mkdirSync(destConfigDir, { recursive: true });
-  fs.writeFileSync(path.join(destConfigDir, 'config.json'), savedUserConfig, 'utf8');
+  fs.writeFileSync(targetUserConfigFile, savedUserConfig, 'utf8');
+} else if (!fs.existsSync(targetUserConfigFile)) {
+  const defaultCfg = path.join(targetPluginDir, 'config.default.json');
+  if (fs.existsSync(defaultCfg)) {
+    fs.copyFileSync(defaultCfg, targetUserConfigFile);
+  }
 }
 
 // 验证

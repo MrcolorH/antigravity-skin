@@ -7,7 +7,7 @@
       "customCodePath": "",
       "videoPath": ""
     },
-    "themeStyles": true,
+    "themeStyles": false,
     "chineseLocalization": true,
     "dynamicWallpaper": {
       "enabled": false,
