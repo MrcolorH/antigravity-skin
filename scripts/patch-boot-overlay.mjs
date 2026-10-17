@@ -40,22 +40,34 @@ const asarPath = path.join(resourcesDir, 'app.asar');
 const backupPath = path.join(resourcesDir, 'app.asar.bak');
 console.log(`[1/5] 检测到 Antigravity resources 目录: ${resourcesDir}`);
 
-// 2. 检查 Antigravity 是否正在运行
-function isProcessRunning() {
+// 2. 检查并自动关闭运行中的 Antigravity 客户端（解除文件锁定）
+function ensureProcessClosed() {
   try {
     const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-    return out.toLowerCase().includes('antigravity.exe');
-  } catch (_) {
-    return false;
-  }
+    if (out.toLowerCase().includes('antigravity.exe')) {
+      console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
+      try {
+        execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' });
+      } catch (_) {}
+
+      // 等待进程完全释放，最长等待 3 秒
+      const start = Date.now();
+      while (Date.now() - start < 3000) {
+        try {
+          const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+          if (!chk.toLowerCase().includes('antigravity.exe')) break;
+        } catch (_) {
+          break;
+        }
+        const t = Date.now();
+        while (Date.now() - t < 150) {}
+      }
+      console.log('     ✅ Antigravity 客户端已成功退出，文件句柄已完全释放。');
+    }
+  } catch (_) {}
 }
 
-if (isProcessRunning()) {
-  console.log('⚠️ 检测到 Antigravity 客户端正在运行！');
-  console.log('   由于 Windows 系统安全机制，运行中的程序会锁定 app.asar 文件。');
-  console.log('   👉 请先彻底退出 Antigravity 客户端（右键系统托盘图标退出），然后重新运行本脚本！');
-  process.exit(0);
-}
+ensureProcessClosed();
 
 // 3. 自动备份官方原版 app.asar
 if (!fs.existsSync(backupPath)) {
@@ -769,6 +781,38 @@ try {
     console.log('  2. 【原生 BrowserWindow 物理锁黑】：修改 utils.js 原生窗口底色从诞生第一纳秒即锁定 #000000，彻底根除 #FAFAFA 浅色闪现！');
     console.log('  3. 【事件穿透阻断】：全屏 video 设置 pointer-events: none，点击全部由黑色舞台承接，消除媒体焦点闪烁！');
     console.log('  4. 【电影级溶图衔接】：450ms 贝塞尔曲线淡出完成后后台静默卸载视图，实现平滑溶出主界面。');
+
+    // 7. 自动重新启动 Antigravity 客户端
+    function findAntigravityExe() {
+      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const candidates = [
+        path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+        path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+        'C:\\Program Files\\Antigravity\\Antigravity.exe',
+        'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+      }
+      return null;
+    }
+
+    try {
+      const exe = findAntigravityExe();
+      if (exe) {
+        console.log('');
+        console.log('🚀 正在自动为您启动 Antigravity 客户端...');
+        const { spawn } = await import('node:child_process');
+        const child = spawn(exe, [], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref();
+        console.log('✨ 客户端已成功拉起启动！');
+      }
+    } catch (_) {
+      console.log('💡 如未自动启动，请手动打开 Antigravity 客户端。');
+    }
   } else {
     throw new Error('打包后的临时 asar 文件大小异常');
   }

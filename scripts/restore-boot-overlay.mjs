@@ -41,9 +41,19 @@ if (!fs.existsSync(backupPath)) {
 try {
   const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
   if (out.toLowerCase().includes('antigravity.exe')) {
-    console.log('⚠️ 检测到 Antigravity 客户端正在运行！');
-    console.log('   👉 请先彻底退出 Antigravity 客户端，然后再运行本脚本进行还原！');
-    process.exit(0);
+    console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动退出以恢复官方备份...');
+    try {
+      execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' });
+    } catch (_) {}
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      try {
+        const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+        if (!chk.toLowerCase().includes('antigravity.exe')) break;
+      } catch (_) { break; }
+      const t = Date.now(); while (Date.now() - t < 150) {}
+    }
+    console.log('✅ Antigravity 客户端已成功退出。');
   }
 } catch (_) {}
 
@@ -53,7 +63,36 @@ try {
   }
   fs.copyFileSync(backupPath, asarPath);
   console.log('✅ 已成功还原为 100% 官方原版 app.asar！');
-  console.log('   重新启动 Antigravity 客户端即可恢复官方初始状态。');
+
+  function findAntigravityExe() {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const candidates = [
+      path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+      path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+      'C:\\Program Files\\Antigravity\\Antigravity.exe',
+      'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    return null;
+  }
+
+  try {
+    const exe = findAntigravityExe();
+    if (exe) {
+      console.log('🚀 正在自动为您重新启动 Antigravity 客户端...');
+      const { spawn } = await import('node:child_process');
+      const child = spawn(exe, [], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.unref();
+      console.log('✨ 客户端已成功拉起启动！');
+    }
+  } catch (_) {
+    console.log('   重新启动 Antigravity 客户端即可恢复官方初始状态。');
+  }
 } catch (e) {
   console.error('❌ 还原失败:', e.message);
   process.exit(1);

@@ -82,6 +82,16 @@ if (!rpcOk && fs.existsSync(configFile)) {
   } catch (e) {}
 }
 
+// 3. 若处于 Windows 且存在开机补丁备份，自动恢复官方原版 app.asar
+if (process.platform === 'win32') {
+  const restoreScript = path.join(PROJECT_ROOT, 'scripts', 'restore-boot-overlay.mjs');
+  if (fs.existsSync(restoreScript)) {
+    try {
+      execSync(`node "${restoreScript}"`, { stdio: 'inherit' });
+    } catch (_) {}
+  }
+}
+
 console.log('==================================================');
 console.log(' [√] 卸载成功！已安全还原为官方初始状态。');
 console.log('==================================================');

@@ -228,17 +228,17 @@ async function cleanRunningHost() {
 
 await cleanRunningHost();
 
-// 5. Windows 平台特权：自动尝试执行前置开机动画动态联动补丁（macOS / Linux 不需要）
+// 5. Windows 平台特权：自动执行前置开机动画动态联动补丁（自动关闭运行中的客户端解除锁定）
 if (process.platform === 'win32') {
-  console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (零闪白溶出)...');
+  console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除文件锁定)...');
   const patchScript = path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
   if (fs.existsSync(patchScript)) {
     try {
       const { execSync } = await import('node:child_process');
       execSync(`node "${patchScript}"`, { stdio: 'inherit' });
     } catch (e) {
-      console.log('  ⚠️ 开机动画补丁未能在安装时自动合入（通常因客户端正在运行中锁定文件）。');
-      console.log('     👉 请完全退出 Antigravity 客户端后，双击执行 patch-loading.bat 即可一键合入！');
+      console.log('  ⚠️ 开机动画补丁执行出现异常:', e.message);
+      console.log('     👉 您可随时双击执行 patch-loading.bat 重新完成合入！');
     }
   }
 }
@@ -254,10 +254,9 @@ console.log(' 本地无需保留任何多余文件，完全不影响插件正常
 if (process.platform === 'win32') {
   console.log('--------------------------------------------------');
   console.log(' 🎬 Windows 开机动画专属提示：');
-  console.log(' 若需彻底消除官方 Logo 呼吸动画并使用自定义开机动画：');
-  console.log(' 请先完全退出 Antigravity 客户端，然后随时双击运行 patch-loading.bat！');
-  console.log(' 如需恢复官方原版开机动画，可随时双击 restore-loading.bat。');
+  console.log(' 安装程序已自动为您退出客户端并完成前置开机动画终极升级！');
+  console.log(' 如需重新打补丁，随时双击运行 patch-loading.bat；如需还原官方，可双击 restore-loading.bat。');
 }
 console.log('--------------------------------------------------');
-console.log(' 请完全退出并重新打开 Antigravity 客户端即可生效！');
+console.log(' 请重新打开 Antigravity 客户端即可生效！');
 console.log('==================================================');

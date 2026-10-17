@@ -120,10 +120,10 @@
 
 ### 🎬 Windows 专属开机动画配置提示（重要标注）
 
-- **自动配置**：一键安装脚本（`install.bat` / `install.ps1`）在 Windows 下会**自动尝试合入前置开机动画防闪白溶出引擎**。
-- **手动补丁 `patch-loading.bat`**：若执行安装时 Antigravity 客户端正在运行（程序锁定核心文件），请在**彻底退出客户端后，随时双击运行根目录下的 `patch-loading.bat`**，即可一键完成升级，彻底消除官方 Logo 呼吸等待！
+- **全自动退出、静默合入与自动重启**：一键安装脚本（`install.bat` / `install.ps1`）与 `patch-loading.bat` 会**自动检测并关闭运行中的 Antigravity 客户端**以解除文件锁定，在补丁合入完成后**自动重新为您启动 Antigravity 客户端**，全程 100% 全自动化闭环，无需任何手动操作！
+- **独立补丁 `patch-loading.bat`**：后续如果您更新了客户端版本，或者希望重新合入前置开机动画，随时双击运行根目录下的 `patch-loading.bat` 即可全自动完成升级并秒启客户端！
 - **macOS / Linux 用户**：**完全不需要执行此 bat 脚本**（macOS 平台原生即享流畅开屏体验）。
-- **一键安全还原 `restore-loading.bat`**：脚本在首次运行时会自动创建官方原版安全备份 `app.asar.bak`。若未来任何时候想恢复官方默认 Logo 呼吸动画，随时双击运行 `restore-loading.bat` 即可 1 秒原样恢复原厂状态。
+- **一键安全还原 `restore-loading.bat`**：脚本在首次运行时会自动创建官方原版安全备份 `app.asar.bak`。若未来任何时候想恢复官方默认 Logo 呼吸动画，随时双击运行 `restore-loading.bat` 即可一秒原样恢复原厂状态并自动重新启动客户端。
 
 ---
 

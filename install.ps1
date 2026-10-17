@@ -105,16 +105,15 @@ try {
     $updatedJson = $configObj | ConvertTo-Json -Depth 10
     Set-Content -Path $configFile -Value $updatedJson -Encoding UTF8
 
-    # 4. Windows 开机动画引擎自动配置（若 Node.js 可用）
+    # 4. Windows 开机动画引擎自动配置（自动退出运行中的客户端解除锁定）
     $patchScript = Join-Path $targetDir "scripts\patch-boot-overlay.mjs"
     if (Test-Path $patchScript) {
         if (Get-Command node -ErrorAction SilentlyContinue) {
             try {
-                Write-Host "[4/4] 正在配置 Windows 客户端前置开机动画引擎 (零闪白溶出)..." -ForegroundColor Green
+                Write-Host "[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除锁定)..." -ForegroundColor Green
                 node $patchScript
             } catch {
-                Write-Host "  ⚠️ 开机动画补丁未能在安装时自动合入（通常因客户端正在运行中）。" -ForegroundColor Yellow
-                Write-Host "     👉 请完全退出 Antigravity 客户端后，双击执行 patch-loading.bat 即可一键完成升级！" -ForegroundColor Yellow
+                Write-Host "  ⚠️ 开机动画补丁执行出现异常，可随时双击 patch-loading.bat 重新合入。" -ForegroundColor Yellow
             }
         }
     }
@@ -129,11 +128,10 @@ try {
     Write-Host " 本地无需保留任何多余文件，完全不影响插件正常运行。" -ForegroundColor Yellow
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
     Write-Host " 🎬 Windows 开机动画专属提示：" -ForegroundColor Magenta
-    Write-Host " 若需彻底消除官方 Logo 呼吸动画并使用自定义开机动画：" -ForegroundColor Magenta
-    Write-Host " 请先完全退出 Antigravity 客户端，然后随时双击运行 patch-loading.bat！" -ForegroundColor Magenta
-    Write-Host " 如需恢复官方原版开机动画，可随时双击 restore-loading.bat。" -ForegroundColor DarkGray
+    Write-Host " 安装程序已自动为您关闭客户端并完成前置开机动画终极升级！" -ForegroundColor Magenta
+    Write-Host " 如需重新打补丁，随时双击运行 patch-loading.bat；如需还原官方，可双击 restore-loading.bat。" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host " 请完全退出并重新打开 Antigravity 客户端即可生效！" -ForegroundColor Cyan
+    Write-Host " 请重新打开 Antigravity 客户端即可生效！" -ForegroundColor Cyan
     Write-Host "==================================================" -ForegroundColor Cyan
 } finally {
     if ($tempCleanup) {
