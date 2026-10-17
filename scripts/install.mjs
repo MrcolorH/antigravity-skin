@@ -178,7 +178,9 @@ async function cleanRunningHost() {
     });
 
     for (const target of listRes) {
-      if ((target.type === 'page' || !target.type) && target.webSocketDebuggerUrl) {
+      const url = target.url || '';
+      if ((target.type === 'page' || !target.type) && target.webSocketDebuggerUrl &&
+          !url.startsWith('data:') && !url.startsWith('plugin://') && !url.startsWith('devtools://')) {
         if (typeof WebSocket !== 'undefined') {
           const ws = new WebSocket(target.webSocketDebuggerUrl);
           ws.onopen = () => {

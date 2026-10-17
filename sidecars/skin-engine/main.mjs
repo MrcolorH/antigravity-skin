@@ -884,6 +884,32 @@ function createCdpSession(target) {
   return session;
 }
 
+// 6.5 精准主窗口 Target 判定（坚决剔除临时原生遮罩、嵌入插件 iframe、DevTools 等死靶）
+function isMainAppTarget(target) {
+  if (!target || !target.webSocketDebuggerUrl) return false;
+  if (target.type && target.type !== 'page') return false;
+  const url = (target.url || '').trim();
+  // 必须排除原生临时 loadingOverlay、嵌入式 iframe、DevTools、扩展及空白页
+  if (!url ||
+      url.startsWith('data:') ||
+      url.startsWith('plugin://') ||
+      url.startsWith('devtools://') ||
+      url.startsWith('chrome-extension://') ||
+      url.startsWith('about:') ||
+      url.includes('provisionSplash')) {
+    return false;
+  }
+  // 必须为主应用实际工作区 URL (HTTP/HTTPS 或 vscode-file)
+  if (url.startsWith('http://127.0.0.1') ||
+      url.startsWith('https://127.0.0.1') ||
+      url.startsWith('http://localhost') ||
+      url.startsWith('https://localhost') ||
+      url.startsWith('vscode-file://')) {
+    return true;
+  }
+  return false;
+}
+
 async function pollAndInject() {
   const portFile = getDevToolsPortPath();
   if (!fs.existsSync(portFile)) return;
@@ -906,7 +932,8 @@ async function pollAndInject() {
     const currentTargetIds = new Set();
 
     for (const target of targets) {
-      if ((target.type === 'page' || !target.type) && target.webSocketDebuggerUrl) {
+      // 核心拦截：精准识别主窗口，彻底避免打到临时 loadingOverlay 导致状态竞态
+      if (isMainAppTarget(target)) {
         currentTargetIds.add(target.id);
 
         let session = activeSessions.get(target.id);
@@ -943,12 +970,13 @@ async function pollLoop() {
   try {
     await pollAndInject();
   } catch (_) {}
-  // 启动前 15 秒内使用 150ms 高速轮询，极速捕获冷启动 DevToolsActivePort 和窗口页面；之后转为 2000ms 定期保活
+  // 启动前 15 秒内高速轮询，极速捕获冷启动 DevToolsActivePort 和窗口页面；之后转为 2000ms 定期保活
   const elapsed = Date.now() - daemonStartTime;
   if (elapsed > 15000 && activeSessions.size > 0) {
     isFastPolling = false;
   }
-  const nextDelay = isFastPolling ? 150 : 2000;
+  // 未连接到主会话前采用 80ms 极速探测，连接后提升至 200ms，稳定 15 秒后转为 2000ms 定期保活
+  const nextDelay = isFastPolling ? (activeSessions.size === 0 ? 80 : 200) : 2000;
   setTimeout(pollLoop, nextDelay);
 }
 pollLoop();

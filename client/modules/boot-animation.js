@@ -10,11 +10,33 @@
   if (typeof window === 'undefined') return;
   window.__antigravityBootInstalled = true;
 
-  // 极速冷启动优先级保障：若配置开启开机动画且本会话未播放过，第 0 毫秒置位全局播放标志
+  // 极速冷启动优先级保障：若配置开启开机动画且本会话未播放过，第 0 毫秒置位全局播放标志（带超时与就绪熔断）
   try {
     const _earlyCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     if (_earlyCfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
-      window.__agyBootPlaying = true;
+      const _nav = (typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function')
+        ? performance.getEntriesByType('navigation')[0]
+        : null;
+      const _perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : 9999;
+      const _hasWorkbench = !!(
+        document.querySelector('.relative.w-screen') ||
+        document.querySelector('.bg-background') ||
+        document.querySelector('.monaco-workbench') ||
+        document.querySelector('[data-conversation-id]') ||
+        document.querySelector('main') ||
+        (document.body && document.body.children.length >= 3)
+      );
+      const _shouldAbort = (document.readyState === 'complete' && _hasWorkbench) ||
+                           (_nav && _nav.loadEventEnd > 0 && _perfNow > 280) ||
+                           (_perfNow > 380);
+      if (!_shouldAbort) {
+        window.__agyBootPlaying = true;
+      } else {
+        sessionStorage.setItem('__agy_booted__', 'true');
+        window.__agyBootPlaying = false;
+      }
     }
   } catch (e) {}
 

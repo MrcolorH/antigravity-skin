@@ -59,8 +59,54 @@
     saveConfig: saveConfigRemote
   };
 
+  // 核心时序防护：超时与就绪双重放弃判定（进来了就坚决不要退出去）
+  function shouldAbandonBootAnimation(activeCfg) {
+    if (sessionStorage.getItem('__agy_booted__')) return true;
+    if (!activeCfg.features?.bootAnimation) return true;
+
+    try {
+      const nav = (typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function')
+        ? performance.getEntriesByType('navigation')[0]
+        : null;
+      const isPageComplete = document.readyState === 'complete';
+      const hasLoaded = nav ? (nav.loadEventEnd > 0) : false;
+      const perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : 9999;
+
+      // 核心 UI 挂载嗅探：主界面核心容器、Monaco 编辑器、聊天面板、Tailwind 主框架等
+      const hasWorkbenchRendered = !!(
+        document.querySelector('.relative.w-screen') ||
+        document.querySelector('.bg-background') ||
+        document.querySelector('.monaco-workbench') ||
+        document.querySelector('[data-conversation-id]') ||
+        document.querySelector('main') ||
+        (document.body && document.body.children.length >= 3)
+      );
+
+      // 核心熔断准则（进来了就不要出去了）：
+      // 1. 页面已 Complete 且主页面核心视图已渲染上屏
+      // 2. 或 loadEventEnd 已结束且已过 280ms
+      // 3. 或自导航以来耗时已超 380ms 视觉感知阈值
+      if ((isPageComplete && hasWorkbenchRendered) || (hasLoaded && perfNow > 280) || perfNow > 380) {
+        console.log(`[Antigravity Skin] 主页面已渲染上屏 (perfNow: ${Math.round(perfNow)}ms, complete: ${isPageComplete})，触发超时就绪熔断，静默跳过开机动画并平滑融入主界面`);
+        sessionStorage.setItem('__agy_booted__', 'true');
+        window.__agyBootPlaying = false;
+        if (typeof window.__agyResumeBootWallpaper === 'function') {
+          try { window.__agyResumeBootWallpaper(); } catch (e) {}
+        }
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
   function checkAndTriggerBootAnimation() {
     const activeCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || currentConfig || window.__AG_SKIN_CONFIG__ || {};
+    if (shouldAbandonBootAnimation(activeCfg)) {
+      return;
+    }
     if (activeCfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
       sessionStorage.setItem('__agy_booted__', 'true');
       window.__agyBootPlaying = true;
