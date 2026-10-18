@@ -434,9 +434,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const hasBootVal = !!(bootCfg.videoPath && bootCfg.videoPath.trim());
 
     function triggerSave() {
-      saveConfig(config);
+      const activeCfg = getConfig() || config;
+      saveConfig(activeCfg);
       if (typeof onConfigChange === 'function') {
-        onConfigChange(config);
+        try { onConfigChange(activeCfg); } catch (e) {}
+      }
+      if (typeof window.__agyApplyFeatures === 'function') {
+        try { window.__agyApplyFeatures(activeCfg); } catch (e) {}
       }
     }
 
@@ -781,6 +785,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           const td = isEnabled ? 'block' : 'none';
           if (customOptions.style.display !== td) customOptions.style.display = td;
         }
+        const activeCfg = getConfig() || config;
+        if (!activeCfg.features) activeCfg.features = {};
+        activeCfg.features.themeStyles = isEnabled;
         config.features.themeStyles = isEnabled;
         triggerSave();
       };
@@ -1196,9 +1203,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const isEnabled = optWallpaper.checked;
         if (wrapVideoPath) wrapVideoPath.style.display = isEnabled ? 'flex' : 'none';
         if (wrapSliders) wrapSliders.style.display = isEnabled ? 'grid' : 'none';
-        if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+        const activeCfg = getConfig() || config;
+        if (!activeCfg.features) activeCfg.features = {};
+        if (!activeCfg.features.dynamicWallpaper) activeCfg.features.dynamicWallpaper = {};
+        activeCfg.features.dynamicWallpaper.enabled = isEnabled;
         config.features.dynamicWallpaper.enabled = isEnabled;
-        if (isEnabled && !config.features.dynamicWallpaper.videoPath && selectBuiltinWallpaper && selectBuiltinWallpaper.value) {
+        if (isEnabled && !activeCfg.features.dynamicWallpaper.videoPath && selectBuiltinWallpaper && selectBuiltinWallpaper.value) {
+          activeCfg.features.dynamicWallpaper.videoPath = selectBuiltinWallpaper.value;
           config.features.dynamicWallpaper.videoPath = selectBuiltinWallpaper.value;
         }
         triggerSave();
@@ -1598,14 +1609,20 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         syncSwitchUI(optBoot);
         const isEnabled = optBoot.checked;
         if (wrapBootConfig) wrapBootConfig.style.display = isEnabled ? 'flex' : 'none';
+        const activeCfg = getConfig() || config;
+        if (!activeCfg.features) activeCfg.features = {};
+        activeCfg.features.bootAnimation = isEnabled;
         config.features.bootAnimation = isEnabled;
         if (isEnabled) {
+          if (!activeCfg.features.bootAnimationConfig) activeCfg.features.bootAnimationConfig = {};
           if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
-          if (!config.features.bootAnimationConfig.type) {
+          if (!activeCfg.features.bootAnimationConfig.type) {
+            activeCfg.features.bootAnimationConfig.type = 'video';
             config.features.bootAnimationConfig.type = 'video';
             syncBootTypeUI('video');
           }
-          if (config.features.bootAnimationConfig.type === 'video' && !config.features.bootAnimationConfig.videoPath && selectBootVideo && selectBootVideo.value) {
+          if (activeCfg.features.bootAnimationConfig.type === 'video' && !activeCfg.features.bootAnimationConfig.videoPath && selectBootVideo && selectBootVideo.value) {
+            activeCfg.features.bootAnimationConfig.videoPath = selectBootVideo.value;
             config.features.bootAnimationConfig.videoPath = selectBootVideo.value;
           }
         }

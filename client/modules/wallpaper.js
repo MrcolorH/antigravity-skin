@@ -93,6 +93,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function initWallpaper(options = {}) {
+  let isDestroyed = false;
   let {
     videoUrl = 'http://127.0.0.1:59288/wallpaper.mp4',
     brightness = 0.85,
@@ -103,6 +104,7 @@ export function initWallpaper(options = {}) {
 
   // 1. 设置滤镜变量（安全容错防早期 null）
   function applyFilterVars() {
+    if (isDestroyed) return;
     if (document.documentElement && document.documentElement.style) {
       document.documentElement.style.setProperty('--agy-bg-brightness', String(brightness));
       document.documentElement.style.setProperty('--agy-bg-contrast', String(contrast));
@@ -112,6 +114,7 @@ export function initWallpaper(options = {}) {
 
   // 1.5 确保全局默认背景底板存在（无素材时呈现优雅纯白底/深色底，杜绝透出全黑）
   function ensureBackdrop() {
+    if (isDestroyed) return null;
     let backdropEl = document.getElementById('agy-wallpaper-backdrop');
     if (!backdropEl) {
       backdropEl = document.createElement('div');
@@ -125,7 +128,7 @@ export function initWallpaper(options = {}) {
         }
       } else {
         document.addEventListener('DOMContentLoaded', () => {
-          if (!document.getElementById('agy-wallpaper-backdrop') && document.body) {
+          if (!isDestroyed && !document.getElementById('agy-wallpaper-backdrop') && document.body) {
             document.body.prepend(backdropEl);
           }
         }, { once: true });
@@ -136,6 +139,7 @@ export function initWallpaper(options = {}) {
 
   // 2. 注入全局毛玻璃样式
   function ensureStyle() {
+    if (isDestroyed) return;
     applyFilterVars();
     ensureBackdrop();
     const cssToUse = glassThemeCss || window.__AG_SKIN_GLASS_CSS__ || '';
@@ -210,6 +214,7 @@ export function initWallpaper(options = {}) {
   };
 
   function realMountVideo(fadeIn = true) {
+    if (isDestroyed) return null;
     if (!enableVideo || !videoUrl) {
       if (document.documentElement && document.documentElement.dataset) {
         document.documentElement.dataset.agyHasVideo = 'false';
@@ -219,8 +224,11 @@ export function initWallpaper(options = {}) {
         try { v.pause(); } catch(e) {}
         v.remove();
       }
-      ensureBackdrop();
-      ensureStyle();
+      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+      if (cfg.features?.themeStyles !== false && !isDestroyed) {
+        ensureBackdrop();
+        ensureStyle();
+      }
       return null;
     }
 
@@ -313,6 +321,7 @@ export function initWallpaper(options = {}) {
 
   // 挂载/卸载动态视频元素
   function mountVideo() {
+    if (isDestroyed) return null;
     syncTitleBarOverlay();
     return realMountVideo(true);
   }
@@ -463,9 +472,15 @@ export function initWallpaper(options = {}) {
 
   let observerDebounceTimer = null;
   const unifiedObserver = new MutationObserver((mutations) => {
+    if (isDestroyed) return;
     if (observerDebounceTimer) return;
     observerDebounceTimer = setTimeout(() => {
       observerDebounceTimer = null;
+      if (isDestroyed) return;
+
+      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+      if (cfg.features?.themeStyles === false) return;
+
       // 若处于开屏动画播放期间，严禁补挂动态壁纸
       if (shouldDeferWallpaperForBoot()) {
         scheduleEnhanceUserBubbles();
@@ -497,12 +512,14 @@ export function initWallpaper(options = {}) {
 
   return {
     updateFilters: (b, c) => {
+      if (isDestroyed) return;
       if (document.documentElement && document.documentElement.style) {
         document.documentElement.style.setProperty('--agy-bg-brightness', String(b));
         document.documentElement.style.setProperty('--agy-bg-contrast', String(c));
       }
     },
     updateVideoUrl: (newUrl) => {
+      if (isDestroyed) return;
       videoUrl = newUrl;
       const v = document.getElementById('agy-dynamic-video');
       if (v && newUrl) {
@@ -512,6 +529,7 @@ export function initWallpaper(options = {}) {
       }
     },
     setVideoEnabled: (enabled, newUrl) => {
+      if (isDestroyed) return;
       enableVideo = !!enabled;
       if (newUrl !== undefined) videoUrl = newUrl;
       if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
@@ -520,6 +538,7 @@ export function initWallpaper(options = {}) {
       mountVideo();
     },
     updateStyle: (newCss) => {
+      if (isDestroyed) return;
       glassThemeCss = newCss;
       let s = document.getElementById('agy-dynamic-wallpaper-style');
       if (!s) {
@@ -531,11 +550,19 @@ export function initWallpaper(options = {}) {
       if (s) s.textContent = newCss;
     },
     destroy: () => {
+      isDestroyed = true;
       if (bootFallbackTimer) {
         clearTimeout(bootFallbackTimer);
         bootFallbackTimer = null;
       }
+      if (observerDebounceTimer) {
+        clearTimeout(observerDebounceTimer);
+        observerDebounceTimer = null;
+      }
       isWallpaperDeferred = false;
+      if (unifiedObserver) {
+        try { unifiedObserver.disconnect(); } catch(e) {}
+      }
       if (window.__agyWallpaperObserver) {
         try { window.__agyWallpaperObserver.disconnect(); } catch(e) {}
         window.__agyWallpaperObserver = null;
@@ -544,8 +571,12 @@ export function initWallpaper(options = {}) {
         try { window.__agyBubbleObserver.disconnect(); } catch(e) {}
         window.__agyBubbleObserver = null;
       }
+      enableVideo = false;
       const v = document.getElementById('agy-dynamic-video');
-      if (v) v.remove();
+      if (v) {
+        try { v.pause(); } catch(e) {}
+        v.remove();
+      }
       const backdrop = document.getElementById('agy-wallpaper-backdrop');
       if (backdrop) backdrop.remove();
       if (document.documentElement && document.documentElement.dataset) {
@@ -553,6 +584,9 @@ export function initWallpaper(options = {}) {
       }
       const s = document.getElementById('agy-dynamic-wallpaper-style');
       if (s) s.remove();
+      const testStyle = document.getElementById('test-popover-glass-style');
+      if (testStyle) testStyle.remove();
+
       document.querySelectorAll('.user-bubble-toggle-btn, .agy-user-collapse-btn, [data-agy-collapse-btn]').forEach(b => b.remove());
       document.querySelectorAll('[data-user-collapsed], [data-user-collapsible], [data-agy-enhanced], [data-agy-collapsed]').forEach(el => {
         el.removeAttribute('data-user-collapsed');
@@ -562,6 +596,7 @@ export function initWallpaper(options = {}) {
         el.style.maxHeight = '';
         el.style.overflow = '';
       });
+      syncTitleBarOverlay(true);
     }
   };
 }
