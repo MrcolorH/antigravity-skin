@@ -230,6 +230,62 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: 获取操作系统与运行平台信息
+  if (url.pathname === '/api/system-info' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      platform: process.platform,
+      isWindows: process.platform === 'win32',
+      isMac: process.platform === 'darwin',
+      isLinux: process.platform === 'linux'
+    }));
+    return;
+  }
+
+  // API: Windows 平台专属 - 一键重新合入开机动效补丁
+  if (url.pathname === '/api/patch-boot' && req.method === 'POST') {
+    if (process.platform !== 'win32') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: '开机动效引擎补丁仅适用于 Windows 平台，macOS 无需合入。' }));
+      return;
+    }
+
+    const batPath = path.join(PLUGIN_ROOT, 'patch-loading.bat');
+    if (!fs.existsSync(batPath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: `未在插件安装目录下找到修复脚本: ${batPath}` }));
+      return;
+    }
+
+    // 立即响应前端，确保 HTTP 报文顺利送达，避免因客户端退出引发网络中断报错
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, message: '已成功启动开机动效修复引擎，客户端即将退出并自动重启。' }));
+
+    // 延时 500ms 后脱离当前进程树，拉起独立的 cmd 控制台执行 patch-loading.bat
+    setTimeout(() => {
+      try {
+        const cleanEnv = { ...process.env };
+        delete cleanEnv.ELECTRON_RUN_AS_NODE;
+        delete cleanEnv.ELECTRON_NO_ASAR;
+        delete cleanEnv.NODE_OPTIONS;
+        delete cleanEnv.NODE_ENV;
+        delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+
+        const child = spawn('cmd.exe', ['/c', 'start', '""', batPath], {
+          cwd: PLUGIN_ROOT,
+          detached: true,
+          stdio: 'ignore',
+          env: cleanEnv
+        });
+        child.unref();
+      } catch (err) {
+        console.error('[Skin Engine] Failed to spawn patch process:', err);
+      }
+    }, 500);
+    return;
+  }
+
   // API: 获取内置壁纸视频列表
   if (url.pathname === '/api/wallpaper/list' && req.method === 'GET') {
     try {

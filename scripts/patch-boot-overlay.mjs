@@ -40,22 +40,35 @@ const asarPath = path.join(resourcesDir, 'app.asar');
 const backupPath = path.join(resourcesDir, 'app.asar.bak');
 console.log(`[1/5] 检测到 Antigravity resources 目录: ${resourcesDir}`);
 
+let detectedExePath = null;
+
 // 2. 检查并自动关闭运行中的 Antigravity 客户端（解除文件锁定）
 function ensureProcessClosed() {
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-    if (out.toLowerCase().includes('antigravity.exe')) {
+    const pPath = execSync('powershell.exe -NoProfile -NonInteractive -Command "(Get-Process -Name Antigravity, \'Antigravity IDE\' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)"', { encoding: 'utf8' }).trim();
+    if (pPath && fs.existsSync(pPath)) {
+      detectedExePath = pPath;
+    }
+  } catch (_) {}
+
+  try {
+    const out = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+    const isRunning = out.includes('antigravity.exe') || out.includes('antigravity ide.exe');
+    if (isRunning) {
       console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
       try {
         execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' });
+      } catch (_) {}
+      try {
+        execSync('taskkill /F /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' });
       } catch (_) {}
 
       // 等待进程完全释放，最长等待 3 秒
       const start = Date.now();
       while (Date.now() - start < 3000) {
         try {
-          const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-          if (!chk.toLowerCase().includes('antigravity.exe')) break;
+          const chk = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+          if (!chk.includes('antigravity.exe') && !chk.includes('antigravity ide.exe')) break;
         } catch (_) {
           break;
         }
@@ -83,7 +96,7 @@ const tempExtractDir = path.join(os.tmpdir(), `agy-patch-${Date.now()}`);
 console.log(`[3/5] 正在安全解包 app.asar 到临时沙箱...`);
 
 try {
-  execSync(`npx --yes asar extract "${asarPath}" "${tempExtractDir}"`, { stdio: 'inherit' });
+  execSync(`npx --yes @electron/asar extract "${asarPath}" "${tempExtractDir}"`, { stdio: 'inherit' });
 } catch (e) {
   console.error('❌ 解包失败，错误信息:', e.message);
   process.exit(1);
@@ -855,7 +868,7 @@ console.log(`[5/5] 正在重新安全封装 app.asar ...`);
 const tempAsarOut = path.join(resourcesDir, 'app.asar.tmp');
 
 try {
-  execSync(`npx --yes asar pack "${tempExtractDir}" "${tempAsarOut}"`, { stdio: 'inherit' });
+  execSync(`npx --yes @electron/asar pack "${tempExtractDir}" "${tempAsarOut}"`, { stdio: 'inherit' });
   
   if (fs.existsSync(tempAsarOut) && fs.statSync(tempAsarOut).size > 100000) {
     if (fs.existsSync(asarPath)) {
@@ -872,12 +885,51 @@ try {
 
     // 7. 自动重新启动 Antigravity 客户端
     function findAntigravityExe() {
+      // 1. 优先使用关闭前检测到的运行路径
+      if (detectedExePath && fs.existsSync(detectedExePath)) {
+        return detectedExePath;
+      }
+
+      // 2. 基于 resourcesDir 上层目录推导（精准命中当前实际打补丁的客户端）
+      if (resourcesDir) {
+        const parentDir = path.resolve(resourcesDir, '..');
+        const directCandidates = [
+          path.join(parentDir, 'Antigravity.exe'),
+          path.join(parentDir, 'Antigravity IDE.exe')
+        ];
+        for (const c of directCandidates) {
+          if (fs.existsSync(c)) return c;
+        }
+      }
+
+      // 3. 检查桌面快捷方式指向的目标路径
+      try {
+        const desktop = path.join(os.homedir(), 'Desktop');
+        const lnkCandidates = [
+          path.join(desktop, 'Antigravity.lnk'),
+          path.join(desktop, 'Antigravity IDE.lnk')
+        ];
+        for (const lnk of lnkCandidates) {
+          if (fs.existsSync(lnk)) {
+            const target = execSync(`powershell.exe -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk}').TargetPath"`, { encoding: 'utf8' }).trim();
+            if (target && fs.existsSync(target)) return target;
+          }
+        }
+      } catch (_) {}
+
+      // 4. 标准候选路径
       const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+      const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+
       const candidates = [
         path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
         path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-        'C:\\Program Files\\Antigravity\\Antigravity.exe',
-        'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
+        path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
+        path.join(programFiles, 'Antigravity', 'Antigravity.exe'),
+        path.join(programFiles, 'Antigravity IDE', 'Antigravity IDE.exe'),
+        path.join(programFilesX86, 'Antigravity', 'Antigravity.exe'),
+        'D:\\soft\\Antigravity IDE\\Antigravity IDE.exe'
       ];
       for (const c of candidates) {
         if (fs.existsSync(c)) return c;
@@ -889,18 +941,86 @@ try {
       const exe = findAntigravityExe();
       if (exe) {
         console.log('');
-        console.log('🚀 正在自动为您启动 Antigravity 客户端...');
-        const { spawn } = await import('node:child_process');
-        const child = spawn(exe, [], {
-          detached: true,
-          stdio: 'ignore'
-        });
-        child.unref();
-        console.log('✨ 客户端已成功拉起启动！');
+        console.log(`🚀 正在自动为您重新启动 Antigravity 客户端 (${path.basename(exe)})...`);
+        
+        const exeDir = path.dirname(exe);
+        // 关键：彻底剔除可能导致 Electron 客户端静默退出为 Node CLI 的环境变量
+        const cleanEnv = { ...process.env };
+        delete cleanEnv.ELECTRON_RUN_AS_NODE;
+        delete cleanEnv.ELECTRON_NO_ASAR;
+        delete cleanEnv.NODE_OPTIONS;
+        delete cleanEnv.NODE_ENV;
+        delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+
+        let launched = false;
+
+        // 策略 1：使用 PowerShell Start-Process（调用 Win32 ShellExecuteEx，操作系统级独立派生，完全脱离控制台生命周期）
+        try {
+          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -WorkingDirectory '${exeDir}'"`, {
+            windowsHide: true,
+            stdio: 'ignore',
+            env: cleanEnv
+          });
+          launched = true;
+        } catch (_) {}
+
+        // 策略 2：Node.js spawn 彻底分离进程组 (detached: true) 双重加固
+        if (!launched) {
+          try {
+            const { spawn } = await import('node:child_process');
+            const child = spawn(exe, [], {
+              cwd: exeDir,
+              detached: true,
+              stdio: 'ignore',
+              env: cleanEnv
+            });
+            child.unref();
+            launched = true;
+          } catch (_) {}
+        }
+
+        // 状态验证：轮询检测客户端进程是否成功复活
+        let runningConfirmed = false;
+        const verifyStart = Date.now();
+        while (Date.now() - verifyStart < 2500) {
+          try {
+            const chk = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+            if (chk.includes('antigravity.exe') || chk.includes('antigravity ide.exe')) {
+              runningConfirmed = true;
+              break;
+            }
+          } catch (_) {}
+          const t = Date.now(); while (Date.now() - t < 150) {}
+        }
+
+        if (runningConfirmed) {
+          console.log('✨ 客户端已成功重新拉起启动并就绪！');
+        } else {
+          // 兜底再次触发一次 PowerShell 拉起
+          try {
+            execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -WorkingDirectory '${exeDir}'"`, {
+              windowsHide: true,
+              stdio: 'ignore',
+              env: cleanEnv
+            });
+            console.log('✨ 客户端拉起指令已成功发出！');
+          } catch (_) {
+            console.log('💡 启动指令已送达，若未弹出窗口请手动点击桌面图标启动。');
+          }
+        }
+      } else {
+        console.log('💡 未找到客户端主程序路径，请手动打开 Antigravity 客户端。');
       }
     } catch (_) {
       console.log('💡 如未自动启动，请手动打开 Antigravity 客户端。');
     }
+
+    console.log('');
+    console.log('==================================================');
+    console.log('🎉 恭喜！前置开机动画已成功完成动态联动升级！');
+    console.log('==================================================');
+    console.log('💡 补丁已全部就绪，本窗口将在 3 秒后自动关闭...');
+    await new Promise(r => setTimeout(r, 3000));
   } else {
     throw new Error('打包后的临时 asar 文件大小异常');
   }

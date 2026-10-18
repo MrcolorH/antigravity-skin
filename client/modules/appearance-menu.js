@@ -21,6 +21,19 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     } catch (e) {}
   }
 
+  function checkIsWindows() {
+    if (typeof window !== 'undefined' && typeof window.__AGY_IS_WINDOWS__ === 'boolean') {
+      return window.__AGY_IS_WINDOWS__;
+    }
+    if (typeof navigator !== 'undefined') {
+      const ua = (navigator.userAgent || '').toLowerCase();
+      const plat = (navigator.platform || '').toLowerCase();
+      if (ua.includes('macintosh') || ua.includes('mac os x') || plat.includes('mac')) return false;
+      if (ua.includes('windows') || ua.includes('win') || plat.includes('win')) return true;
+    }
+    return true;
+  }
+
   function findAppearanceCard(modal) {
     if (!modal) return null;
 
@@ -492,8 +505,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     }
 
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
+    const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -682,6 +696,26 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               </div>
             </div>
           </div>
+
+          <!-- Windows 平台专属：客户端更新后一键修复补丁入口 -->
+          ${isWin ? `
+          <div class="flex items-center justify-between pt-2 border-t border-border/40 mt-1" id="agy-wrap-win-patch" style="display: flex;">
+            <div class="flex flex-col gap-0.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-medium text-amber-400 flex items-center gap-1">
+                  <span>🛠️ 开机动效引擎修复</span>
+                </span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">Win 专属</span>
+              </div>
+              <span class="text-[11px] text-muted-foreground opacity-75" id="agy-win-patch-tip">
+                客户端版本更新后开机动效失效？点击一键重新合入补丁（将自动重启客户端生效）
+              </span>
+            </div>
+            <button type="button" id="agy-btn-fix-boot-overlay" class="text-xs px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer flex items-center gap-1 font-medium shrink-0">
+              <span>⚡ 一键修复</span>
+            </button>
+          </div>
+          ` : ''}
         </div>
       `;
       customSwitchRow.insertAdjacentElement('afterend', customOptions);
@@ -1466,6 +1500,71 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         window.__triggerBootAnimation(currentBootType, currentBootPath, currentCustomCodePath);
       }
     };
+
+    // Windows 平台专属：一键修复开机动效引擎补丁
+    const wrapWinPatch = customOptions.querySelector('#agy-wrap-win-patch');
+    const btnFixBoot = customOptions.querySelector('#agy-btn-fix-boot-overlay');
+    const tipWinPatch = customOptions.querySelector('#agy-win-patch-tip');
+
+    if (wrapWinPatch) {
+      wrapWinPatch.style.display = isWin ? 'flex' : 'none';
+    }
+
+    // 尝试向 sidecar 异步确认一次实际平台（避免某些环境 UA 被重写）
+    if (typeof fetch === 'function' && typeof window.__AGY_IS_WINDOWS__ === 'undefined') {
+      fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/system-info`)
+        .then(res => res.json())
+        .then(info => {
+          if (info && info.ok) {
+            window.__AGY_IS_WINDOWS__ = !!info.isWindows;
+            if (wrapWinPatch) {
+              wrapWinPatch.style.display = info.isWindows ? 'flex' : 'none';
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (btnFixBoot && isWin) {
+      btnFixBoot.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const confirmed = confirm(
+          '⚠️ 即将执行开机动效引擎修复：\n\n' +
+          '• 原理：Antigravity 客户端升级会覆盖官方资源文件，此操作将重新合入开机动效引擎补丁。\n' +
+          '• 提示：执行时需要自动退出客户端以解除文件锁定，并在约 3 秒后自动重新启动客户端。\n\n' +
+          '是否立即开始修复？'
+        );
+        if (!confirmed) return;
+
+        btnFixBoot.disabled = true;
+        btnFixBoot.innerHTML = '<span>⏳ 正在启动修复并重启...</span>';
+        if (tipWinPatch) {
+          tipWinPatch.textContent = '🚀 正在启动修复引擎并安全退出客户端，请稍候片刻...';
+          tipWinPatch.className = 'text-[11px] text-amber-400 font-medium';
+        }
+
+        try {
+          const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/patch-boot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error(data.error || '调用修复接口失败');
+          }
+        } catch (err) {
+          alert('修复调用失败：' + err.message);
+          btnFixBoot.disabled = false;
+          btnFixBoot.innerHTML = '<span>⚡ 一键修复</span>';
+          if (tipWinPatch) {
+            tipWinPatch.textContent = '客户端版本更新后开机动效失效？点击一键重新合入补丁（将自动重启客户端生效）';
+            tipWinPatch.className = 'text-[11px] text-muted-foreground opacity-75';
+          }
+        }
+      };
+    }
 
     // 确保 CRT 扫描线彻底停用并清理残留样式
     if (config.features.crtScanlines) {

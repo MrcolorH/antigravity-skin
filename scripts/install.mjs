@@ -238,14 +238,15 @@ await cleanRunningHost();
 // 5. Windows 平台特权：自动执行前置开机动画动态联动补丁（自动关闭运行中的客户端解除锁定）
 if (process.platform === 'win32') {
   console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除文件锁定)...');
-  const patchScript = path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+  const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
+  const patchScript = fs.existsSync(deployedPatchScript) ? deployedPatchScript : path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
   if (fs.existsSync(patchScript)) {
     try {
       const { execSync } = await import('node:child_process');
-      execSync(`node "${patchScript}"`, { stdio: 'inherit' });
+      execSync(`"${process.execPath}" "${patchScript}"`, { stdio: 'inherit' });
     } catch (e) {
       console.log('  ⚠️ 开机动画补丁执行出现异常:', e.message);
-      console.log('     👉 您可随时双击执行 patch-loading.bat 重新完成合入！');
+      console.log('     👉 您可随时在外观设置中点击「一键修复」或双击 patch-loading.bat 重新合入！');
     }
   }
 }
