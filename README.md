@@ -87,29 +87,6 @@
 - **用户数据绝对安全**：白名单增量更新严格保留本地个性化配置（`config.json`）与所有自定义壁纸/开机素材，绝无被覆盖丢失的风险。
 - **网络镜像双保险**：内置 GitHub Releases 官方开放 API、jsDelivr CDN 兜底节点与国内镜像下载加速，保障各地区极速升级。
 
----
-
-## ❓ 常见疑问解答（FAQ）
-
-### Q1：有可以直接安装的 Release 版本吗？
-**答：有的！**
-本项目在 GitHub Releases 页面提供了已打包好的纯净发布压缩包 `antigravity-skin.zip`：
-1. 从 [Releases](../../releases) 页面下载最新版本的 `antigravity-skin.zip`。
-2. 解压到任意临时目录，**双击运行其中的 `install.bat`**（Windows）或执行 `./install.sh`（macOS/Linux）。
-3. 脚本会自动将插件安装到官方持久化插件目录并激活，**解压后的临时文件夹可以直接删除**，无需保留。
-
-### Q2：如果是压缩包，用户要解压到哪里呢？运行完脚本，解压出来的文件夹可以删除吗？
-**答：随便解压到哪里都可以，安装完后解压出来的文件夹可以完全放心删除！**
-- 您可以解压到「桌面」、「下载」或任何临时目录。
-- 安装脚本执行的是**纯净物理文件拷贝（Copy）**，会将运行所需的全部代码完整部署到系统的官方持久化目录中。
-- 因此，解压出的文件夹只是“安装包媒介”，**运行完安装脚本后，解压出来的源文件/文件夹直接丢进回收站/废纸篓删除即可**，完全不影响插件正常运行。
-
-### Q3：为什么千万不能直接安装到反重力 App 根目录下？
-- 反重力（Antigravity）客户端具有**后台静默自动升级**机制。如果将文件强行复制到 App 根目录（例如 `C:\Program Files\Antigravity` 或 `AppData\Local\Programs\Antigravity`），或者去改动 `app.asar`，那么**只要客户端一自动更新，所有修改就会被官方升级包全量覆盖并失效**！
-- Antigravity 官方专为插件设计的标准持久化目录是：
-  - **Windows**：`%USERPROFILE%\.gemini\config\plugins\antigravity-skin`（即 `C:\Users\<你的用户名>\.gemini\config\plugins\antigravity-skin`）
-  - **macOS / Linux**：`~/.gemini/config/plugins/antigravity-skin`
-- 本项目的安装脚本会自动处理好一切。**即使以后升级反重力客户端，主题与配置依然永久有效**！
 
 ---
 
