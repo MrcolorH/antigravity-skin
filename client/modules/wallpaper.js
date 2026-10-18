@@ -341,110 +341,102 @@ export function initWallpaper(options = {}) {
     }
   }
 
+  let bubbleObserver = null;
+  function getBubbleObserver() {
+    if (!bubbleObserver) {
+      bubbleObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            enhanceSingleBubble(entry.target);
+            bubbleObserver.unobserve(entry.target);
+          }
+        });
+      }, {
+        rootMargin: '120px 0px 120px 0px',
+        threshold: 0
+      });
+      window.__agyBubbleObserver = bubbleObserver;
+    }
+    return bubbleObserver;
+  }
+
+  function enhanceSingleBubble(step) {
+    if (!step || step.classList.contains('user-input-buttons-container')) return;
+    if (step.getAttribute('data-agy-enhanced') === 'true') {
+      const cardEl = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
+                     step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
+                     step.querySelector('.bg-card') ||
+                     step;
+      if (cardEl && cardEl.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn')) return;
+    }
+
+    const card = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
+                 step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
+                 step.querySelector('.bg-card') ||
+                 step;
+
+    const textEl = step.querySelector('[data-quotable="true"]') ||
+                   step.querySelector('.whitespace-pre-wrap') ||
+                   step.querySelector('.user-bubble-text');
+
+    const hasRealImg = !!step.querySelector(
+      'button[aria-label*=".png"], button[aria-label*=".jpg"], button[aria-label*=".jpeg"], button[aria-label*=".webp"], div[data-no-scroll-jump="true"] img, img:not([src*=".svg"]):not(.context-scope-mention img)'
+    );
+
+    // 纯内存瞬时判定：换行数与字数，0 次读取 scrollHeight 避免强制回流
+    const textContent = (textEl ? textEl.textContent : step.textContent || '').trim();
+    const lineCount = textContent.split(/\r?\n/).filter(Boolean).length;
+
+    let isLongContent = false;
+    if (hasRealImg || lineCount > 1 || textContent.length > 45) {
+      isLongContent = true;
+    }
+
+    step.setAttribute('data-agy-enhanced', 'true');
+    step.setAttribute('data-user-collapsible', String(isLongContent));
+
+    if (!isLongContent) {
+      step.removeAttribute('data-user-collapsed');
+      const existingBtn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
+      if (existingBtn) existingBtn.remove();
+      return;
+    }
+
+    if (!step.hasAttribute('data-user-collapsed')) {
+      step.setAttribute('data-user-collapsed', 'true');
+    }
+
+    let btn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = 'user-bubble-toggle-btn agy-user-collapse-btn';
+      btn.setAttribute('type', 'button');
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const isCollapsed = step.getAttribute('data-user-collapsed') === 'true';
+        const nextState = !isCollapsed;
+        step.setAttribute('data-user-collapsed', String(nextState));
+        updateCollapseBtnIcon(btn, nextState);
+      };
+      card.appendChild(btn);
+    }
+    const currentCollapsed = step.getAttribute('data-user-collapsed') === 'true';
+    updateCollapseBtnIcon(btn, currentCollapsed);
+  }
+
   function enhanceUserBubbles() {
-    // 精准匹配所有用户提问外层容器（排除操作栏与非卡片元素）
+    // 视口感知懒加载：只注册微秒级 IntersectionObserver 监听，视口外元素 0 算力消耗
     const userSteps = document.querySelectorAll(
       '[data-testid="user-input-step"], div.group\\/user-input-step, div[class*="group/user-input-step"]'
     );
     if (!userSteps.length) return;
-
-    // 读阶段（Read Phase）：收集 steps 并精准判定是否超长
-    const pendingSteps = [];
+    const observer = getBubbleObserver();
     userSteps.forEach(step => {
-      // 避免误匹配到内层的 buttons 容器
       if (step.classList.contains('user-input-buttons-container')) return;
-
-      const card = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
-                   step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
-                   step.querySelector('.bg-card') ||
-                   step;
-
-      const textEl = step.querySelector('[data-quotable="true"]') ||
-                     step.querySelector('.whitespace-pre-wrap') ||
-                     step.querySelector('.user-bubble-text');
-
-      // 精准检测图片附件：必须是真正的图片上传（排除 @mention 范围内的 markdown.svg/图标等）
-      const hasRealImg = !!step.querySelector(
-        'button[aria-label*=".png"], button[aria-label*=".jpg"], button[aria-label*=".jpeg"], button[aria-label*=".webp"], div[data-no-scroll-jump="true"] img, img:not([src*=".svg"]):not(.context-scope-mention img)'
-      );
-
-      // 多维精准判定长文本：
-      // 1. 文本内容字符数与换行行数
-      // 2. DOM 元素真实 scrollHeight（两行文字高度通常在 40~48px，> 50px 即为 3 行及以上）
-      // 3. 包裹容器 overflow 判定
-      const textContent = (textEl ? textEl.textContent : step.textContent || '').trim();
-      const lineCount = textContent.split(/\r?\n/).filter(Boolean).length;
-
-      let isLongContent = false;
-      if (hasRealImg) {
-        isLongContent = true;
-      } else if (textEl) {
-        if ((lineCount > 1 && textContent.length > 20) || textContent.length > 50) {
-          isLongContent = true;
-        } else if (textEl.scrollHeight > 50) {
-          isLongContent = true;
-        }
-      } else if (textContent.length > 50 || lineCount > 1) {
-        isLongContent = true;
-      }
-
-      // 如果文本外层内容容器发生溢出（如包含代码块或自定义结构）
-      const containerEl = step.querySelector('.flex-1') || textEl;
-      if (!isLongContent && containerEl && containerEl.scrollHeight > 60) {
-        isLongContent = true;
-      }
-
-      const existingBtn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
-      const isCurrentlyCollapsible = step.getAttribute('data-user-collapsible') === 'true';
-
-      // 仅当状态尚未具备、或者原本短文本现在填充为超长文本时，重新收集处理
-      if (isCurrentlyCollapsible && existingBtn) {
-        return;
-      }
-
-      pendingSteps.push({
-        step,
-        card,
-        needsCollapse: isLongContent
-      });
-    });
-
-    if (!pendingSteps.length) return;
-
-    // 写阶段（Write Phase）：批量写入 DOM 属性与组件挂载
-    pendingSteps.forEach(({ step, card, needsCollapse }) => {
-      step.setAttribute('data-agy-enhanced', 'true');
-      step.setAttribute('data-user-collapsible', String(needsCollapse));
-
-      if (!needsCollapse) {
-        step.removeAttribute('data-user-collapsed');
-        const existingBtn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
-        if (existingBtn) existingBtn.remove();
-        return;
-      }
-
-      // 首次识别为超长时，默认初始收起
-      if (!step.hasAttribute('data-user-collapsed')) {
-        step.setAttribute('data-user-collapsed', 'true');
-      }
-
-      let btn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
-      if (!btn) {
-        btn = document.createElement('button');
-        btn.className = 'user-bubble-toggle-btn agy-user-collapse-btn';
-        btn.setAttribute('type', 'button');
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const isCollapsed = step.getAttribute('data-user-collapsed') === 'true';
-          const nextState = !isCollapsed;
-          step.setAttribute('data-user-collapsed', String(nextState));
-          updateCollapseBtnIcon(btn, nextState);
-        };
-        card.appendChild(btn);
-      }
-      const currentCollapsed = step.getAttribute('data-user-collapsed') === 'true';
-      updateCollapseBtnIcon(btn, currentCollapsed);
+      if (step.getAttribute('data-agy-enhanced') === 'true') return;
+      if (step.closest('[data-agy-lazy-page="hidden"]')) return;
+      observer.observe(step);
     });
   }
 
@@ -457,10 +449,285 @@ export function initWallpaper(options = {}) {
     });
   }
 
-  window.__enhanceUserBubbles = scheduleEnhanceUserBubbles;
-  scheduleEnhanceUserBubbles();
+  // ========================================================
+  // 4.5 官方原生会话切换过渡与原生 Loading 引擎 (Native Session Switch Transition)
+  // 1. 常驻独立 GPU 合成层单例 Overlay，零创建销毁开销，纯合成器透明度切换
+  // 2. pointerdown / mousedown 超前第 0 毫秒感知介入（比 click 早 150ms+，先于 React 任何渲染长任务）
+  // 3. 点击瞬间零同步重排（No Forced Reflow），100% 官方原生 progress_activity 灰圆圈秒开即转
+  // 4. 新会话挂载就绪后以 0.12s 平滑淡出，彻底告别“先卡一会才出现 loading”
+  // ========================================================
+  function createSessionTransitionManager() {
+    let currentObservedContainer = null;
+    let containerObserver = null;
+    let isSessionSwitching = false;
+    let sessionSwitchTimeout = null;
+    let loadingStartTime = 0;
+    let targetSessionId = null;
+    const MIN_TRANSITION_TIME = 150; // 微妙平滑阈值
 
-  // 5. 单一轻量 DOM 监视器（合并冗余 Observer，精准节流）
+    // 1. 常驻单例原生 Loading 节点（预置独立合成层，零 DOM 解析创建开销）
+    function ensureOverlay() {
+      let el = document.getElementById('agy-session-loader-overlay');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'agy-session-loader-overlay';
+        el.id = 'agy-session-loader-overlay';
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 -960 960 960" fill="currentColor" class="animate-spin text-muted-foreground shrink-0 opacity-70" data-testid="status-loading-spinner" aria-label="Loading session"><path d="M332.55-129.9q-69.29-29.9-121.02-81.63T129.9-332.55T100-480.35t29.96-147.5t81.58-120.61t121.04-81.58T480-860q12.75,0 21.37,8.63T510-829.99t-8.62,21.37T480-800q-133,0-226.5,93.5T160-480t93.5,226.5T480-160t226.5-93.5T800-480q0-12.77 8.63-21.38T830.01-510t21.37,8.62T860-480q0,77.99-29.96,147.42T748.46-211.54T627.85-129.96T480.35-100t-147.8-29.9Z"/></svg>';
+      }
+      if (!el.isConnected) {
+        const mountRoot = document.body || document.documentElement;
+        if (mountRoot) mountRoot.appendChild(el);
+      }
+      return el;
+    }
+    ensureOverlay();
+
+    // 2. 侧边栏宽度异步解耦缓存（严禁在用户点击瞬间调用 getBoundingClientRect 触发重排！）
+    function syncSidebarRight() {
+      try {
+        const sidebar = document.querySelector('[role="navigation"]') ||
+                        document.querySelector('[data-testid="conversation-row-sidebar"]')?.closest('[role="navigation"]') ||
+                        document.querySelector('nav');
+        if (sidebar) {
+          const rect = sidebar.getBoundingClientRect();
+          if (rect.width > 50) {
+            document.documentElement.style.setProperty('--agy-sidebar-right', `${Math.round(rect.right)}px`);
+          }
+        }
+      } catch (_) {}
+    }
+    syncSidebarRight();
+    window.addEventListener('resize', syncSidebarRight, { passive: true });
+
+    function getSessionIdFromUrl(url = window.location.href) {
+      if (!url) return null;
+      const m = url.match(/\/c\/([a-zA-Z0-9_-]+)/);
+      return m ? m[1] : null;
+    }
+
+    function findMessageContainer() {
+      return document.querySelector('.relative.flex.flex-col.gap-y-3') ||
+             document.querySelector('[data-testid="user-input-step"]')?.parentElement;
+    }
+
+    // 零开销纯合成器状态切换
+    function showSessionLoading() {
+      const el = ensureOverlay();
+      if (el) {
+        el.classList.add('agy-loader-active');
+      }
+    }
+
+    function hideSessionLoading() {
+      clearTimeout(sessionSwitchTimeout);
+      const el = document.getElementById('agy-session-loader-overlay');
+      if (el) {
+        el.classList.remove('agy-loader-active');
+      }
+    }
+
+    function startSessionSwitch(nextSessionId) {
+      if (typeof shouldDeferWallpaperForBoot === 'function' && shouldDeferWallpaperForBoot()) {
+        return;
+      }
+
+      if (!nextSessionId) return;
+      const currentId = getSessionIdFromUrl(window.location.href);
+      if (nextSessionId === currentId && !isSessionSwitching) return;
+
+      // 核心：第 0 毫秒纯合成器秒级呼出！在 React 和任何主线程长任务介入前即刻上屏！
+      isSessionSwitching = true;
+      targetSessionId = nextSessionId;
+      loadingStartTime = performance.now();
+
+      showSessionLoading();
+
+      // 3 秒安全兜底定时器（防止极端异常导致假死）
+      clearTimeout(sessionSwitchTimeout);
+      sessionSwitchTimeout = setTimeout(() => {
+        endSessionSwitch();
+      }, 3000);
+    }
+
+    function endSessionSwitch() {
+      clearTimeout(sessionSwitchTimeout);
+      hideSessionLoading();
+      isSessionSwitching = false;
+      targetSessionId = null;
+    }
+
+    function requestEndSessionSwitch() {
+      if (!isSessionSwitching) return;
+      const elapsed = performance.now() - loadingStartTime;
+      const remaining = Math.max(0, MIN_TRANSITION_TIME - elapsed);
+      clearTimeout(sessionSwitchTimeout);
+      if (remaining > 0) {
+        sessionSwitchTimeout = setTimeout(() => {
+          endSessionSwitch();
+        }, remaining);
+      } else {
+        endSessionSwitch();
+      }
+    }
+
+    function cleanLegacyPaginationAttributes(container) {
+      if (!container) return;
+      container.removeAttribute('data-agy-lazy-page');
+      container.querySelectorAll('[data-agy-lazy-page], [data-agy-revealed]').forEach(el => {
+        el.removeAttribute('data-agy-lazy-page');
+        el.removeAttribute('data-agy-revealed');
+      });
+      const w = container.querySelector('.agy-load-more-container');
+      if (w) w.remove();
+    }
+
+    function attachContainerObserver(container) {
+      if (!container || container === currentObservedContainer) return;
+      if (containerObserver) {
+        try { containerObserver.disconnect(); } catch (e) {}
+      }
+      currentObservedContainer = container;
+      cleanLegacyPaginationAttributes(container);
+
+      containerObserver = new MutationObserver(() => {
+        cleanLegacyPaginationAttributes(container);
+        if (isSessionSwitching) {
+          requestAnimationFrame(() => {
+            requestEndSessionSwitch();
+          });
+        }
+      });
+      containerObserver.observe(container, { childList: true });
+    }
+
+    function checkSessionState() {
+      const container = findMessageContainer();
+      if (!container) return;
+
+      cleanLegacyPaginationAttributes(container);
+      attachContainerObserver(container);
+
+      if (isSessionSwitching) {
+        requestAnimationFrame(() => {
+          requestEndSessionSwitch();
+        });
+      }
+    }
+
+    // 关键优化：pointerdown / mousedown / click 统一超前感知触发！
+    // 用户手指按下鼠标第一微秒立即调起 loading，绝不在松开 click 后才卡顿响应！
+    function handleSessionTrigger(e) {
+      const row = e.target.closest && (
+        e.target.closest('[data-testid="conversation-row-sidebar"]') ||
+        e.target.closest('[role="navigation"] a[href*="/c/"]') ||
+        e.target.closest('a[href^="/c/"]')
+      );
+      if (!row) return;
+
+      let targetId = row.getAttribute('data-cascade-id');
+      if (!targetId) {
+        const link = row.tagName === 'A' ? row : row.querySelector('a[href*="/c/"]');
+        if (link) {
+          const href = link.getAttribute('href') || link.href;
+          targetId = getSessionIdFromUrl(href);
+        }
+      }
+
+      if (targetId) {
+        const currentId = getSessionIdFromUrl(window.location.href);
+        if (targetId !== currentId) {
+          showSessionLoading();
+          startSessionSwitch(targetId);
+        }
+      }
+    }
+
+    if (window.__agySessionTriggerHandler) {
+      document.removeEventListener('pointerdown', window.__agySessionTriggerHandler, true);
+      document.removeEventListener('mousedown', window.__agySessionTriggerHandler, true);
+      document.removeEventListener('click', window.__agySessionTriggerHandler, true);
+    }
+    window.__agySessionTriggerHandler = handleSessionTrigger;
+    document.addEventListener('pointerdown', handleSessionTrigger, true);
+    document.addEventListener('mousedown', handleSessionTrigger, true);
+    document.addEventListener('click', handleSessionTrigger, true);
+
+    // 劫持路由切换以实现秒级响应
+    window.__agyOnHistoryTransition = function(targetUrl) {
+      const targetId = getSessionIdFromUrl(targetUrl);
+      if (targetId) {
+        startSessionSwitch(targetId);
+        requestAnimationFrame(checkSessionState);
+      }
+    };
+
+    if (!window.__agyPaginationRouteHooked) {
+      window.__agyPaginationRouteHooked = true;
+      const originalPushState = history.pushState;
+      if (originalPushState) {
+        history.pushState = function(...args) {
+          if (typeof window.__agyOnHistoryTransition === 'function') {
+            window.__agyOnHistoryTransition(args[2]);
+          }
+          const res = originalPushState.apply(this, args);
+          requestAnimationFrame(checkSessionState);
+          return res;
+        };
+      }
+      const originalReplaceState = history.replaceState;
+      if (originalReplaceState) {
+        history.replaceState = function(...args) {
+          if (typeof window.__agyOnHistoryTransition === 'function') {
+            window.__agyOnHistoryTransition(args[2]);
+          }
+          const res = originalReplaceState.apply(this, args);
+          requestAnimationFrame(checkSessionState);
+          return res;
+        };
+      }
+      window.addEventListener('popstate', () => {
+        if (typeof window.__agyOnHistoryTransition === 'function') {
+          window.__agyOnHistoryTransition(window.location.href);
+        }
+        requestAnimationFrame(checkSessionState);
+      });
+    }
+
+    return {
+      check: checkSessionState,
+      showLoading: showSessionLoading,
+      hideLoading: hideSessionLoading,
+      destroy: () => {
+        clearTimeout(sessionSwitchTimeout);
+        hideSessionLoading();
+        if (containerObserver) {
+          try { containerObserver.disconnect(); } catch (e) {}
+          containerObserver = null;
+        }
+        if (window.__agySessionTriggerHandler) {
+          document.removeEventListener('pointerdown', window.__agySessionTriggerHandler, true);
+          document.removeEventListener('mousedown', window.__agySessionTriggerHandler, true);
+          document.removeEventListener('click', window.__agySessionTriggerHandler, true);
+          window.__agySessionTriggerHandler = null;
+        }
+        currentObservedContainer = null;
+        const c = findMessageContainer();
+        if (c) {
+          c.removeAttribute('data-agy-session-switching');
+          cleanLegacyPaginationAttributes(c);
+        }
+      }
+    };
+  }
+
+  if (window.__agyPaginationEngine) {
+    try { window.__agyPaginationEngine.destroy(); } catch (e) {}
+    window.__agyPaginationEngine = null;
+  }
+  const paginationEngine = createSessionTransitionManager();
+  window.__agyPaginationEngine = paginationEngine;
+  paginationEngine.check();
   if (window.__agyWallpaperObserver) {
     try { window.__agyWallpaperObserver.disconnect(); } catch (e) {}
     window.__agyWallpaperObserver = null;
@@ -473,6 +740,14 @@ export function initWallpaper(options = {}) {
   let observerDebounceTimer = null;
   const unifiedObserver = new MutationObserver((mutations) => {
     if (isDestroyed) return;
+
+    // 关键优化：若所有变更均来自侧边栏内部的虚拟列表滚动，严禁触发长会话气泡扫描，避免主线程抖动
+    const isOnlySidebar = mutations.every(m => {
+      const el = m.target;
+      return el && el.closest && el.closest('[role="navigation"]');
+    });
+    if (isOnlySidebar) return;
+
     if (observerDebounceTimer) return;
     observerDebounceTimer = setTimeout(() => {
       observerDebounceTimer = null;
@@ -494,8 +769,9 @@ export function initWallpaper(options = {}) {
         mountVideo();
       }
       scheduleEnhanceUserBubbles();
+      if (paginationEngine) paginationEngine.check();
       syncTitleBarOverlay();
-    }, 120);
+    }, 180);
   });
 
   const rootToObserve = document.body || document.documentElement;
@@ -503,9 +779,8 @@ export function initWallpaper(options = {}) {
     unifiedObserver.observe(rootToObserve, {
       childList: true,
       subtree: true,
-      characterData: true,
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme']
+      attributeFilter: ['class', 'data-theme']
     });
   }
   window.__agyWallpaperObserver = unifiedObserver;
@@ -551,6 +826,13 @@ export function initWallpaper(options = {}) {
     },
     destroy: () => {
       isDestroyed = true;
+      if (paginationEngine) {
+        try { paginationEngine.destroy(); } catch (e) {}
+      }
+      if (window.__agyPaginationEngine) {
+        try { window.__agyPaginationEngine.destroy(); } catch (e) {}
+        window.__agyPaginationEngine = null;
+      }
       if (bootFallbackTimer) {
         clearTimeout(bootFallbackTimer);
         bootFallbackTimer = null;
@@ -566,6 +848,10 @@ export function initWallpaper(options = {}) {
       if (window.__agyWallpaperObserver) {
         try { window.__agyWallpaperObserver.disconnect(); } catch(e) {}
         window.__agyWallpaperObserver = null;
+      }
+      if (bubbleObserver) {
+        try { bubbleObserver.disconnect(); } catch(e) {}
+        bubbleObserver = null;
       }
       if (window.__agyBubbleObserver) {
         try { window.__agyBubbleObserver.disconnect(); } catch(e) {}
