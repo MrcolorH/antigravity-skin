@@ -49,6 +49,9 @@ try {
   });
 } catch (_) {}
 
+// 活跃 CDP 会话管理集合 (提升至全局作用域供 HTTP 路由与热重载共享访问)
+const activeSessions = new Map(); // targetId -> { ws, send, isAttached, checkHealthAndHeal }
+
 function getDevToolsPortPath() {
   const home = os.homedir();
   if (process.platform === 'darwin') {
@@ -251,6 +254,233 @@ function optimizeVideoAssets() {
   } catch (_) {}
 }
 
+// ==========================================
+// 插件在线热更新系统 (Cross-Platform In-App Hot Update Engine)
+// ==========================================
+const GITHUB_REPO = 'MrcolorH/antigravity-skin';
+
+function getLocalPluginVersion() {
+  try {
+    const p = path.join(PLUGIN_ROOT, 'plugin.json');
+    if (fs.existsSync(p)) {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return data.version || '0.0.1';
+    }
+  } catch (_) {}
+  return '0.0.1';
+}
+
+function compareSemver(v1, v2) {
+  const p1 = (v1 || '').replace(/^[^\d]*/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = (v2 || '').replace(/^[^\d]*/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(p1.length, p2.length);
+  for (let i = 0; i < len; i++) {
+    const a = p1[i] || 0;
+    const b = p2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
+// 检查 GitHub 最新 Release（带国内加速节点与 Fallback）
+async function checkPluginUpdate() {
+  const currentVersion = getLocalPluginVersion();
+  let latestInfo = null;
+
+  // 1. 首选：GitHub Releases 官方开放 API
+  const ghApiUrls = [
+    `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+    `https://gh-api.pwrpkg.workers.dev/repos/${GITHUB_REPO}/releases/latest`
+  ];
+
+  for (const apiUrl of ghApiUrls) {
+    try {
+      const res = await fetch(apiUrl, {
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          'User-Agent': 'Antigravity-Skin-Updater',
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.tag_name) {
+          const latestTag = data.tag_name.replace(/^[^\d]*/, '');
+          const assetZip = data.assets && Array.isArray(data.assets)
+            ? data.assets.find(a => a.name && a.name.endsWith('.zip'))
+            : null;
+          const downloadUrl = assetZip
+            ? assetZip.browser_download_url
+            : `https://github.com/${GITHUB_REPO}/releases/download/${data.tag_name}/antigravity-skin.zip`;
+
+          latestInfo = {
+            currentVersion,
+            latestVersion: latestTag,
+            hasUpdate: compareSemver(latestTag, currentVersion) > 0,
+            name: data.name || `v${latestTag}`,
+            changelog: data.body || '无更新说明',
+            publishedAt: data.published_at || new Date().toISOString(),
+            downloadUrl
+          };
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. 备用兜底：若 API 受到 403 频控或直连超时，尝试直接请求远程 CDN 上的 plugin.json
+  if (!latestInfo) {
+    const rawUrls = [
+      `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/plugin.json`,
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/plugin.json`,
+      `https://raw.gitmirror.com/${GITHUB_REPO}/main/plugin.json`
+    ];
+    for (const rawUrl of rawUrls) {
+      try {
+        const res = await fetch(rawUrl, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          const rawData = await res.json();
+          if (rawData && rawData.version) {
+            const rawVer = rawData.version;
+            latestInfo = {
+              currentVersion,
+              latestVersion: rawVer,
+              hasUpdate: compareSemver(rawVer, currentVersion) > 0,
+              name: `v${rawVer}`,
+              changelog: rawData.description || '常规功能优化与性能提升',
+              publishedAt: new Date().toISOString(),
+              downloadUrl: `https://github.com/${GITHUB_REPO}/releases/latest/download/antigravity-skin.zip`
+            };
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!latestInfo) {
+    throw new Error('无法连接到更新服务器，请检查网络连接后重试。');
+  }
+
+  return latestInfo;
+}
+
+// 下载更新包（多镜像源自动重试）
+async function downloadUpdateZip(rawDownloadUrl, destZipPath) {
+  const targetUrls = [
+    rawDownloadUrl,
+    `https://ghproxy.net/${rawDownloadUrl}`,
+    `https://mirror.ghproxy.com/${rawDownloadUrl}`
+  ];
+
+  let lastError = null;
+  for (const url of targetUrls) {
+    try {
+      console.log(`[Skin Engine] Attempting to download update from: ${url}`);
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(45000),
+        headers: { 'User-Agent': 'Antigravity-Skin-Updater' }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1024) throw new Error('下载文件大小异常');
+      fs.writeFileSync(destZipPath, buf);
+      console.log(`[Skin Engine] Download succeeded: ${(buf.length / 1024).toFixed(1)} KB`);
+      return;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Skin Engine] Download attempt failed: ${url} ->`, err.message);
+    }
+  }
+  throw new Error(`下载更新安装包失败：${lastError?.message || '网络连接超时'}`);
+}
+
+// 解压并安全部署
+async function extractAndDeploy(zipFilePath) {
+  const tempExtractDir = path.join(os.tmpdir(), `agy-skin-update-${Date.now()}`);
+  if (!fs.existsSync(tempExtractDir)) {
+    fs.mkdirSync(tempExtractDir, { recursive: true });
+  }
+
+  try {
+    // 1. 系统原生极速解压 (跨平台支持：Windows 10/11 & macOS & Linux 均内置 bsdtar / tar，秒级完成)
+    let extracted = false;
+    try {
+      execSync(`tar -xf "${zipFilePath}" -C "${tempExtractDir}"`, { timeout: 30000, stdio: 'pipe' });
+      extracted = true;
+    } catch (tarErr) {
+      console.warn('[Skin Engine] tar extraction failed, falling back to powershell / unzip:', tarErr.message);
+    }
+
+    if (!extracted) {
+      if (process.platform === 'win32') {
+        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipFilePath}' -DestinationPath '${tempExtractDir}' -Force"`, { timeout: 45000, stdio: 'pipe' });
+      } else {
+        execSync(`unzip -o -q "${zipFilePath}" -d "${tempExtractDir}"`, { timeout: 30000, stdio: 'pipe' });
+      }
+    }
+
+    // 2. 定位解压出的项目根目录（判断是否有外层文件夹包装）
+    let sourceRoot = tempExtractDir;
+    if (!fs.existsSync(path.join(sourceRoot, 'plugin.json'))) {
+      const entries = fs.readdirSync(tempExtractDir, { withFileTypes: true });
+      const sub = entries.find(e => e.isDirectory() && fs.existsSync(path.join(tempExtractDir, e.name, 'plugin.json')));
+      if (sub) {
+        sourceRoot = path.join(tempExtractDir, sub.name);
+      }
+    }
+
+    if (!fs.existsSync(path.join(sourceRoot, 'plugin.json'))) {
+      throw new Error('解压后的安装包中未找到 plugin.json，安装包结构异常');
+    }
+
+    // 3. 白名单安全覆盖（严格保护用户的 config.json 与已有音视频素材）
+    const copyDirs = ['client', 'sidecars', 'scripts'];
+    for (const dir of copyDirs) {
+      const src = path.join(sourceRoot, dir);
+      const dest = path.join(PLUGIN_ROOT, dir);
+      if (fs.existsSync(src)) {
+        fs.cpSync(src, dest, { recursive: true, force: true });
+      }
+    }
+
+    // 增量合入素材脚本（如新的开机动效预设），但绝不覆盖或删除用户自定义脚本
+    const srcScriptsDir = path.join(sourceRoot, 'assets', 'scripts');
+    const destScriptsDir = path.join(PLUGIN_ROOT, 'assets', 'scripts');
+    if (fs.existsSync(srcScriptsDir)) {
+      if (!fs.existsSync(destScriptsDir)) fs.mkdirSync(destScriptsDir, { recursive: true });
+      const scriptFiles = fs.readdirSync(srcScriptsDir);
+      for (const sf of scriptFiles) {
+        const srcFile = path.join(srcScriptsDir, sf);
+        const destFile = path.join(destScriptsDir, sf);
+        if (fs.statSync(srcFile).isFile()) {
+          fs.copyFileSync(srcFile, destFile);
+        }
+      }
+    }
+
+    // 复制白名单元文件
+    const safeFiles = [
+      'plugin.json', 'package.json', 'config.default.json', 'README.md',
+      'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1',
+      'install.sh', 'uninstall.sh', 'patch-loading.bat', 'restore-loading.bat'
+    ];
+    for (const f of safeFiles) {
+      const src = path.join(sourceRoot, f);
+      const dest = path.join(PLUGIN_ROOT, f);
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, dest);
+      }
+    }
+
+    console.log('[Skin Engine] Core plugin files successfully updated on disk.');
+  } finally {
+    // 清理临时解压目录
+    try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
 
@@ -343,6 +573,97 @@ const server = http.createServer((req, res) => {
         console.error('[Skin Engine] Failed to spawn patch process:', err);
       }
     }, 500);
+    return;
+  }
+
+  // API: 检查插件最新版本
+  if (url.pathname === '/api/update/check' && req.method === 'GET') {
+    checkPluginUpdate()
+      .then(info => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ...info }));
+      })
+      .catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message, currentVersion: getLocalPluginVersion() }));
+      });
+    return;
+  }
+
+  // API: 客户端执行一键在线热更新
+  if (url.pathname === '/api/update/apply' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      let tmpZip = '';
+      try {
+        let downloadUrl = '';
+        if (body) {
+          try {
+            const parsed = JSON.parse(body);
+            downloadUrl = parsed.downloadUrl || '';
+          } catch (_) {}
+        }
+        if (!downloadUrl) {
+          const info = await checkPluginUpdate();
+          downloadUrl = info.downloadUrl;
+        }
+
+        tmpZip = path.join(os.tmpdir(), `agy-skin-update-${Date.now()}.zip`);
+        await downloadUpdateZip(downloadUrl, tmpZip);
+        await extractAndDeploy(tmpZip);
+
+        const newVersion = getLocalPluginVersion();
+
+        // 立即尝试通过活跃 CDP 会话在已打开的主窗口热更新前端 Bundle
+        let bundleEvaluated = false;
+        try {
+          const newBundle = buildClientBundle();
+          for (const [targetId, session] of activeSessions.entries()) {
+            try {
+              await session.send('Runtime.evaluate', {
+                expression: `(() => {
+                  try {
+                    console.log('[Skin Engine] Hot reload triggering in client window...');
+                    if (window.__agyCurrentMenuInstance && typeof window.__agyCurrentMenuInstance.destroy === 'function') {
+                      window.__agyCurrentMenuInstance.destroy();
+                    }
+                  } catch (_) {}
+                  ${newBundle}
+                })()`
+              });
+              bundleEvaluated = true;
+            } catch (cdpErr) {
+              console.warn(`[Skin Engine] CDP hot evaluate failed for ${targetId}:`, cdpErr.message);
+            }
+          }
+        } catch (bErr) {
+          console.warn('[Skin Engine] Failed to rebuild bundle after update:', bErr.message);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          version: newVersion,
+          bundleEvaluated,
+          message: `已成功更新至 v${newVersion}！新特性已实时生效。`
+        }));
+
+        // 延时 800ms 让 HTTP 报文顺利送达前端，随后正常退出触发宿主自动重启拉起最新的 main.mjs
+        setTimeout(() => {
+          console.log('[Skin Engine] Update deployed successfully. Gracefully exiting to reload sidecar daemon...');
+          process.exit(0);
+        }, 800);
+      } catch (err) {
+        console.error('[Skin Engine] Update apply failed:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      } finally {
+        if (tmpZip && fs.existsSync(tmpZip)) {
+          try { fs.unlinkSync(tmpZip); } catch (_) {}
+        }
+      }
+    });
     return;
   }
 
@@ -1118,7 +1439,6 @@ function fetchJson(url) {
 }
 
 // 6. 活跃 CDP 会话管理与持续巡检保活 (Persistent Keep-Alive & Auto-Heal)
-const activeSessions = new Map(); // targetId -> { ws, send, isAttached, checkHealthAndHeal }
 let browserWs = null;
 let currentDevToolsPort = null;
 let reconnectTimer = null;

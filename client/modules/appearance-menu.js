@@ -507,7 +507,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -716,6 +716,43 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             </button>
           </div>
           ` : ''}
+        </div>
+
+        <!-- 插件版本与在线热更新入口 (跨平台：macOS / Windows 统一支持) -->
+        <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2 pt-2.5 border-t border-border/40 mt-1" id="agy-wrap-plugin-update">
+          <div class="flex justify-between items-center gap-3">
+            <div class="flex flex-col gap-0.5">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs font-medium text-foreground flex items-center gap-1">
+                  <span>⚡ 插件版本与在线热更新</span>
+                </span>
+                <span id="agy-update-cur-ver" class="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 font-mono font-medium">v0.0.4</span>
+                <span id="agy-update-badge" style="display: none;" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium items-center gap-0.5">
+                  <span>✨ 发现新版本</span>
+                </span>
+              </div>
+              <span class="text-[11px] text-muted-foreground opacity-75" id="agy-update-status-tip">
+                点击检查 GitHub Release 最新版本，免手动下载与安装，支持一键无感热生效
+              </span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button type="button" id="agy-btn-check-update" class="text-xs px-2.5 py-1 rounded border border-border bg-secondary/30 hover:bg-secondary/60 text-foreground cursor-pointer flex items-center gap-1 font-medium transition-colors">
+                <span>🔄 检查更新</span>
+              </button>
+              <button type="button" id="agy-btn-apply-update" style="display: none;" class="text-xs px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-300 bg-emerald-500/20 hover:bg-emerald-500/30 cursor-pointer flex items-center gap-1 font-medium transition-colors">
+                <span>🚀 立即热更新</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 新版本更新日志抽屉 (有更新时展示) -->
+          <div id="agy-update-changelog-box" style="display: none; background: rgba(0,0,0,0.12); border-radius: 6px; padding: 8px 10px; margin-top: 2px;" class="border border-border/40 text-xs flex-col gap-1.5">
+            <div class="flex justify-between items-center text-[11px] font-medium text-emerald-400 border-b border-border/30 pb-1">
+              <span id="agy-update-changelog-title">🎉 发现新版本</span>
+              <span id="agy-update-changelog-date" class="opacity-60 text-muted-foreground font-mono"></span>
+            </div>
+            <div id="agy-update-changelog-content" class="text-[11px] text-muted-foreground whitespace-pre-wrap max-h-24 overflow-y-auto leading-relaxed pt-1 select-text"></div>
+          </div>
         </div>
       `;
       customSwitchRow.insertAdjacentElement('afterend', customOptions);
@@ -1706,6 +1743,254 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           }
         }
       };
+    }
+
+    // ==========================================
+    // 插件在线热更新事件绑定与自愈巡检 (Cross-Platform)
+    // ==========================================
+    const curVerSpan = customOptions.querySelector('#agy-update-cur-ver');
+    const updateBadge = customOptions.querySelector('#agy-update-badge');
+    const statusTip = customOptions.querySelector('#agy-update-status-tip');
+    const btnCheck = customOptions.querySelector('#agy-btn-check-update');
+    const btnApply = customOptions.querySelector('#agy-btn-apply-update');
+    const changelogBox = customOptions.querySelector('#agy-update-changelog-box');
+    const changelogTitle = customOptions.querySelector('#agy-update-changelog-title');
+    const changelogDate = customOptions.querySelector('#agy-update-changelog-date');
+    const changelogContent = customOptions.querySelector('#agy-update-changelog-content');
+
+    let updateDataCache = window.__agyLastUpdateCheckResult || null;
+
+    function applyUpdateUI(data) {
+      if (!data) return;
+      if (curVerSpan && data.currentVersion) {
+        curVerSpan.textContent = `v${data.currentVersion}`;
+      }
+      if (data.hasUpdate) {
+        if (updateBadge) {
+          updateBadge.style.display = 'inline-flex';
+          updateBadge.textContent = `✨ 发现新版 v${data.latestVersion}`;
+        }
+        if (btnApply) {
+          btnApply.style.display = 'inline-flex';
+          btnApply.innerHTML = `<span>🚀 立即热更新 (v${data.latestVersion})</span>`;
+        }
+        if (statusTip) {
+          statusTip.textContent = `发现新版本 v${data.latestVersion}！点击右侧按钮即可一键在客户端内无感热更新。`;
+          statusTip.className = 'text-[11px] text-emerald-400 font-medium';
+        }
+        if (changelogBox && changelogContent) {
+          changelogBox.style.display = 'flex';
+          if (changelogTitle) {
+            changelogTitle.textContent = data.name ? `🎉 ${data.name}` : `🎉 发现新版本 v${data.latestVersion}`;
+          }
+          if (changelogDate && data.publishedAt) {
+            changelogDate.textContent = new Date(data.publishedAt).toLocaleDateString();
+          }
+          changelogContent.textContent = data.changelog || '常规功能优化与体验提升';
+        }
+      } else {
+        if (updateBadge) updateBadge.style.display = 'none';
+        if (btnApply) btnApply.style.display = 'none';
+        if (changelogBox) changelogBox.style.display = 'none';
+      }
+    }
+
+    function compareSemver(v1, v2) {
+      const p1 = (v1 || '').replace(/^[^\d]*/, '').split('.').map(n => parseInt(n, 10) || 0);
+      const p2 = (v2 || '').replace(/^[^\d]*/, '').split('.').map(n => parseInt(n, 10) || 0);
+      const len = Math.max(p1.length, p2.length);
+      for (let i = 0; i < len; i++) {
+        const a = p1[i] || 0;
+        const b = p2[i] || 0;
+        if (a > b) return 1;
+        if (a < b) return -1;
+      }
+      return 0;
+    }
+
+    if (updateDataCache) {
+      applyUpdateUI(updateDataCache);
+    }
+
+    async function handleCheckUpdate(isSilent = false) {
+      if (!btnCheck) return;
+      if (!isSilent) {
+        btnCheck.disabled = true;
+        btnCheck.innerHTML = '<span>⏳ 正在检查...</span>';
+        if (statusTip) {
+          statusTip.textContent = '正在连接 GitHub Releases 检查最新版本...';
+          statusTip.className = 'text-[11px] text-sky-400 font-medium';
+        }
+      }
+
+      try {
+        const port = window.__AG_SKIN_PORT__ || 59288;
+        let data = null;
+
+        // 1. 优先尝试本地 Sidecar 接口
+        try {
+          const res = await fetch(`http://127.0.0.1:${port}/api/update/check`, { signal: AbortSignal.timeout(3000) });
+          if (res.ok) {
+            data = await res.json();
+          }
+        } catch (_) {}
+
+        // 2. 若本地 Sidecar 接口未响应，直接在浏览器中请求 GitHub Releases 官方开放接口 (CORS: *)
+        if (!data || !data.ok) {
+          try {
+            const ghRes = await fetch('https://api.github.com/repos/MrcolorH/antigravity-skin/releases/latest', {
+              headers: { 'Accept': 'application/vnd.github.v3+json' },
+              signal: AbortSignal.timeout(5000)
+            });
+            if (ghRes.ok) {
+              const ghData = await ghRes.json();
+              if (ghData && ghData.tag_name) {
+                const latestTag = ghData.tag_name.replace(/^[^\d]*/, '');
+                const curVer = '0.0.4';
+                const assetZip = ghData.assets && Array.isArray(ghData.assets)
+                  ? ghData.assets.find(a => a.name && a.name.endsWith('.zip'))?.browser_download_url
+                  : null;
+                data = {
+                  ok: true,
+                  currentVersion: curVer,
+                  latestVersion: latestTag,
+                  hasUpdate: compareSemver(latestTag, curVer) > 0,
+                  name: ghData.name || `v${latestTag}`,
+                  changelog: ghData.body || '无更新说明',
+                  publishedAt: ghData.published_at || new Date().toISOString(),
+                  downloadUrl: assetZip || `https://github.com/MrcolorH/antigravity-skin/releases/download/${ghData.tag_name}/antigravity-skin.zip`
+                };
+              }
+            }
+          } catch (_) {}
+        }
+
+        // 3. 第三重兜底：若 GitHub API 被频控或网络受限，直接读 jsDelivr CDN
+        if (!data || !data.ok) {
+          try {
+            const cdnRes = await fetch('https://fastly.jsdelivr.net/gh/MrcolorH/antigravity-skin@main/plugin.json', { signal: AbortSignal.timeout(5000) });
+            if (cdnRes.ok) {
+              const cdnData = await cdnRes.json();
+              if (cdnData && cdnData.version) {
+                const latestTag = cdnData.version;
+                const curVer = '0.0.4';
+                data = {
+                  ok: true,
+                  currentVersion: curVer,
+                  latestVersion: latestTag,
+                  hasUpdate: compareSemver(latestTag, curVer) > 0,
+                  name: `v${latestTag}`,
+                  changelog: cdnData.description || '常规功能优化与体验提升',
+                  publishedAt: new Date().toISOString(),
+                  downloadUrl: `https://github.com/MrcolorH/antigravity-skin/releases/latest/download/antigravity-skin.zip`
+                };
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (!data || !data.ok) {
+          throw new Error('无法连接到更新服务器，请检查网络连接后重试。');
+        }
+
+        window.__agyLastUpdateCheckResult = data;
+        updateDataCache = data;
+        applyUpdateUI(data);
+
+        if (!data.hasUpdate && !isSilent && statusTip) {
+          statusTip.textContent = `当前已是最新版本 (v${data.currentVersion || '0.0.4'})，无需更新。`;
+          statusTip.className = 'text-[11px] text-muted-foreground opacity-75';
+        }
+      } catch (err) {
+        if (!isSilent && statusTip) {
+          statusTip.textContent = '检查更新失败：' + err.message;
+          statusTip.className = 'text-[11px] text-rose-400';
+        }
+      } finally {
+        if (btnCheck) {
+          btnCheck.disabled = false;
+          btnCheck.innerHTML = '<span>🔄 检查更新</span>';
+        }
+      }
+    }
+
+    if (btnCheck) {
+      btnCheck.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCheckUpdate(false);
+      };
+    }
+
+    if (btnApply) {
+      btnApply.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!updateDataCache || !updateDataCache.hasUpdate) return;
+        const targetVer = updateDataCache.latestVersion;
+
+        const confirmed = confirm(
+          `⚡ 确认立即热更新至 v${targetVer} 吗？\n\n` +
+          `• 本次更新将在后台全自动下载最新发布代码并安全部署；\n` +
+          `• 您的个性化配置与已上传的所有壁纸/视频素材将受到 100% 严格保护；\n` +
+          `• 更新完成后客户端无需退出，新特性将即刻无感生效。\n\n` +
+          `是否立即开始？`
+        );
+        if (!confirmed) return;
+
+        btnApply.disabled = true;
+        if (btnCheck) btnCheck.disabled = true;
+        btnApply.innerHTML = '<span>⏳ 正在部署更新...</span>';
+        if (statusTip) {
+          statusTip.textContent = '🚀 正在下载安装包并安全解压部署，请稍候片刻...';
+          statusTip.className = 'text-[11px] text-amber-400 font-medium';
+        }
+
+        try {
+          const port = window.__AG_SKIN_PORT__ || 59288;
+          const res = await fetch(`http://127.0.0.1:${port}/api/update/apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              downloadUrl: updateDataCache.downloadUrl,
+              version: targetVer
+            })
+          });
+          const result = await res.json();
+          if (!result.ok) throw new Error(result.error || '执行更新失败');
+
+          // 更新成功
+          window.__agyLastUpdateCheckResult = null;
+          updateDataCache = null;
+          if (curVerSpan) curVerSpan.textContent = `v${result.version || targetVer}`;
+          if (updateBadge) updateBadge.style.display = 'none';
+          if (btnApply) btnApply.style.display = 'none';
+          if (changelogBox) changelogBox.style.display = 'none';
+          if (statusTip) {
+            statusTip.textContent = `✨ 恭喜！已成功热更新至 v${result.version || targetVer}，新特性已实时生效！`;
+            statusTip.className = 'text-[11px] text-emerald-400 font-medium';
+          }
+
+          setTimeout(() => {
+            alert(`🎉 恭喜！Antigravity 皮肤插件已成功热更新至 v${result.version || targetVer}！\n新特性已即时生效。`);
+          }, 300);
+        } catch (err) {
+          if (statusTip) {
+            statusTip.textContent = '更新失败：' + err.message;
+            statusTip.className = 'text-[11px] text-rose-400';
+          }
+          btnApply.disabled = false;
+          btnApply.innerHTML = `<span>🚀 重试热更新 (v${targetVer})</span>`;
+          if (btnCheck) btnCheck.disabled = false;
+        }
+      };
+    }
+
+    // 会话级首次打开静默检测一次
+    if (!window.__agyHasSilentCheckedUpdate) {
+      window.__agyHasSilentCheckedUpdate = true;
+      setTimeout(() => handleCheckUpdate(true), 800);
     }
 
     // 确保 CRT 扫描线彻底停用并清理残留样式
