@@ -319,7 +319,7 @@ export function initWallpaper(options = {}) {
 
   mountVideo();
 
-  // 4. 用户提问气泡智能折叠/展开胶囊按钮与吸顶增强管理 (遵照 floating_user_bubble_spec.md v1.2.0)
+  // 4. 用户提问气泡智能折叠/展开胶囊按钮与防遮挡管理 (遵照 floating_user_bubble_spec.md v1.2.0)
   function updateCollapseBtnIcon(btn, isCollapsed) {
     if (isCollapsed) {
       btn.title = '展开提问';
@@ -333,44 +333,70 @@ export function initWallpaper(options = {}) {
   }
 
   function enhanceUserBubbles() {
-    const userSteps = document.querySelectorAll('[data-testid="user-input-step"], [class*="group/user-input-step"]');
+    // 精准匹配所有用户提问外层容器（排除操作栏与非卡片元素）
+    const userSteps = document.querySelectorAll(
+      '[data-testid="user-input-step"], div.group\\/user-input-step, div[class*="group/user-input-step"]'
+    );
     if (!userSteps.length) return;
 
-    // 读阶段（Read Phase）：收集未增强过的 steps，避免在写 DOM 时穿插读取几何属性触发 Layout Thrashing
+    // 读阶段（Read Phase）：收集 steps 并精准判定是否超长
     const pendingSteps = [];
     userSteps.forEach(step => {
-      if (step.hasAttribute('data-agy-enhanced')) return;
+      // 避免误匹配到内层的 buttons 容器
+      if (step.classList.contains('user-input-buttons-container')) return;
 
       const card = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
                    step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
                    step.querySelector('.bg-card') ||
                    step;
 
-      const textEl = step.querySelector('[data-quotable="true"]') || step.querySelector('.whitespace-pre-wrap');
+      const textEl = step.querySelector('[data-quotable="true"]') ||
+                     step.querySelector('.whitespace-pre-wrap') ||
+                     step.querySelector('.user-bubble-text');
 
       // 精准检测图片附件：必须是真正的图片上传（排除 @mention 范围内的 markdown.svg/图标等）
       const hasRealImg = !!step.querySelector(
         'button[aria-label*=".png"], button[aria-label*=".jpg"], button[aria-label*=".jpeg"], button[aria-label*=".webp"], div[data-no-scroll-jump="true"] img, img:not([src*=".svg"]):not(.context-scope-mention img)'
       );
 
-      // 纯内存字符串快速预判（避免使用触发强制重排的 innerText）
-      let isMultiLine = false;
-      if (textEl) {
-        const textContent = (textEl.textContent || '').trim();
-        const lineCount = textContent.split(/\r?\n/).filter(Boolean).length;
-        // 纯字符粗筛：换行大于1或字数超过65，直接确定为长文本
-        if ((lineCount > 1 && textContent.length > 25) || textContent.length > 65) {
-          isMultiLine = true;
-        } else if (textContent.length > 20) {
-          // 仅在临界字数时才读取一次 scrollHeight，且不调用 getComputedStyle
-          isMultiLine = textEl.scrollHeight > 52;
+      // 多维精准判定长文本：
+      // 1. 文本内容字符数与换行行数
+      // 2. DOM 元素真实 scrollHeight（两行文字高度通常在 40~48px，> 50px 即为 3 行及以上）
+      // 3. 包裹容器 overflow 判定
+      const textContent = (textEl ? textEl.textContent : step.textContent || '').trim();
+      const lineCount = textContent.split(/\r?\n/).filter(Boolean).length;
+
+      let isLongContent = false;
+      if (hasRealImg) {
+        isLongContent = true;
+      } else if (textEl) {
+        if ((lineCount > 1 && textContent.length > 20) || textContent.length > 50) {
+          isLongContent = true;
+        } else if (textEl.scrollHeight > 50) {
+          isLongContent = true;
         }
+      } else if (textContent.length > 50 || lineCount > 1) {
+        isLongContent = true;
+      }
+
+      // 如果文本外层内容容器发生溢出（如包含代码块或自定义结构）
+      const containerEl = step.querySelector('.flex-1') || textEl;
+      if (!isLongContent && containerEl && containerEl.scrollHeight > 60) {
+        isLongContent = true;
+      }
+
+      const existingBtn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
+      const isCurrentlyCollapsible = step.getAttribute('data-user-collapsible') === 'true';
+
+      // 仅当状态尚未具备、或者原本短文本现在填充为超长文本时，重新收集处理
+      if (isCurrentlyCollapsible && existingBtn) {
+        return;
       }
 
       pendingSteps.push({
         step,
         card,
-        needsCollapse: hasRealImg || isMultiLine
+        needsCollapse: isLongContent
       });
     });
 
@@ -388,6 +414,7 @@ export function initWallpaper(options = {}) {
         return;
       }
 
+      // 首次识别为超长时，默认初始收起
       if (!step.hasAttribute('data-user-collapsed')) {
         step.setAttribute('data-user-collapsed', 'true');
       }
@@ -461,6 +488,7 @@ export function initWallpaper(options = {}) {
     unifiedObserver.observe(rootToObserve, {
       childList: true,
       subtree: true,
+      characterData: true,
       attributes: true,
       attributeFilter: ['class', 'style', 'data-theme']
     });
@@ -526,8 +554,10 @@ export function initWallpaper(options = {}) {
       const s = document.getElementById('agy-dynamic-wallpaper-style');
       if (s) s.remove();
       document.querySelectorAll('.user-bubble-toggle-btn, .agy-user-collapse-btn, [data-agy-collapse-btn]').forEach(b => b.remove());
-      document.querySelectorAll('[data-user-collapsed], [data-agy-collapsed]').forEach(el => {
+      document.querySelectorAll('[data-user-collapsed], [data-user-collapsible], [data-agy-enhanced], [data-agy-collapsed]').forEach(el => {
         el.removeAttribute('data-user-collapsed');
+        el.removeAttribute('data-user-collapsible');
+        el.removeAttribute('data-agy-enhanced');
         el.removeAttribute('data-agy-collapsed');
         el.style.maxHeight = '';
         el.style.overflow = '';

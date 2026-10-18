@@ -228,8 +228,10 @@
         if (testStyle) testStyle.remove();
 
         document.querySelectorAll('.user-bubble-toggle-btn, .agy-user-collapse-btn, [data-agy-collapse-btn]').forEach(b => b.remove());
-        document.querySelectorAll('[data-user-collapsed], [data-agy-collapsed]').forEach(el => {
+        document.querySelectorAll('[data-user-collapsed], [data-user-collapsible], [data-agy-enhanced], [data-agy-collapsed]').forEach(el => {
           el.removeAttribute('data-user-collapsed');
+          el.removeAttribute('data-user-collapsible');
+          el.removeAttribute('data-agy-enhanced');
           el.removeAttribute('data-agy-collapsed');
           el.style.maxHeight = '';
           el.style.overflow = '';

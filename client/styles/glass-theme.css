@@ -86,15 +86,11 @@
           margin-bottom: 8px !important;
         }
 
-        /* 消除吸顶时对用户提问的高度截断与渐变遮罩 (解除 max-h-[10vh] 与 mask-image) */
-        [data-testid="user-input-step"] [class*="max-h-[10vh]"],
-        [class*="user-input-step"] [class*="max-h-[10vh]"],
+        /* 消除原生截断渐变遮罩，高度与视窗保护统一由智能折叠系统精准接管 */
         [data-testid="user-input-step"] div[style*="mask-image"],
         [class*="user-input-step"] div[style*="mask-image"] {
-          max-height: none !important;
           mask-image: none !important;
           -webkit-mask-image: none !important;
-          overflow: visible !important;
         }
 
         /* 隐藏输入框上方的空渐变遮罩层（仅限 pointer-events-none 且无内容或纯渐变样式） */
@@ -1151,6 +1147,12 @@
           max-height: calc(1.65em * 2 + 2px) !important;
         }
 
+        /* 收起态时容器高度紧凑，防止留下多余空白 */
+        [class*="user-input-step"][data-user-collapsed="true"] [class*="max-h-[10vh]"] {
+          max-height: calc(1.65em * 2 + 10px) !important;
+          overflow: hidden !important;
+        }
+
         /* 附件容器彻底隐藏（精准匹配附件，绝不误伤用户气泡卡片主体） */
         .user-bubble-card[data-user-collapsed="true"] .user-bubble-attachments,
         [data-user-collapsed="true"] .user-bubble-attachments,
@@ -1162,7 +1164,7 @@
         }
 
         /* ==========================================================================
-           展开态 (data-user-collapsed="false")：全文展开与附件呈现
+           展开态 (data-user-collapsed="false")：全文展开与附件呈现 (防遮挡视窗保护)
            ========================================================================== */
         [data-user-collapsed="false"] .user-bubble-text,
         [data-user-collapsed="false"] [data-quotable="true"],
@@ -1176,10 +1178,28 @@
           overflow: visible !important;
           word-break: break-word !important;
         }
+
+        /* 展开态视窗防遮挡：允许展开但限定最大高度并自适应内部滚动，坚决杜绝超长文本占满整页遮挡窗口 */
         [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-[10vh]"],
-        [class*="user-input-step"] [class*="max-h-[10vh]"] {
-          max-height: none !important;
-          overflow: visible !important;
+        [class*="user-input-step"][data-user-collapsed="false"] .flex-1 {
+          max-height: 48vh !important;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          scrollbar-width: thin !important;
+        }
+
+        [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-[10vh]"]::-webkit-scrollbar,
+        [class*="user-input-step"][data-user-collapsed="false"] .flex-1::-webkit-scrollbar {
+          width: 5px !important;
+        }
+        [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-[10vh]"]::-webkit-scrollbar-thumb,
+        [class*="user-input-step"][data-user-collapsed="false"] .flex-1::-webkit-scrollbar-thumb {
+          background: rgba(99, 102, 241, 0.25) !important;
+          border-radius: 9999px !important;
+        }
+        .dark [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-[10vh]"]::-webkit-scrollbar-thumb,
+        .theme-dark [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-[10vh]"]::-webkit-scrollbar-thumb {
+          background: rgba(165, 180, 252, 0.3) !important;
         }
 
         /* 附件容器完整呈现 */
