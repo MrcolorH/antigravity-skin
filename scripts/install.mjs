@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
+import { execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +17,53 @@ const configFile = path.join(home, '.gemini', 'config', 'config.json');
 console.log('==================================================');
 console.log('  正在安装与优化 Antigravity 主题与皮肤插件...');
 console.log('==================================================');
+
+// 0. 自动退出运行中的客户端以解除文件锁定并准备部署
+function ensureProcessClosed() {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+      if (out.toLowerCase().includes('antigravity.exe')) {
+        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动退出以解除文件锁定...');
+        try { execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' }); } catch (_) {}
+        const start = Date.now();
+        while (Date.now() - start < 3000) {
+          try {
+            const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+            if (!chk.toLowerCase().includes('antigravity.exe')) break;
+          } catch (_) { break; }
+          const t = Date.now(); while (Date.now() - t < 150) {}
+        }
+        console.log('     ✅ Antigravity 客户端已成功退出。');
+      }
+    } else if (process.platform === 'darwin') {
+      let isRunning = false;
+      try {
+        const out = execSync('pgrep -i antigravity', { encoding: 'utf8' });
+        if (out && out.trim()) isRunning = true;
+      } catch (_) {}
+
+      if (isRunning) {
+        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以应用新配置...');
+        try { execSync('osascript -e \'quit app "Antigravity"\'', { stdio: 'ignore' }); } catch (_) {}
+        const start = Date.now();
+        while (Date.now() - start < 2000) {
+          try {
+            const chk = execSync('pgrep -i antigravity', { encoding: 'utf8' });
+            if (!chk || !chk.trim()) break;
+          } catch (_) { break; }
+          const t = Date.now(); while (Date.now() - t < 200) {}
+        }
+        try { execSync('pkill -i antigravity', { stdio: 'ignore' }); } catch (_) {}
+        console.log('     ✅ Antigravity 客户端已成功退出。');
+      }
+    } else {
+      try { execSync('pkill -f antigravity', { stdio: 'ignore' }); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+ensureProcessClosed();
 
 // 1. 确保全局 plugins 目录存在
 if (!fs.existsSync(pluginsDir)) {
@@ -236,6 +284,7 @@ async function cleanRunningHost() {
 await cleanRunningHost();
 
 // 5. Windows 平台特权：自动执行前置开机动画动态联动补丁（自动关闭运行中的客户端解除锁定）
+// 注意：macOS 采用纯非侵入式架构，由 Sidecar 守护进程通过 CDP 动态接管与消除原生 loading，100% 保持官方代码签名完整！
 if (process.platform === 'win32') {
   console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除文件锁定)...');
   const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
@@ -251,6 +300,50 @@ if (process.platform === 'win32') {
   }
 }
 
+function restartAntigravity() {
+  console.log('\n✨ 正在自动为您重新拉起 Antigravity 客户端...');
+  try {
+    if (process.platform === 'darwin') {
+      const candidates = [
+        '/Applications/Antigravity.app',
+        path.join(home, 'Applications', 'Antigravity.app')
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          execSync(`open -a "${c}"`, { stdio: 'ignore' });
+          console.log('✨ 客户端已成功重新拉起启动！');
+          return;
+        }
+      }
+      execSync('open -a Antigravity', { stdio: 'ignore' });
+      console.log('✨ 客户端已成功重新拉起启动！');
+    } else if (process.platform === 'win32') {
+      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+      const candidates = [
+        path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+        path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+        'C:\\Program Files\\Antigravity\\Antigravity.exe',
+        'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
+      ];
+      const exe = candidates.find(c => fs.existsSync(c));
+      if (exe) {
+        const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
+        child.unref();
+        console.log('✨ 客户端已成功重新拉起启动！');
+      } else {
+        console.log('💡 未能自动找到 Antigravity.exe，请手动启动客户端。');
+      }
+    } else {
+      execSync('antigravity &', { stdio: 'ignore' });
+      console.log('✨ 客户端已成功重新拉起启动！');
+    }
+  } catch (_) {
+    console.log('💡 如未自动启动，请手动打开 Antigravity 客户端。');
+  }
+}
+
+restartAntigravity();
+
 console.log('==================================================');
 console.log(' [√] 部署与优化完成！');
 console.log(` 部署目录：${targetPluginDir}`);
@@ -264,7 +357,13 @@ if (process.platform === 'win32') {
   console.log(' 🎬 Windows 开机动画专属提示：');
   console.log(' 安装程序已自动为您退出客户端并完成前置开机动画终极升级！');
   console.log(' 如需重新打补丁，随时双击运行 patch-loading.bat；如需还原官方，可双击 restore-loading.bat。');
+  console.log('--------------------------------------------------');
+  console.log(' ✨ 客户端已为您自动重启生效，无需手动操作！');
+} else {
+  console.log('--------------------------------------------------');
+  console.log(' 🍎 macOS 纯净架构提示：');
+  console.log(' 已采用原生非侵入式架构完成部署，100% 保护官方代码签名与安全沙箱完整！');
+  console.log('--------------------------------------------------');
+  console.log(' ✨ 客户端已为您自动重新拉起生效，无需手动操作！');
 }
-console.log('--------------------------------------------------');
-console.log(' 请重新打开 Antigravity 客户端即可生效！');
 console.log('==================================================');

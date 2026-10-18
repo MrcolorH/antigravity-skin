@@ -761,16 +761,27 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     syncLangUI(isZh);
 
     // 状态更新与素材/动效列表同步核心函数（提升至作用域顶部，确保首次与所有幂等巡检均可同步）
-    function updateDeleteBtnState(selectEl, btnEl) {
+    function updateDeleteBtnState(selectEl, btnEl, expectedScope = 'wallpaper') {
       if (!selectEl || !btnEl) return;
       const currentVal = selectEl.value;
       const hasVal = !!currentVal && currentVal !== '';
-      btnEl.disabled = !hasVal;
       if (!hasVal) {
+        btnEl.disabled = true;
         btnEl.setAttribute('title', '当前未选择任何视频素材');
-      } else {
-        btnEl.setAttribute('title', '彻底从插件素材库中删除该素材');
+        return;
       }
+      if (expectedScope === 'wallpaper' && currentVal.startsWith('assets/videos/boot/')) {
+        btnEl.disabled = true;
+        btnEl.setAttribute('title', '此素材属于开机视频库，请在下方开机引导动画中管理删除');
+        return;
+      }
+      if (expectedScope === 'boot' && currentVal.startsWith('assets/videos/wallpaper/')) {
+        btnEl.disabled = true;
+        btnEl.setAttribute('title', '此素材属于动态壁纸库，请在上方动态壁纸中管理删除');
+        return;
+      }
+      btnEl.disabled = false;
+      btnEl.setAttribute('title', '彻底从当前素材库中删除该素材');
     }
 
     function updateDeleteScriptBtnState(selectEl, btnEl) {
@@ -785,64 +796,74 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     }
 
-    let isSyncingWallpapers = false;
-    async function syncWallpapers(forceSelectedPath = '', targetScope = 'all') {
-      if (isSyncingWallpapers) return;
-      isSyncingWallpapers = true;
+    let isSyncingWallpaperVideos = false;
+    async function syncWallpaperVideos(forceSelectedPath = '') {
+      if (isSyncingWallpaperVideos) return;
+      isSyncingWallpaperVideos = true;
 
       try {
         const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/list`);
         const data = await res.json();
         if (data.ok && Array.isArray(data.videos)) {
           let currentWallPath = config.features?.dynamicWallpaper?.videoPath || '';
-          let currentBootPath = config.features?.bootAnimationConfig?.videoPath || '';
 
           if (forceSelectedPath) {
-            if (targetScope === 'wallpaper' || targetScope === 'all') {
-              currentWallPath = forceSelectedPath;
-              if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
-              config.features.dynamicWallpaper.videoPath = forceSelectedPath;
-            }
-            if (targetScope === 'boot' || targetScope === 'all') {
-              currentBootPath = forceSelectedPath;
-              if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
-              config.features.bootAnimationConfig.videoPath = forceSelectedPath;
-            }
-          }
-
-          if (currentWallPath && currentWallPath.startsWith('assets/videos/')) {
-            const exists = data.videos.some(v => v.relPath === currentWallPath || currentWallPath.endsWith('/' + v.name));
-            if (!exists) currentWallPath = '';
-          }
-          if (currentBootPath && currentBootPath.startsWith('assets/videos/')) {
-            const exists = data.videos.some(v => v.relPath === currentBootPath || currentBootPath.endsWith('/' + v.name));
-            if (!exists) currentBootPath = '';
+            currentWallPath = forceSelectedPath;
+            if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+            config.features.dynamicWallpaper.videoPath = forceSelectedPath;
           }
 
           const curSelectWall = document.getElementById('agy-select-builtin-wallpaper');
           const curBtnDelWall = document.getElementById('agy-btn-delete-wallpaper');
-          const curSelectBoot = document.getElementById('agy-select-boot-video');
-          const curBtnDelBoot = document.getElementById('agy-btn-delete-boot-video');
 
           if (curSelectWall) {
             curSelectWall.innerHTML = '';
-            if (data.videos.length === 0) {
+            const wallVideos = data.videos || [];
+            const crossVideos = data.crossVideos || [];
+
+            if (wallVideos.length === 0 && crossVideos.length === 0) {
               const emptyOpt = document.createElement('option');
               emptyOpt.value = '';
-              emptyOpt.textContent = '(素材库为空，请点击下方载入视频)';
+              emptyOpt.textContent = '(壁纸素材库为空，请点击下方载入视频)';
               curSelectWall.appendChild(emptyOpt);
             } else {
               let matched = false;
-              data.videos.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v.relPath;
-                opt.textContent = v.displayName;
-                if (currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name))) {
-                  opt.selected = true;
-                  matched = true;
-                }
-                curSelectWall.appendChild(opt);
-              });
+
+              // 1. 壁纸专属素材库分组
+              if (wallVideos.length > 0) {
+                const groupWall = document.createElement('optgroup');
+                groupWall.label = '── 动态壁纸素材库 ──';
+                wallVideos.forEach(v => {
+                  const opt = document.createElement('option');
+                  opt.value = v.relPath;
+                  opt.textContent = v.displayName;
+                  if (currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name))) {
+                    opt.selected = true;
+                    matched = true;
+                  }
+                  groupWall.appendChild(opt);
+                });
+                curSelectWall.appendChild(groupWall);
+              }
+
+              // 2. 跨库复用：开机视频素材库（支持同一个视频自由共享，绝不独占）
+              if (crossVideos.length > 0) {
+                const groupCross = document.createElement('optgroup');
+                groupCross.label = '── 可复用开机素材库 ──';
+                crossVideos.forEach(v => {
+                  const opt = document.createElement('option');
+                  opt.value = v.relPath;
+                  opt.textContent = `🎬 [开机库] ${v.name}`;
+                  if (currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name))) {
+                    opt.selected = true;
+                    matched = true;
+                  }
+                  groupCross.appendChild(opt);
+                });
+                curSelectWall.appendChild(groupCross);
+              }
+
+              // 3. 外部绝对路径
               if (!matched && currentWallPath && !currentWallPath.startsWith('assets/videos/')) {
                 const extOpt = document.createElement('option');
                 extOpt.value = currentWallPath;
@@ -852,34 +873,93 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                 curSelectWall.appendChild(extOpt);
                 matched = true;
               }
-              if (!matched && !currentWallPath && data.videos.length > 0) {
-                curSelectWall.selectedIndex = 0;
-                config.features.dynamicWallpaper.videoPath = curSelectWall.value;
-              }
             }
+
             if (currentWallPath) curSelectWall.value = currentWallPath;
-            updateDeleteBtnState(curSelectWall, curBtnDelWall);
+            updateDeleteBtnState(curSelectWall, curBtnDelWall, 'wallpaper');
           }
+        }
+      } catch (err) {
+        console.warn('[Skin Menu] Failed to load wallpaper list:', err);
+      } finally {
+        isSyncingWallpaperVideos = false;
+      }
+    }
+
+    let isSyncingBootVideos = false;
+    async function syncBootVideos(forceSelectedPath = '') {
+      if (isSyncingBootVideos) return;
+      isSyncingBootVideos = true;
+
+      try {
+        let res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-video/list`);
+        if (!res.ok && res.status === 404) {
+          res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/list`);
+        }
+        let data = {};
+        try {
+          data = await res.json();
+        } catch (_) {}
+        if (data.ok && Array.isArray(data.videos)) {
+          let currentBootPath = config.features?.bootAnimationConfig?.videoPath || '';
+
+          if (forceSelectedPath) {
+            currentBootPath = forceSelectedPath;
+            if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
+            config.features.bootAnimationConfig.videoPath = forceSelectedPath;
+          }
+
+          const curSelectBoot = document.getElementById('agy-select-boot-video');
+          const curBtnDelBoot = document.getElementById('agy-btn-delete-boot-video');
 
           if (curSelectBoot) {
             curSelectBoot.innerHTML = '';
-            if (data.videos.length === 0) {
+            const bootVideos = data.videos || [];
+            const crossVideos = data.crossVideos || [];
+
+            if (bootVideos.length === 0 && crossVideos.length === 0) {
               const emptyOpt = document.createElement('option');
               emptyOpt.value = '';
-              emptyOpt.textContent = '(素材库为空，请点击下方载入视频)';
+              emptyOpt.textContent = '(开机视频库为空，请点击下方载入视频)';
               curSelectBoot.appendChild(emptyOpt);
             } else {
               let matched = false;
-              data.videos.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v.relPath;
-                opt.textContent = v.displayName;
-                if (currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name))) {
-                  opt.selected = true;
-                  matched = true;
-                }
-                curSelectBoot.appendChild(opt);
-              });
+
+              // 1. 开机短视频专属素材库分组
+              if (bootVideos.length > 0) {
+                const groupBoot = document.createElement('optgroup');
+                groupBoot.label = '── 开机短视频素材库 ──';
+                bootVideos.forEach(v => {
+                  const opt = document.createElement('option');
+                  opt.value = v.relPath;
+                  opt.textContent = v.displayName;
+                  if (currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name))) {
+                    opt.selected = true;
+                    matched = true;
+                  }
+                  groupBoot.appendChild(opt);
+                });
+                curSelectBoot.appendChild(groupBoot);
+              }
+
+              // 2. 跨库复用：动态壁纸素材库（支持同一个视频自由共享，绝不独占）
+              if (crossVideos.length > 0) {
+                const groupCross = document.createElement('optgroup');
+                groupCross.label = '── 可复用壁纸素材库 ──';
+                crossVideos.forEach(v => {
+                  const opt = document.createElement('option');
+                  opt.value = v.relPath;
+                  opt.textContent = `🎬 [壁纸库] ${v.name}`;
+                  if (currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name))) {
+                    opt.selected = true;
+                    matched = true;
+                  }
+                  groupCross.appendChild(opt);
+                });
+                curSelectBoot.appendChild(groupCross);
+              }
+
+              // 3. 外部绝对路径
               if (!matched && currentBootPath && !currentBootPath.startsWith('assets/videos/')) {
                 const extOpt = document.createElement('option');
                 extOpt.value = currentBootPath;
@@ -889,19 +969,28 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                 curSelectBoot.appendChild(extOpt);
                 matched = true;
               }
-              if (!matched && !currentBootPath && data.videos.length > 0) {
-                curSelectBoot.selectedIndex = 0;
-                config.features.bootAnimationConfig.videoPath = curSelectBoot.value;
-              }
             }
+
             if (currentBootPath) curSelectBoot.value = currentBootPath;
-            updateDeleteBtnState(curSelectBoot, curBtnDelBoot);
+            updateDeleteBtnState(curSelectBoot, curBtnDelBoot, 'boot');
           }
         }
       } catch (err) {
-        console.warn('[Skin Menu] Failed to load wallpaper list:', err);
+        console.warn('[Skin Menu] Failed to load boot video list:', err);
       } finally {
-        isSyncingWallpapers = false;
+        isSyncingBootVideos = false;
+      }
+    }
+
+    async function syncWallpapers(forceSelectedPath = '', targetScope = 'all') {
+      if (targetScope === 'wallpaper') {
+        await syncWallpaperVideos(forceSelectedPath);
+        await syncBootVideos();
+      } else if (targetScope === 'boot') {
+        await syncBootVideos(forceSelectedPath);
+        await syncWallpaperVideos();
+      } else {
+        await Promise.all([syncWallpaperVideos(forceSelectedPath), syncBootVideos(forceSelectedPath)]);
       }
     }
 
@@ -1012,7 +1101,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           : '💻 执行动态脚本代码渲染开机引导动效';
         if (bootTypeDesc.textContent !== text) bootTypeDesc.textContent = text;
       }
-      syncWallpapers();
+      syncWallpaperVideos();
+      syncBootVideos();
       syncBootScripts();
       return;
     }
@@ -1133,12 +1223,26 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
 
       try {
-        const uploadUrl = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/upload?name=${encodeURIComponent(file.name)}`;
-        const res = await fetch(uploadUrl, {
+        const uploadEndpoint = isWallpaper ? '/api/wallpaper/upload' : '/api/boot-video/upload';
+        const uploadUrl = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}${uploadEndpoint}?name=${encodeURIComponent(file.name)}`;
+        let res = await fetch(uploadUrl, {
           method: 'POST',
           body: file
         });
-        const data = await res.json();
+        if (!res.ok && res.status === 404 && !isWallpaper) {
+          const fallbackUrl = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/upload?name=${encodeURIComponent(file.name)}`;
+          res = await fetch(fallbackUrl, {
+            method: 'POST',
+            body: file
+          });
+        }
+        let data;
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          throw new Error(`服务响应异常 (${res.status}): ${text || res.statusText}`);
+        }
         if (data.ok && data.relPath) {
           if (isWallpaper) {
             if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
@@ -1154,7 +1258,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               if (curWrapS) curWrapS.style.display = 'grid';
             }
             triggerSave();
-            await syncWallpapers(data.relPath, 'wallpaper');
+            await syncWallpaperVideos(data.relPath);
+            syncBootVideos();
             if (tipEl) {
               tipEl.textContent = `✅ 已成功载入「${data.fileName}」并设为当前壁纸！`;
               tipEl.className = 'text-[11px] text-emerald-400 font-medium';
@@ -1173,7 +1278,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             }
             syncBootTypeUI('video');
             triggerSave();
-            await syncWallpapers(data.relPath, 'boot');
+            await syncBootVideos(data.relPath);
+            syncWallpaperVideos();
             if (tipEl) {
               tipEl.textContent = `✅ 已成功载入「${data.fileName}」并设为开机视频！`;
               tipEl.className = 'text-[11px] text-emerald-400 font-medium';
@@ -1200,9 +1306,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     }
 
-    // E. 删除视频通用处理函数（直接物理删除插件目录对应文件）
+    // E. 删除视频通用处理函数（直接物理删除插件对应专属子库文件）
     async function handleDeleteVideo(selectEl, tipEl, targetType) {
-      const curSelect = (targetType === 'wallpaper' ? document.getElementById('agy-select-builtin-wallpaper') : document.getElementById('agy-select-boot-video')) || selectEl;
+      const isWallpaper = targetType === 'wallpaper';
+      const curSelect = (isWallpaper ? document.getElementById('agy-select-builtin-wallpaper') : document.getElementById('agy-select-boot-video')) || selectEl;
       if (!curSelect) return;
       const val = curSelect.value;
       if (!val) {
@@ -1210,7 +1317,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         return;
       }
       const fileName = val.split(/[\/\\]/).pop();
-      const confirmed = confirm(`确定要彻底删除素材「${fileName}」吗？\n\n该操作将直接从插件素材库中物理删除此视频文件，不可恢复。`);
+      const libraryName = isWallpaper ? '动态壁纸素材库' : '开机短视频素材库';
+      const confirmed = confirm(`确定要彻底删除素材「${fileName}」吗？\n\n该操作将直接从${libraryName}中物理删除此视频文件，不可恢复。`);
       if (!confirmed) return;
 
       if (tipEl) {
@@ -1219,21 +1327,42 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
 
       try {
-        const res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/delete`, {
+        const deleteEndpoint = isWallpaper ? '/api/wallpaper/delete' : '/api/boot-video/delete';
+        let res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}${deleteEndpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: val })
         });
-        const data = await res.json();
+        if (!res.ok && res.status === 404 && !isWallpaper) {
+          res = await fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/wallpaper/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: val })
+          });
+        }
+        let data;
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          throw new Error(`服务响应异常 (${res.status}): ${text || res.statusText}`);
+        }
         if (data.ok) {
-          if (config.features?.dynamicWallpaper?.videoPath && (config.features.dynamicWallpaper.videoPath === val || config.features.dynamicWallpaper.videoPath.includes(fileName))) {
-            config.features.dynamicWallpaper.videoPath = '';
+          if (isWallpaper) {
+            if (config.features?.dynamicWallpaper?.videoPath && (config.features.dynamicWallpaper.videoPath === val || config.features.dynamicWallpaper.videoPath.includes(fileName))) {
+              config.features.dynamicWallpaper.videoPath = '';
+            }
+            triggerSave();
+            await syncWallpaperVideos();
+            syncBootVideos();
+          } else {
+            if (config.features?.bootAnimationConfig?.videoPath && (config.features.bootAnimationConfig.videoPath === val || config.features.bootAnimationConfig.videoPath.includes(fileName))) {
+              config.features.bootAnimationConfig.videoPath = '';
+            }
+            triggerSave();
+            await syncBootVideos();
+            syncWallpaperVideos();
           }
-          if (config.features?.bootAnimationConfig?.videoPath && (config.features.bootAnimationConfig.videoPath === val || config.features.bootAnimationConfig.videoPath.includes(fileName))) {
-            config.features.bootAnimationConfig.videoPath = '';
-          }
-          triggerSave();
-          await syncWallpapers();
 
           if (tipEl) {
             tipEl.textContent = `🗑️ 素材「${fileName}」已成功删除。`;
@@ -1271,7 +1400,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           method: 'POST',
           body: file
         });
-        const data = await res.json();
+        let data;
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          throw new Error(`服务响应异常 (${res.status}): ${text || res.statusText}`);
+        }
         if (data.ok && data.relPath) {
           if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
           config.features.bootAnimationConfig.customCodePath = data.relPath;
@@ -1326,7 +1461,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: val })
         });
-        const data = await res.json();
+        let data;
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          throw new Error(`服务响应异常 (${res.status}): ${text || res.statusText}`);
+        }
         if (data.ok) {
           if (config.features?.bootAnimationConfig?.customCodePath && (config.features.bootAnimationConfig.customCodePath === val || config.features.bootAnimationConfig.customCodePath.includes(fileName))) {
             config.features.bootAnimationConfig.customCodePath = 'assets/scripts/default-boot.js';
@@ -1359,7 +1500,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const val = selectBuiltinWallpaper.value;
         if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
         config.features.dynamicWallpaper.videoPath = val;
-        updateDeleteBtnState(selectBuiltinWallpaper, btnDeleteWallpaper);
+        updateDeleteBtnState(selectBuiltinWallpaper, btnDeleteWallpaper, 'wallpaper');
         triggerSave();
       };
     }
@@ -1385,7 +1526,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const val = selectBootVideo.value;
         if (!config.features.bootAnimationConfig) config.features.bootAnimationConfig = {};
         config.features.bootAnimationConfig.videoPath = val;
-        updateDeleteBtnState(selectBootVideo, btnDeleteBootVideo);
+        updateDeleteBtnState(selectBootVideo, btnDeleteBootVideo, 'boot');
         triggerSave();
       };
     }
@@ -1406,7 +1547,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     }
 
     // 首次载入素材库（静态载入，不带闪烁动画）
-    syncWallpapers();
+    syncWallpaperVideos();
+    syncBootVideos();
     syncBootScripts();
 
     // 开机动画总开关显式同步与事件监听

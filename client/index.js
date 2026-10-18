@@ -86,9 +86,12 @@
   }
 
   function checkAndTriggerBootAnimation() {
-    // 架构统一：开机引导动画已由原生 LoadingOverlay 完整接管（真·第0毫秒秒开），
-    // 渲染层仅保留「外观设置」中的手动「▶️ 立即预览」功能，冷启动绝不重复弹出！
-    return;
+    const bridge = window.__agySkinBridge;
+    const cfg = bridge ? bridge.getConfig() : (window.__AG_SKIN_CONFIG__ || currentConfig);
+    if (shouldAbandonBootAnimation(cfg)) return;
+    if (typeof window.__triggerBootAnimation === 'function') {
+      window.__triggerBootAnimation();
+    }
   }
 
   if (window.__AG_SKIN_ATTACHED__) {
@@ -113,8 +116,7 @@
     const needWallpaper = needStyle && currentConfig.features?.dynamicWallpaper?.enabled === true && !!currentConfig.features?.dynamicWallpaper?.videoPath;
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
-                          !!document.getElementById('agy-custom-code-boot-host') ||
-                          (currentConfig.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
+                          !!document.getElementById('agy-custom-code-boot-host');
     const hasVideo = !!document.getElementById('agy-dynamic-video');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
     if (!isBootPlaying) {

@@ -28,6 +28,26 @@ const CONFIG_FILE = path.join(PLUGIN_ROOT, 'config', 'config.json');
 const DEFAULT_CONFIG_FILE = path.join(PLUGIN_ROOT, 'config.default.json');
 const ASSETS_DIR = path.join(PLUGIN_ROOT, 'assets');
 const SCRIPTS_DIR = path.join(ASSETS_DIR, 'scripts');
+const VIDEOS_DIR = path.join(ASSETS_DIR, 'videos');
+const WALLPAPER_VIDEOS_DIR = path.join(VIDEOS_DIR, 'wallpaper');
+const BOOT_VIDEOS_DIR = path.join(VIDEOS_DIR, 'boot');
+
+// 确保素材目录完备就绪
+for (const dir of [SCRIPTS_DIR, VIDEOS_DIR, WALLPAPER_VIDEOS_DIR, BOOT_VIDEOS_DIR]) {
+  if (!fs.existsSync(dir)) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+  }
+}
+
+// 自动热重载：当 main.mjs 在磁盘上被更新时，自动退出以触发宿主自动重启生效最新逻辑
+try {
+  fs.watchFile(__filename, { interval: 1000 }, (curr, prev) => {
+    if (curr.mtimeMs !== prev.mtimeMs) {
+      console.log('[Skin Engine] main.mjs has been updated on disk. Gracefully exiting to trigger host auto-restart...');
+      process.exit(0);
+    }
+  });
+} catch (_) {}
 
 function getDevToolsPortPath() {
   const home = os.homedir();
@@ -89,9 +109,9 @@ function writeConfig(newConfig) {
 
 // 4. 本地 HTTP 服务（分块视频流 + 配置接口）
 let currentVideoPath = '';
-const HTTP_PORT = 59288;
+const HTTP_PORT = process.env.AGY_SKIN_PORT ? parseInt(process.env.AGY_SKIN_PORT, 10) : 59288;
 
-function resolveVideoPath(videoPath) {
+function resolveVideoPath(videoPath, preferredSubdir = '') {
   if (!videoPath) {
     return null;
   }
@@ -99,13 +119,22 @@ function resolveVideoPath(videoPath) {
   if (path.isAbsolute(videoPath)) {
     if (fs.existsSync(videoPath)) return videoPath;
   } else {
-    // 2. 相对插件根目录路径（如 assets/videos/xxx.mp4）
+    // 2. 相对插件根目录路径（如 assets/videos/wallpaper/xxx.mp4 或 assets/videos/boot/xxx.mp4）
     const rel = path.resolve(PLUGIN_ROOT, videoPath);
     if (fs.existsSync(rel)) return rel;
 
-    // 3. 如果是纯文件名或简写路径，优先在 assets/videos/ 中查找同名素材
     const baseName = path.basename(videoPath);
-    const inAssets = path.join(ASSETS_DIR, 'videos', baseName);
+    // 3. 优先在指定的专属子目录中查找
+    if (preferredSubdir) {
+      const inPref = path.join(VIDEOS_DIR, preferredSubdir, baseName);
+      if (fs.existsSync(inPref)) return inPref;
+    }
+    // 4. 在壁纸目录、开机视频目录或根素材目录查找同名素材
+    const inWall = path.join(WALLPAPER_VIDEOS_DIR, baseName);
+    if (fs.existsSync(inWall)) return inWall;
+    const inBoot = path.join(BOOT_VIDEOS_DIR, baseName);
+    if (fs.existsSync(inBoot)) return inBoot;
+    const inAssets = path.join(VIDEOS_DIR, baseName);
     if (fs.existsSync(inAssets)) return inAssets;
   }
   return null;
@@ -178,14 +207,45 @@ function ensureFastStart(filePath) {
   return false;
 }
 
+function listVideosFromDir(dirPath, relPrefix) {
+  if (!fs.existsSync(dirPath)) {
+    try { fs.mkdirSync(dirPath, { recursive: true }); } catch (_) {}
+    return [];
+  }
+  const files = fs.readdirSync(dirPath);
+  const validExts = ['.mp4', '.webm', '.mov', '.mkv'];
+  const list = [];
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    if (validExts.includes(ext)) {
+      const fullPath = path.join(dirPath, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.isFile()) {
+          list.push({
+            name: file,
+            displayName: `🎬 ${file}`,
+            relPath: `${relPrefix}/${file}`,
+            size: stat.size,
+            isDefault: false
+          });
+        }
+      } catch (_) {}
+    }
+  }
+  list.sort((a, b) => a.name.localeCompare(b.name));
+  return list;
+}
+
 function optimizeVideoAssets() {
   try {
-    const vDir = path.join(ASSETS_DIR, 'videos');
-    if (!fs.existsSync(vDir)) return;
-    const files = fs.readdirSync(vDir);
-    for (const f of files) {
-      if (f.toLowerCase().endsWith('.mp4')) {
-        ensureFastStart(path.join(vDir, f));
+    for (const dir of [WALLPAPER_VIDEOS_DIR, BOOT_VIDEOS_DIR, VIDEOS_DIR]) {
+      if (!fs.existsSync(dir)) continue;
+      const files = fs.readdirSync(dir);
+      for (const f of files) {
+        if (f.toLowerCase().endsWith('.mp4')) {
+          ensureFastStart(path.join(dir, f));
+        }
       }
     }
   } catch (_) {}
@@ -289,30 +349,16 @@ const server = http.createServer((req, res) => {
   // API: 获取内置壁纸视频列表
   if (url.pathname === '/api/wallpaper/list' && req.method === 'GET') {
     try {
-      const videosDir = path.join(ASSETS_DIR, 'videos');
-      if (!fs.existsSync(videosDir)) {
-        fs.mkdirSync(videosDir, { recursive: true });
-      }
-      const files = fs.readdirSync(videosDir);
-      const validExts = ['.mp4', '.webm', '.mov', '.mkv'];
-      const videos = [];
-      for (const file of files) {
-        const ext = path.extname(file).toLowerCase();
-        if (validExts.includes(ext)) {
-          const fullPath = path.join(videosDir, file);
-          const stat = fs.statSync(fullPath);
-          videos.push({
-            name: file,
-            displayName: `🎬 ${file}`,
-            relPath: `assets/videos/${file}`,
-            size: stat.size,
-            isDefault: false
-          });
+      const videos = listVideosFromDir(WALLPAPER_VIDEOS_DIR, 'assets/videos/wallpaper');
+      const rootVideos = listVideosFromDir(VIDEOS_DIR, 'assets/videos');
+      for (const rv of rootVideos) {
+        if (!videos.some(v => v.name === rv.name)) {
+          videos.push(rv);
         }
       }
-      videos.sort((a, b) => a.name.localeCompare(b.name));
+      const crossVideos = listVideosFromDir(BOOT_VIDEOS_DIR, 'assets/videos/boot');
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, videos }));
+      res.end(JSON.stringify({ ok: true, videos, crossVideos }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: err.message }));
@@ -320,25 +366,23 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: 直接二进制流上传外部视频到内置 assets/videos 目录
+  // API: 上传视频到内置动态壁纸库 assets/videos/wallpaper
   if (url.pathname === '/api/wallpaper/upload' && req.method === 'POST') {
     try {
-      let fileNameParam = url.searchParams.get('name') || `custom_${Date.now()}.mp4`;
+      let fileNameParam = url.searchParams.get('name') || `custom_wall_${Date.now()}.mp4`;
       try { fileNameParam = decodeURIComponent(fileNameParam); } catch (_) {}
       const cleanFileName = path.basename(fileNameParam).replace(/[^\w\d\.\-_\u4e00-\u9fa5]/g, '_');
-      const videosDir = path.join(ASSETS_DIR, 'videos');
-      if (!fs.existsSync(videosDir)) {
-        fs.mkdirSync(videosDir, { recursive: true });
+      if (!fs.existsSync(WALLPAPER_VIDEOS_DIR)) {
+        fs.mkdirSync(WALLPAPER_VIDEOS_DIR, { recursive: true });
       }
 
       const parsedPath = path.parse(cleanFileName);
       let targetFileName = parsedPath.base;
-      let destPath = path.join(videosDir, targetFileName);
+      let destPath = path.join(WALLPAPER_VIDEOS_DIR, targetFileName);
 
-      // 如果同名文件已存在，为避免覆盖生成不重复的文件名
       if (fs.existsSync(destPath)) {
         targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext || '.mp4'}`;
-        destPath = path.join(videosDir, targetFileName);
+        destPath = path.join(WALLPAPER_VIDEOS_DIR, targetFileName);
       }
 
       const fileWriteStream = fs.createWriteStream(destPath);
@@ -346,19 +390,19 @@ const server = http.createServer((req, res) => {
 
       fileWriteStream.on('finish', () => {
         try { ensureFastStart(destPath); } catch (_) {}
-        const relPath = `assets/videos/${targetFileName}`;
-        console.log(`[Skin Engine] Successfully uploaded video: ${relPath}`);
+        const relPath = `assets/videos/wallpaper/${targetFileName}`;
+        console.log(`[Skin Engine] Successfully uploaded wallpaper: ${relPath}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
           relPath,
           fileName: targetFileName,
-          message: '已成功上传并保存到插件内置素材库'
+          message: '已成功上传并保存到动态壁纸素材库'
         }));
       });
 
       fileWriteStream.on('error', (err) => {
-        console.error('[Skin Engine] Failed to write uploaded video:', err);
+        console.error('[Skin Engine] Failed to write uploaded wallpaper:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: '写入文件失败: ' + err.message }));
       });
@@ -369,7 +413,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: 导入外部视频到内置 assets/videos 目录（支持绝对路径复制）
+  // API: 导入外部视频到内置壁纸素材库（支持绝对路径复制）
   if (url.pathname === '/api/wallpaper/import' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
@@ -396,21 +440,20 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        const videosDir = path.join(ASSETS_DIR, 'videos');
-        if (!fs.existsSync(videosDir)) {
-          fs.mkdirSync(videosDir, { recursive: true });
+        if (!fs.existsSync(WALLPAPER_VIDEOS_DIR)) {
+          fs.mkdirSync(WALLPAPER_VIDEOS_DIR, { recursive: true });
         }
 
         const parsedPath = path.parse(sourcePath);
         let targetFileName = parsedPath.base;
-        let destPath = path.join(videosDir, targetFileName);
+        let destPath = path.join(WALLPAPER_VIDEOS_DIR, targetFileName);
 
         if (fs.existsSync(destPath)) {
           const srcStat = fs.statSync(sourcePath);
           const destStat = fs.statSync(destPath);
           if (srcStat.size !== destStat.size) {
             targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext}`;
-            destPath = path.join(videosDir, targetFileName);
+            destPath = path.join(WALLPAPER_VIDEOS_DIR, targetFileName);
             fs.copyFileSync(sourcePath, destPath);
           }
         } else {
@@ -418,13 +461,13 @@ const server = http.createServer((req, res) => {
         }
 
         try { ensureFastStart(destPath); } catch (_) {}
-        const relPath = `assets/videos/${targetFileName}`;
+        const relPath = `assets/videos/wallpaper/${targetFileName}`;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
           relPath,
           fileName: targetFileName,
-          message: '已成功复制到插件内置素材库'
+          message: '已成功导入动态壁纸素材库'
         }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -434,7 +477,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: 删除内置 assets/videos 中的视频素材
+  // API: 删除内置壁纸素材（独立管理，绝不干扰开机短视频配置与素材）
   if ((url.pathname === '/api/wallpaper/delete' && req.method === 'POST') ||
       (url.pathname === '/api/wallpaper' && req.method === 'DELETE')) {
     let body = '';
@@ -459,11 +502,13 @@ const server = http.createServer((req, res) => {
         }
 
         const baseName = path.basename(targetRelPath);
-        const videosDir = path.join(ASSETS_DIR, 'videos');
-        const targetFullPath = path.join(videosDir, baseName);
+        let targetFullPath = path.join(WALLPAPER_VIDEOS_DIR, baseName);
+        if (!fs.existsSync(targetFullPath)) {
+          targetFullPath = path.join(VIDEOS_DIR, baseName);
+        }
 
         // 安全检查：防止目录穿越
-        if (!targetFullPath.startsWith(videosDir)) {
+        if (!targetFullPath.startsWith(VIDEOS_DIR)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: '非法路径，禁止访问素材库以外的文件' }));
           return;
@@ -471,35 +516,227 @@ const server = http.createServer((req, res) => {
 
         if (fs.existsSync(targetFullPath)) {
           fs.unlinkSync(targetFullPath);
-          console.log(`[Skin Engine] Successfully deleted video file: ${targetFullPath}`);
+          console.log(`[Skin Engine] Successfully deleted wallpaper video: ${targetFullPath}`);
         }
 
-        // 检查并自动更新配置文件，如果正在使用的是被删除的文件，重置为空
+        // 仅检查并重置壁纸配置，严禁连带清空开机短视频！
         const config = readConfig();
         let configChanged = false;
         if (config.features?.dynamicWallpaper?.videoPath &&
             (config.features.dynamicWallpaper.videoPath.includes(baseName) || config.features.dynamicWallpaper.videoPath === targetRelPath)) {
           config.features.dynamicWallpaper.videoPath = '';
           configChanged = true;
-        }
-        if (config.features?.bootAnimationConfig?.videoPath &&
-            (config.features.bootAnimationConfig.videoPath.includes(baseName) || config.features.bootAnimationConfig.videoPath === targetRelPath)) {
-          config.features.bootAnimationConfig.videoPath = '';
-          configChanged = true;
-        }
-        if (configChanged) {
           writeConfig(config);
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
-          message: `已成功删除素材：${baseName}`,
+          message: `已成功删除壁纸素材：${baseName}`,
           fallbackPath: '',
           configReset: configChanged
         }));
       } catch (err) {
-        console.error('[Skin Engine] Delete video error:', err);
+        console.error('[Skin Engine] Delete wallpaper error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: '删除失败: ' + err.message }));
+      }
+    });
+    return;
+  }
+
+  // API: 获取开机短视频素材列表
+  if (url.pathname === '/api/boot-video/list' && req.method === 'GET') {
+    try {
+      const videos = listVideosFromDir(BOOT_VIDEOS_DIR, 'assets/videos/boot');
+      const rootVideos = listVideosFromDir(VIDEOS_DIR, 'assets/videos');
+      for (const rv of rootVideos) {
+        if (!videos.some(v => v.name === rv.name)) {
+          videos.push(rv);
+        }
+      }
+      const crossVideos = listVideosFromDir(WALLPAPER_VIDEOS_DIR, 'assets/videos/wallpaper');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, videos, crossVideos }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
+  // API: 上传视频到内置开机短视频库 assets/videos/boot
+  if (url.pathname === '/api/boot-video/upload' && req.method === 'POST') {
+    try {
+      let fileNameParam = url.searchParams.get('name') || `custom_boot_${Date.now()}.mp4`;
+      try { fileNameParam = decodeURIComponent(fileNameParam); } catch (_) {}
+      const cleanFileName = path.basename(fileNameParam).replace(/[^\w\d\.\-_\u4e00-\u9fa5]/g, '_');
+      if (!fs.existsSync(BOOT_VIDEOS_DIR)) {
+        fs.mkdirSync(BOOT_VIDEOS_DIR, { recursive: true });
+      }
+
+      const parsedPath = path.parse(cleanFileName);
+      let targetFileName = parsedPath.base;
+      let destPath = path.join(BOOT_VIDEOS_DIR, targetFileName);
+
+      if (fs.existsSync(destPath)) {
+        targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext || '.mp4'}`;
+        destPath = path.join(BOOT_VIDEOS_DIR, targetFileName);
+      }
+
+      const fileWriteStream = fs.createWriteStream(destPath);
+      req.pipe(fileWriteStream);
+
+      fileWriteStream.on('finish', () => {
+        try { ensureFastStart(destPath); } catch (_) {}
+        const relPath = `assets/videos/boot/${targetFileName}`;
+        console.log(`[Skin Engine] Successfully uploaded boot video: ${relPath}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          relPath,
+          fileName: targetFileName,
+          message: '已成功上传并保存到开机短视频素材库'
+        }));
+      });
+
+      fileWriteStream.on('error', (err) => {
+        console.error('[Skin Engine] Failed to write uploaded boot video:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: '写入文件失败: ' + err.message }));
+      });
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
+  // API: 导入外部绝对路径视频到内置开机短视频素材库
+  if (url.pathname === '/api/boot-video/import' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const parsed = JSON.parse(body);
+        let sourcePath = (parsed.sourcePath || '').trim();
+        if (!sourcePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '请提供有效的源视频文件路径' }));
+          return;
+        }
+
+        if (!path.isAbsolute(sourcePath)) {
+          const inCwd = path.resolve(process.cwd(), sourcePath);
+          if (fs.existsSync(inCwd)) {
+            sourcePath = inCwd;
+          }
+        }
+
+        if (!fs.existsSync(sourcePath)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `源视频文件未找到，请确认本地路径是否正确：${sourcePath}` }));
+          return;
+        }
+
+        if (!fs.existsSync(BOOT_VIDEOS_DIR)) {
+          fs.mkdirSync(BOOT_VIDEOS_DIR, { recursive: true });
+        }
+
+        const parsedPath = path.parse(sourcePath);
+        let targetFileName = parsedPath.base;
+        let destPath = path.join(BOOT_VIDEOS_DIR, targetFileName);
+
+        if (fs.existsSync(destPath)) {
+          const srcStat = fs.statSync(sourcePath);
+          const destStat = fs.statSync(destPath);
+          if (srcStat.size !== destStat.size) {
+            targetFileName = `${parsedPath.name}_${Date.now()}${parsedPath.ext}`;
+            destPath = path.join(BOOT_VIDEOS_DIR, targetFileName);
+            fs.copyFileSync(sourcePath, destPath);
+          }
+        } else {
+          fs.copyFileSync(sourcePath, destPath);
+        }
+
+        try { ensureFastStart(destPath); } catch (_) {}
+        const relPath = `assets/videos/boot/${targetFileName}`;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          relPath,
+          fileName: targetFileName,
+          message: '已成功导入开机短视频素材库'
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // API: 删除内置开机短视频素材（独立管理，绝不干扰壁纸配置与素材）
+  if ((url.pathname === '/api/boot-video/delete' && req.method === 'POST') ||
+      (url.pathname === '/api/boot-video' && req.method === 'DELETE')) {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        let targetRelPath = '';
+        if (body) {
+          try {
+            const parsed = JSON.parse(body);
+            targetRelPath = parsed.path || '';
+          } catch (e) {}
+        }
+        if (!targetRelPath) {
+          targetRelPath = url.searchParams.get('path') || '';
+        }
+
+        if (!targetRelPath) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '缺少要删除的文件路径参数' }));
+          return;
+        }
+
+        const baseName = path.basename(targetRelPath);
+        let targetFullPath = path.join(BOOT_VIDEOS_DIR, baseName);
+        if (!fs.existsSync(targetFullPath)) {
+          targetFullPath = path.join(VIDEOS_DIR, baseName);
+        }
+
+        // 安全检查：防止目录穿越
+        if (!targetFullPath.startsWith(VIDEOS_DIR)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '非法路径，禁止访问素材库以外的文件' }));
+          return;
+        }
+
+        if (fs.existsSync(targetFullPath)) {
+          fs.unlinkSync(targetFullPath);
+          console.log(`[Skin Engine] Successfully deleted boot video: ${targetFullPath}`);
+        }
+
+        // 仅检查并重置开机短视频配置，严禁连带清空壁纸！
+        const config = readConfig();
+        let configChanged = false;
+        if (config.features?.bootAnimationConfig?.videoPath &&
+            (config.features.bootAnimationConfig.videoPath.includes(baseName) || config.features.bootAnimationConfig.videoPath === targetRelPath)) {
+          config.features.bootAnimationConfig.videoPath = '';
+          configChanged = true;
+          writeConfig(config);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          message: `已成功删除开机视频素材：${baseName}`,
+          fallbackPath: '',
+          configReset: configChanged
+        }));
+      } catch (err) {
+        console.error('[Skin Engine] Delete boot video error:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: '删除失败: ' + err.message }));
       }
@@ -738,7 +975,7 @@ const server = http.createServer((req, res) => {
     const queryPath = url.searchParams.get('path');
     const config = readConfig();
     const targetVideo = queryPath || config.features?.dynamicWallpaper?.videoPath;
-    const vidPath = resolveVideoPath(targetVideo);
+    const vidPath = resolveVideoPath(targetVideo, 'wallpaper');
     return streamVideoFile(vidPath);
   }
 
@@ -747,7 +984,7 @@ const server = http.createServer((req, res) => {
     const queryPath = url.searchParams.get('path');
     const config = readConfig();
     const targetVideo = queryPath || config.features?.bootAnimationConfig?.videoPath;
-    const vidPath = resolveVideoPath(targetVideo);
+    const vidPath = resolveVideoPath(targetVideo, 'boot');
     return streamVideoFile(vidPath);
   }
 
@@ -1019,8 +1256,7 @@ function createCdpSession(target, port) {
           // 关键防护：若开机动画正在全屏播放中，判定为健康活跃态，严禁重复注入打断动画或提前挂载壁纸！
           if (window.__agyBootPlaying ||
               document.getElementById('agy-video-boot-host') ||
-              document.getElementById('agy-custom-code-boot-host') ||
-              (cfg?.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'))) {
+              document.getElementById('agy-custom-code-boot-host')) {
             return true;
           }
           const needStyle = cfg?.features?.themeStyles !== false;
@@ -1070,6 +1306,52 @@ function isMainAppTarget(target) {
     return true;
   }
   return false;
+}
+
+// 6.6 动态接管并无损消除官方原生 Loading 遮罩（纯非侵入式 CDP 样式接管，100% 保持官方代码签名完整）
+const neutralizedLoadingTargets = new Set();
+
+function handleNativeLoadingOverlay(target, port) {
+  const targetId = target.id || target.targetId;
+  if (!targetId || neutralizedLoadingTargets.has(targetId)) return;
+  neutralizedLoadingTargets.add(targetId);
+
+  const wsUrl = target.webSocketDebuggerUrl || (port ? `ws://127.0.0.1:${port}/devtools/page/${targetId}` : null);
+  if (!wsUrl) return;
+
+  try {
+    const ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+      console.log(`[Skin Engine] Detected native loadingOverlay (${targetId}), neutralizing official pulsating logo...`);
+      const neutralizeScript = `
+        try {
+          const style = document.createElement('style');
+          style.textContent = 'html, body { background: #000000 !important; } svg, .logo { display: none !important; opacity: 0 !important; visibility: hidden !important; }';
+          if (document.head) {
+            document.head.appendChild(style);
+          } else if (document.documentElement) {
+            document.documentElement.appendChild(style);
+          }
+          if (document.body) {
+            document.body.style.background = '#000000';
+            const logo = document.querySelector('.logo') || document.querySelector('svg');
+            if (logo) logo.remove();
+          }
+        } catch (_) {}
+      `;
+      ws.send(JSON.stringify({
+        id: 1,
+        method: 'Runtime.evaluate',
+        params: { expression: neutralizeScript }
+      }));
+      setTimeout(() => {
+        try { ws.close(); } catch (_) {}
+      }, 500);
+    };
+    ws.onerror = () => {
+      try { ws.close(); } catch (_) {}
+    };
+  } catch (_) {}
 }
 
 // 7. 纯事件驱动核心：Browser 级别长连接与 0 轮询目标发现 (0% CPU Idle)
@@ -1122,31 +1404,43 @@ async function connectBrowserTarget(port) {
         const method = msg.method;
         if (method === 'Target.targetCreated' || method === 'Target.targetInfoChanged') {
           const info = msg.params?.targetInfo;
-          if (info && isMainAppTarget(info)) {
-            const targetId = info.targetId;
-            let session = activeSessions.get(targetId);
-            if (!session || session.ws.readyState !== WebSocket.OPEN) {
-              const fullTarget = {
-                id: targetId,
-                targetId: targetId,
-                type: info.type,
-                title: info.title,
-                url: info.url,
-                webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/page/${targetId}`
-              };
-              session = createCdpSession(fullTarget, port);
-              if (session) {
-                activeSessions.set(targetId, session);
+          if (info) {
+            const url = (info.url || '').trim();
+            // 动态接管原生 loadingOverlay 遮罩
+            if (url.startsWith('data:') && (url.includes('logo') || url.includes('svg') || url.includes('DOCTYPE') || url.includes('%3C') || url.includes('%21DOCTYPE'))) {
+              const cfg = readConfig();
+              if (cfg?.enabled && cfg?.features?.bootAnimation) {
+                handleNativeLoadingOverlay(info, port);
+              }
+            } else if (isMainAppTarget(info)) {
+              const targetId = info.targetId;
+              let session = activeSessions.get(targetId);
+              if (!session || session.ws.readyState !== WebSocket.OPEN) {
+                const fullTarget = {
+                  id: targetId,
+                  targetId: targetId,
+                  type: info.type,
+                  title: info.title,
+                  url: info.url,
+                  webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/page/${targetId}`
+                };
+                session = createCdpSession(fullTarget, port);
+                if (session) {
+                  activeSessions.set(targetId, session);
+                }
               }
             }
           }
         } else if (method === 'Target.targetDestroyed') {
           const targetId = msg.params?.targetId;
-          if (targetId && activeSessions.has(targetId)) {
-            const session = activeSessions.get(targetId);
-            try { session.ws.close(); } catch (_) {}
-            activeSessions.delete(targetId);
-            console.log(`[Skin Engine] Target destroyed via event: ${targetId}`);
+          if (targetId) {
+            neutralizedLoadingTargets.delete(targetId);
+            if (activeSessions.has(targetId)) {
+              const session = activeSessions.get(targetId);
+              try { session.ws.close(); } catch (_) {}
+              activeSessions.delete(targetId);
+              console.log(`[Skin Engine] Target destroyed via event: ${targetId}`);
+            }
           }
         }
       } catch (_) {}
@@ -1233,6 +1527,7 @@ function gracefulShutdown(signal) {
     try { session.ws.close(); } catch (e) {}
   }
   activeSessions.clear();
+  neutralizedLoadingTargets.clear();
   try {
     server.close(() => {
       process.exit(0);

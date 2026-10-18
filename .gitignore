@@ -11,5 +11,8 @@ assets/videos/*.mp4
 assets/videos/*.webm
 assets/videos/*.mov
 assets/videos/*.mkv
-!assets/videos/.gitkeep
-
+assets/videos/*/*.mp4
+assets/videos/*/*.webm
+assets/videos/*/*.mov
+assets/videos/*/*.mkv
+!assets/videos/**/.gitkeep
