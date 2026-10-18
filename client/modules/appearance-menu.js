@@ -872,8 +872,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               curSelectWall.appendChild(emptyOpt);
             } else {
               let matched = false;
-              const hasExactWall = wallVideos.some(v => currentWallPath === v.relPath);
-              const hasExactCross = crossVideos.some(v => currentWallPath === v.relPath);
+              const normWallPath = (currentWallPath || '').replace(/\\/g, '/');
+              const hasExactWall = wallVideos.some(v => normWallPath === (v.relPath || '').replace(/\\/g, '/'));
+              const hasExactCross = crossVideos.some(v => normWallPath === (v.relPath || '').replace(/\\/g, '/'));
 
               // 1. 壁纸专属素材库分组
               if (wallVideos.length > 0) {
@@ -883,9 +884,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                   const opt = document.createElement('option');
                   opt.value = v.relPath;
                   opt.textContent = v.displayName;
+                  const normRel = (v.relPath || '').replace(/\\/g, '/');
                   const isCurrent = hasExactWall
-                    ? currentWallPath === v.relPath
-                    : (!hasExactCross && currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name)));
+                    ? normWallPath === normRel
+                    : (!hasExactCross && normWallPath && (normWallPath === normRel || normWallPath.endsWith('/' + v.name)));
                   if (isCurrent && !matched) {
                     opt.selected = true;
                     matched = true;
@@ -903,9 +905,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                   const opt = document.createElement('option');
                   opt.value = v.relPath;
                   opt.textContent = `🎬 [开机库] ${v.name}`;
+                  const normRel = (v.relPath || '').replace(/\\/g, '/');
                   const isCurrent = hasExactCross
-                    ? currentWallPath === v.relPath
-                    : (!hasExactWall && currentWallPath && (currentWallPath === v.relPath || currentWallPath.endsWith('/' + v.name)));
+                    ? normWallPath === normRel
+                    : (!hasExactWall && normWallPath && (normWallPath === normRel || normWallPath.endsWith('/' + v.name)));
                   if (isCurrent && !matched) {
                     opt.selected = true;
                     matched = true;
@@ -916,7 +919,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               }
 
               // 3. 外部绝对路径
-              if (!matched && currentWallPath && !currentWallPath.startsWith('assets/videos/')) {
+              if (!matched && currentWallPath && !normWallPath.startsWith('assets/videos/')) {
                 const extOpt = document.createElement('option');
                 extOpt.value = currentWallPath;
                 const fileName = currentWallPath.split(/[\/\\]/).pop();
@@ -976,8 +979,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               curSelectBoot.appendChild(emptyOpt);
             } else {
               let matched = false;
-              const hasExactBoot = bootVideos.some(v => currentBootPath === v.relPath);
-              const hasExactCross = crossVideos.some(v => currentBootPath === v.relPath);
+              const normBootPath = (currentBootPath || '').replace(/\\/g, '/');
+              const hasExactBoot = bootVideos.some(v => normBootPath === (v.relPath || '').replace(/\\/g, '/'));
+              const hasExactCross = crossVideos.some(v => normBootPath === (v.relPath || '').replace(/\\/g, '/'));
 
               // 1. 开机短视频专属素材库分组
               if (bootVideos.length > 0) {
@@ -987,9 +991,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                   const opt = document.createElement('option');
                   opt.value = v.relPath;
                   opt.textContent = v.displayName;
+                  const normRel = (v.relPath || '').replace(/\\/g, '/');
                   const isCurrent = hasExactBoot
-                    ? currentBootPath === v.relPath
-                    : (!hasExactCross && currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name)));
+                    ? normBootPath === normRel
+                    : (!hasExactCross && normBootPath && (normBootPath === normRel || normBootPath.endsWith('/' + v.name)));
                   if (isCurrent && !matched) {
                     opt.selected = true;
                     matched = true;
@@ -1007,9 +1012,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                   const opt = document.createElement('option');
                   opt.value = v.relPath;
                   opt.textContent = `🎬 [壁纸库] ${v.name}`;
+                  const normRel = (v.relPath || '').replace(/\\/g, '/');
                   const isCurrent = hasExactCross
-                    ? currentBootPath === v.relPath
-                    : (!hasExactBoot && currentBootPath && (currentBootPath === v.relPath || currentBootPath.endsWith('/' + v.name)));
+                    ? normBootPath === normRel
+                    : (!hasExactBoot && normBootPath && (normBootPath === normRel || normBootPath.endsWith('/' + v.name)));
                   if (isCurrent && !matched) {
                     opt.selected = true;
                     matched = true;
@@ -1020,7 +1026,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               }
 
               // 3. 外部绝对路径
-              if (!matched && currentBootPath && !currentBootPath.startsWith('assets/videos/')) {
+              if (!matched && currentBootPath && !normBootPath.startsWith('assets/videos/')) {
                 const extOpt = document.createElement('option');
                 extOpt.value = currentBootPath;
                 const fileName = currentBootPath.split(/[\/\\]/).pop();

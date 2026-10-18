@@ -217,9 +217,14 @@ export function initWallpaper(options = {}) {
     if (!src) return '';
     try {
       const u = new URL(src, location.href);
-      return u.searchParams.get('path') || u.pathname || src;
+      const raw = u.searchParams.get('path') || u.pathname || src;
+      return decodeURIComponent(raw).replace(/\\/g, '/');
     } catch (_) {
-      return src;
+      try {
+        return decodeURIComponent(src).replace(/\\/g, '/');
+      } catch (__) {
+        return String(src).replace(/\\/g, '/');
+      }
     }
   }
 
@@ -319,7 +324,25 @@ export function initWallpaper(options = {}) {
       const p = videoEl.play();
       if (p && typeof p.then === 'function') {
         p.then(onPlayReady).catch(() => {
-          // 若加载中发生 AbortError，等待 canplay/loadeddata 自动重新尝试
+          // 针对 Windows Chromium Background Media 节电机制拦截 (AbortError):
+          // 1. 微任务与 rAF 延迟微重试 (避开 DOM 挂载同步阶段的省电判定)
+          requestAnimationFrame(() => {
+            if (videoEl && videoEl.paused && enableVideo) {
+              videoEl.play().then(onPlayReady).catch(() => {});
+            }
+          });
+          // 2. 挂载全局一次性交互唤醒兜底 (用户点击下拉框或页面任意处即刻恢复播放)
+          const resumeOnInteraction = () => {
+            if (videoEl && videoEl.paused && enableVideo) {
+              videoEl.play().then(onPlayReady).catch(() => {});
+            }
+            window.removeEventListener('pointerdown', resumeOnInteraction, true);
+            window.removeEventListener('click', resumeOnInteraction, true);
+            window.removeEventListener('keydown', resumeOnInteraction, true);
+          };
+          window.addEventListener('pointerdown', resumeOnInteraction, { once: true, capture: true });
+          window.addEventListener('click', resumeOnInteraction, { once: true, capture: true });
+          window.addEventListener('keydown', resumeOnInteraction, { once: true, capture: true });
         });
       }
     };
