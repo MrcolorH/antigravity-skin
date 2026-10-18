@@ -1054,7 +1054,6 @@ try {
             // 策略 2：Node.js spawn 彻底分离进程组 (detached: true) 双重加固
             if (!launched) {
               try {
-                const { spawn } = await import('node:child_process');
                 const child = spawn(exe, [], {
                   cwd: exeDir,
                   detached: true,

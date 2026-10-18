@@ -199,7 +199,6 @@ try {
               env: cleanEnv
             });
           } catch (_) {
-            const { spawn } = import('node:child_process');
             const child = spawn(exe, [], {
               cwd: exeDir,
               detached: true,

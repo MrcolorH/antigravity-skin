@@ -18,19 +18,30 @@ console.log('==================================================');
 console.log('  正在安装与优化 Antigravity 主题与皮肤插件...');
 console.log('==================================================');
 
+let detectedExePath = null;
+
 // 0. 自动退出运行中的客户端以解除文件锁定并准备部署
 function ensureProcessClosed() {
   try {
     if (process.platform === 'win32') {
-      const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-      if (out.toLowerCase().includes('antigravity.exe')) {
+      try {
+        const pPath = execSync('powershell.exe -NoProfile -NonInteractive -Command "(Get-Process -Name Antigravity, \'Antigravity IDE\' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)"', { encoding: 'utf8' }).trim();
+        if (pPath && fs.existsSync(pPath)) {
+          detectedExePath = pPath;
+        }
+      } catch (_) {}
+
+      const out = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+      const isRunning = out.includes('antigravity.exe') || out.includes('antigravity ide.exe');
+      if (isRunning) {
         console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动退出以解除文件锁定...');
         try { execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' }); } catch (_) {}
+        try { execSync('taskkill /F /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' }); } catch (_) {}
         const start = Date.now();
         while (Date.now() - start < 3000) {
           try {
-            const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-            if (!chk.toLowerCase().includes('antigravity.exe')) break;
+            const chk = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+            if (!chk.includes('antigravity.exe') && !chk.includes('antigravity ide.exe')) break;
           } catch (_) { break; }
           const t = Date.now(); while (Date.now() - t < 150) {}
         }
@@ -318,17 +329,58 @@ function restartAntigravity() {
       execSync('open -a Antigravity', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     } else if (process.platform === 'win32') {
-      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-      const candidates = [
-        path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
-        path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-        'C:\\Program Files\\Antigravity\\Antigravity.exe',
-        'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
-      ];
-      const exe = candidates.find(c => fs.existsSync(c));
+      // 1. 如果客户端已由补丁脚本成功唤醒，避免重复拉起引发冲突
+      try {
+        const chk = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
+        if (chk.includes('antigravity.exe') || chk.includes('antigravity ide.exe')) {
+          console.log('✨ 客户端已成功重新拉起启动并就绪！');
+          return;
+        }
+      } catch (_) {}
+
+      function findExe() {
+        if (detectedExePath && fs.existsSync(detectedExePath)) return detectedExePath;
+        try {
+          const desktop = path.join(home, 'Desktop');
+          for (const lnk of [path.join(desktop, 'Antigravity.lnk'), path.join(desktop, 'Antigravity IDE.lnk')]) {
+            if (fs.existsSync(lnk)) {
+              const target = execSync(`powershell.exe -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk}').TargetPath"`, { encoding: 'utf8' }).trim();
+              if (target && fs.existsSync(target)) return target;
+            }
+          }
+        } catch (_) {}
+        const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+        const candidates = [
+          path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+          path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+          path.join(localAppData, 'Programs', 'Antigravity IDE', 'Antigravity IDE.exe'),
+          'C:\\Program Files\\Antigravity\\Antigravity.exe',
+          'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe',
+          'D:\\soft\\Antigravity IDE\\Antigravity IDE.exe'
+        ];
+        return candidates.find(c => fs.existsSync(c));
+      }
+
+      const exe = findExe();
       if (exe) {
-        const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
-        child.unref();
+        const exeDir = path.dirname(exe);
+        const cleanEnv = { ...process.env };
+        delete cleanEnv.ELECTRON_RUN_AS_NODE;
+        delete cleanEnv.ELECTRON_NO_ASAR;
+        delete cleanEnv.NODE_OPTIONS;
+        delete cleanEnv.NODE_ENV;
+        delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+
+        try {
+          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -WorkingDirectory '${exeDir}'"`, {
+            windowsHide: true,
+            stdio: 'ignore',
+            env: cleanEnv
+          });
+        } catch (_) {
+          const child = spawn(exe, [], { cwd: exeDir, detached: true, stdio: 'ignore', env: cleanEnv });
+          child.unref();
+        }
         console.log('✨ 客户端已成功重新拉起启动！');
       } else {
         console.log('💡 未能自动找到 Antigravity.exe，请手动启动客户端。');
