@@ -213,6 +213,16 @@ export function initWallpaper(options = {}) {
     }
   };
 
+  function normalizeVideoSrc(src) {
+    if (!src) return '';
+    try {
+      const u = new URL(src, location.href);
+      return u.searchParams.get('path') || u.pathname || src;
+    } catch (_) {
+      return src;
+    }
+  }
+
   function realMountVideo(fadeIn = true) {
     if (isDestroyed) return null;
     if (!enableVideo || !videoUrl) {
@@ -221,7 +231,7 @@ export function initWallpaper(options = {}) {
       }
       const v = document.getElementById('agy-dynamic-video');
       if (v) {
-        try { v.pause(); } catch(e) {}
+        try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e) {}
         v.remove();
       }
       const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
@@ -238,12 +248,31 @@ export function initWallpaper(options = {}) {
     ensureBackdrop();
 
     let videoEl = document.getElementById('agy-dynamic-video');
+    const targetPath = normalizeVideoSrc(videoUrl);
+
+    // 关键修复：如果已有 video 元素存在且视频素材发生了切换（!isSame）
+    // 在 macOS / Electron 下，同一个 video 标签复用并热更 src 时，极易因 VideoToolbox / AVFoundation
+    // 硬件解码管道未彻底断开导致 AbortError 进而永久卡滞在 paused 状态。彻底销毁旧节点重建是 100% 恢复的绝对保障！
+    if (videoEl) {
+      const currentPath = normalizeVideoSrc(videoEl.src);
+      if (currentPath && targetPath && currentPath !== targetPath) {
+        try {
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+        } catch (_) {}
+        videoEl.remove();
+        videoEl = null;
+      }
+    }
+
     if (!videoEl) {
       videoEl = document.createElement('video');
       videoEl.id = 'agy-dynamic-video';
       videoEl.autoplay = true;
       videoEl.loop = true;
       videoEl.muted = true;
+      videoEl.defaultMuted = true;
       videoEl.playsInline = true;
       videoEl.preload = 'auto';
       videoEl.setAttribute('muted', '');
@@ -251,7 +280,6 @@ export function initWallpaper(options = {}) {
       videoEl.setAttribute('loop', '');
       videoEl.setAttribute('playsinline', '');
       videoEl.setAttribute('preload', 'auto');
-      // 默认完全就绪呈现，避免被卡在 opacity 0
       videoEl.style.opacity = '1';
       videoEl.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
 
@@ -270,19 +298,10 @@ export function initWallpaper(options = {}) {
       document.body.prepend(videoEl);
     }
 
-    if (videoUrl) {
-      let isSame = false;
-      try {
-        const curPath = new URL(videoEl.src, location.href).searchParams.get('path') || videoEl.src;
-        const newPath = new URL(videoUrl, location.href).searchParams.get('path') || videoUrl;
-        isSame = !!curPath && curPath === newPath;
-      } catch (e) {
-        isSame = (videoEl.src === videoUrl);
-      }
-      if (!isSame) {
-        videoEl.src = videoUrl;
-        try { videoEl.load(); } catch(e) {}
-      }
+    // 设置或更新视频源
+    if (videoUrl && (!videoEl.src || normalizeVideoSrc(videoEl.src) !== targetPath)) {
+      videoEl.src = videoUrl;
+      try { videoEl.load(); } catch(e) {}
     }
 
     const onPlayReady = () => {
@@ -293,26 +312,39 @@ export function initWallpaper(options = {}) {
       }
     };
 
-    videoEl.addEventListener('canplay', onPlayReady);
-    videoEl.addEventListener('playing', onPlayReady);
-    videoEl.addEventListener('loadeddata', onPlayReady);
-    videoEl.addEventListener('timeupdate', onPlayReady);
+    const safePlay = () => {
+      if (!videoEl || !enableVideo) return;
+      videoEl.muted = true;
+      videoEl.defaultMuted = true;
+      const p = videoEl.play();
+      if (p && typeof p.then === 'function') {
+        p.then(onPlayReady).catch(() => {
+          // 若加载中发生 AbortError，等待 canplay/loadeddata 自动重新尝试
+        });
+      }
+    };
 
+    if (!videoEl.__agyBound) {
+      videoEl.__agyBound = true;
+      const onDataReady = () => {
+        onPlayReady();
+        if (videoEl && videoEl.paused && enableVideo) {
+          safePlay();
+        }
+      };
+      videoEl.addEventListener('loadedmetadata', onDataReady);
+      videoEl.addEventListener('loadeddata', onDataReady);
+      videoEl.addEventListener('canplay', onDataReady);
+      videoEl.addEventListener('canplaythrough', onDataReady);
+      videoEl.addEventListener('playing', onPlayReady);
+      videoEl.addEventListener('timeupdate', onPlayReady);
+    }
+
+    // 立即触发一次播放尝试
     if (videoEl.readyState >= 2 && !videoEl.paused) {
       onPlayReady();
     } else {
-      const p = videoEl.play();
-      if (p && typeof p.catch === 'function') {
-        p.then(onPlayReady).catch(() => {
-          const tryPlayOnGesture = () => {
-            videoEl.play().then(onPlayReady).catch(() => {});
-            window.removeEventListener('click', tryPlayOnGesture);
-            window.removeEventListener('keydown', tryPlayOnGesture);
-          };
-          window.addEventListener('click', tryPlayOnGesture, { once: true });
-          window.addEventListener('keydown', tryPlayOnGesture, { once: true });
-        });
-      }
+      safePlay();
     }
 
     ensureStyle();
@@ -796,12 +828,7 @@ export function initWallpaper(options = {}) {
     updateVideoUrl: (newUrl) => {
       if (isDestroyed) return;
       videoUrl = newUrl;
-      const v = document.getElementById('agy-dynamic-video');
-      if (v && newUrl) {
-        v.src = newUrl;
-        try { v.load(); } catch(e) {}
-        v.play().catch(() => {});
-      }
+      mountVideo();
     },
     setVideoEnabled: (enabled, newUrl) => {
       if (isDestroyed) return;

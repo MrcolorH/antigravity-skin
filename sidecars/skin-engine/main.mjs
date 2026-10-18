@@ -1219,13 +1219,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  function getVideoMimeType(filePath) {
+    const ext = path.extname(filePath || '').toLowerCase();
+    switch (ext) {
+      case '.webm': return 'video/webm';
+      case '.mov': return 'video/quicktime';
+      case '.mkv': return 'video/x-matroska';
+      case '.mp4':
+      default:
+        return 'video/mp4';
+    }
+  }
+
   // 视频流服务核心函数（高吞吐 512KB 缓冲、强缓存、HEAD 极速元数据响应）
-  function streamVideoFile(vidPath, contentType = 'video/mp4') {
+  function streamVideoFile(vidPath, contentType = '') {
     if (!vidPath || !fs.existsSync(vidPath)) {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Video not found');
       return;
     }
+
+    const mime = contentType || getVideoMimeType(vidPath);
 
     try {
       const stat = fs.statSync(vidPath);
@@ -1244,7 +1258,7 @@ const server = http.createServer((req, res) => {
       if (req.method === 'HEAD') {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': contentType,
+          'Content-Type': mime,
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'public, max-age=31536000, immutable',
           'ETag': etag,
@@ -1268,7 +1282,7 @@ const server = http.createServer((req, res) => {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': contentType,
+          'Content-Type': mime,
           'Cache-Control': 'public, max-age=31536000, immutable',
           'ETag': etag,
           'Last-Modified': mtime
@@ -1277,7 +1291,7 @@ const server = http.createServer((req, res) => {
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': contentType,
+          'Content-Type': mime,
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'public, max-age=31536000, immutable',
           'ETag': etag,
