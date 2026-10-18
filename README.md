@@ -4,11 +4,11 @@
   <img src="https://img.shields.io/badge/Antigravity-2.0+-blue?style=flat-square" alt="Antigravity">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-Official%20Sidecar%20Daemon-success?style=flat-square" alt="Architecture">
-  <img src="https://img.shields.io/badge/Zero--Patch-100%25%20No%20ASAR%20Tampering-green?style=flat-square" alt="Zero Patch">
+  <img src="https://img.shields.io/badge/Dual--Engine-macOS%20Zero--Patch%20%7C%20Win%20Boot--Enhanced-brightgreen?style=flat-square" alt="Dual Engine">
   <img src="https://img.shields.io/badge/License-MIT-orange?style=flat-square" alt="License">
 </p>
 
-> **免侵入、零改包、升级无损** 的 Google Antigravity 主题、动态视频壁纸、自定义开机引导动效与原生外观设置菜单无缝集成插件。
+> **无缝集成、体验极致** 的 Google Antigravity 主题、动态视频壁纸、自定义开机引导动效与原生外观设置菜单集成插件。（**macOS 平台保持 100% 纯净零改包免侵入**；**Windows 平台提供专属开机防白闪深度增强，并支持一键无损还原**）
 
 ---
 
@@ -76,8 +76,11 @@
 - **代码与终端严格隔离**：采用容器级回溯检测，自动规避代码块（`<pre>`, `<code>`）、Monaco/Ace 代码编辑器与终端输出，绝不污染代码原文。
 - 汉化选项直接内嵌至外观设置卡片下方，支持一键热开关。
 
-### 5. 官方 Sidecar 架构与长连接热自愈
-- **零篡改 `app.asar`**：采用 Antigravity 官方 Sidecar 伴生进程规范，无需拆包或修改客户端核心程序，Antigravity 官方升级推送**完全不受任何影响**。
+### 5. 官方 Sidecar 伴生架构与跨平台双引擎设计
+- **核心功能依托官方持久化规范**：主体功能（动态视频壁纸、毛玻璃穿透、外观控制台注入、在线热更新）基于 Antigravity 官方持久化插件规范与 Sidecar 伴生守护进程运行，核心代码与用户素材独立保存在用户目录（`.gemini/config/plugins`）中。
+- **实事求是的跨平台开机引导策略**：
+  - **🍎 macOS 端（100% 纯净零改包）**：恪守苹果 Gatekeeper 严格代码签名机制，**绝对不解包或修改 `app.asar`**，完全由 Sidecar 守护进程通过 Chromium CDP 事件在毫秒级无感隐匿原生呼吸遮罩；
+  - **🪟 Windows 端（深度防白闪补丁 + 随时一键还原）**：针对 Windows 下 Chromium 启动瞬间硬编码呼吸遮罩造成的闪白顽疾，安装脚本内置针对 `app.asar` 启动遮罩的轻量优化补丁（`patch-loading.bat`），实现极致的无白闪平滑溶出，并配套提供 `restore-loading.bat` 随时一键完整恢复官方原厂状态。
 - **长连接持久巡检**：CDP 通道保持长效保活，页面重载、导航或热更新时自动无感补注皮肤，防止主题掉落。
 - **优雅退出**：客户端关闭时自动注销清理进程与端口，杜绝僵尸进程占用资源。
 
