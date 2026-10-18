@@ -18,6 +18,13 @@ if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/scripts/install.mjs" ]; then
 fi
 
 # 模式 B：通过管道远程一行命令执行 (curl ... | bash)，或者系统无 Node.js 环境
+if pgrep -i antigravity >/dev/null 2>&1; then
+    echo "⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以应用新配置..."
+    osascript -e 'quit app "Antigravity"' 2>/dev/null || true
+    sleep 1
+    pkill -i antigravity 2>/dev/null || true
+fi
+
 TARGET_DIR="$HOME/.gemini/config/plugins/antigravity-skin"
 CONFIG_FILE="$HOME/.gemini/config/config.json"
 PLUGINS_DIR="$HOME/.gemini/config/plugins"
@@ -70,7 +77,7 @@ mkdir -p "$TARGET_DIR"
 
 # 实体文件拷贝（杜绝软链接，确保用户解压后删除源文件依然完好）
 WHITELIST_DIRS=("client" "sidecars" "assets" "scripts")
-WHITELIST_FILES=("plugin.json" "config.default.json" "package.json" "README.md" "install.bat" "uninstall.bat" "install.ps1" "uninstall.ps1" "install.sh" "uninstall.sh")
+WHITELIST_FILES=("plugin.json" "config.default.json" "package.json" "README.md" "install.bat" "uninstall.bat" "install.ps1" "uninstall.ps1" "install.sh" "uninstall.sh" "patch-loading.bat" "restore-loading.bat")
 
 for d in "${WHITELIST_DIRS[@]}"; do
     if [ -d "$SOURCE_ROOT/$d" ]; then
@@ -83,6 +90,8 @@ for f in "${WHITELIST_FILES[@]}"; do
         cp "$SOURCE_ROOT/$f" "$TARGET_DIR/"
     fi
 done
+
+chmod +x "$TARGET_DIR/install.sh" "$TARGET_DIR/uninstall.sh" 2>/dev/null || true
 
 mkdir -p "$TARGET_DIR/config"
 if [ -n "$USER_CONFIG_BACKUP" ]; then
@@ -111,6 +120,9 @@ with open(config_file, 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 " 2>/dev/null || true
 
+echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
+open -a Antigravity 2>/dev/null || open -b com.google.antigravity 2>/dev/null || true
+
 echo "=================================================="
 echo " [√] 安装部署完成！"
 echo " 插件已部署至: $TARGET_DIR"
@@ -120,5 +132,8 @@ echo " 插件核心文件已全部复制到上述持久化目录。"
 echo " 当前解压出来的安装包文件夹【已不需要，请直接删除】！"
 echo " 本地无需保留任何多余文件，完全不影响插件正常运行。"
 echo "--------------------------------------------------"
-echo " 请完全退出并重新打开 Antigravity 客户端即可生效！"
+echo " 🍎 macOS 纯净架构提示："
+echo " 已采用原生非侵入式架构完成部署，100% 保护官方代码签名与安全沙箱完整！"
+echo "--------------------------------------------------"
+echo " ✨ 客户端已为您自动重新拉起生效，无需手动操作！"
 echo "=================================================="

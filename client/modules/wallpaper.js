@@ -171,13 +171,9 @@ export function initWallpaper(options = {}) {
 
   function shouldDeferWallpaperForBoot() {
     if (window.__agyBootPlaying) return true;
-    const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     const hasBootDom = !!document.getElementById('agy-video-boot-host') ||
                        !!document.getElementById('agy-custom-code-boot-host');
     if (hasBootDom) return true;
-    if (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
-      return true;
-    }
     return false;
   }
 
@@ -196,6 +192,10 @@ export function initWallpaper(options = {}) {
         const p = v.play();
         if (p && typeof p.catch === 'function') {
           p.catch(() => {
+            try {
+              v.load();
+              v.play().catch(() => {});
+            } catch (_) {}
             const resumeOnInteraction = () => {
               v.play().catch(() => {});
               window.removeEventListener('click', resumeOnInteraction);

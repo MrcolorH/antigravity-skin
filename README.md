@@ -118,12 +118,16 @@
 
 ---
 
-### 🎬 Windows 专属开机动画配置提示（重要标注）
+### 🎬 跨平台开机动画联动配置（Windows & macOS）
 
-- **全自动退出、静默合入与自动重启**：一键安装脚本（`install.bat` / `install.ps1`）与 `patch-loading.bat` 会**自动检测并关闭运行中的 Antigravity 客户端**以解除文件锁定，在补丁合入完成后**自动重新为您启动 Antigravity 客户端**，全程 100% 全自动化闭环，无需任何手动操作！
-- **独立补丁 `patch-loading.bat`**：后续如果您更新了客户端版本，或者希望重新合入前置开机动画，随时双击运行根目录下的 `patch-loading.bat` 即可全自动完成升级并秒启客户端！
-- **macOS / Linux 用户**：**完全不需要执行此 bat 脚本**（macOS 平台原生即享流畅开屏体验）。
-- **一键安全还原 `restore-loading.bat`**：脚本在首次运行时会自动创建官方原版安全备份 `app.asar.bak`。若未来任何时候想恢复官方默认 Logo 呼吸动画，随时双击运行 `restore-loading.bat` 即可一秒原样恢复原厂状态并自动重新启动客户端。
+- **🍎 macOS 平台（原生纯净非侵入式架构）**：
+  - **一步到位，零指令额外操作**：只需执行一次 `./install.sh`（或一行在线命令），脚本会自动关闭 Antigravity 客户端、完成部署并**自动重新启动客户端**！
+  - **100% 保持官方代码签名**：绝不解包或篡改 `app.asar`，完全避免 macOS Gatekeeper / Hardened Runtime 签名损坏导致的白屏或死锁；
+  - **动态消除原生 Loading 遮罩**：Sidecar 守护进程通过 Chromium CDP 事件驱动在毫秒级无感隐藏官方呼吸 Logo 遮罩，并将背景纯黑无缝过渡至渲染层的开机视频，体验如丝般顺滑！
+
+- **🪟 Windows 平台（支持深度 Asar 补丁与非侵入式双模式）**：
+  - **全自动退出与重启**：运行 `install.bat` / `install.ps1` 会自动退出客户端，并在部署完成后自动重新拉起生效；
+  - **可选独立补丁与还原**：如需手动合入或还原官方原版，可随时双击 `patch-loading.bat` / `restore-loading.bat`。
 
 ---
 
@@ -198,8 +202,8 @@ antigravity-skin/
 ├── scripts/
 │   ├── install.mjs             # 跨平台纯净白名单部署与 RPC 注册引擎
 │   ├── uninstall.mjs           # 跨平台安全卸载引擎
-│   ├── patch-boot-overlay.mjs  # Windows 核心开机引擎与原生窗口锁黑补丁
-│   ├── restore-boot-overlay.mjs# Windows 官方 app.asar 自动还原脚本
+│   ├── patch-boot-overlay.mjs  # 跨平台核心开机引擎与原生窗口锁黑补丁 (Win & macOS)
+│   ├── restore-boot-overlay.mjs# 跨平台官方 app.asar 自动还原脚本 (Win & macOS)
 │   └── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
 └── assets/
     ├── scripts/

@@ -158,19 +158,28 @@
       cleaned = true;
       window.__agyBootPlaying = false;
       restoreTitleBarOverlay();
-      if (typeof window.__agyResumeBootWallpaper === 'function') {
-        try { window.__agyResumeBootWallpaper(); } catch(e) {}
+      window.removeEventListener('keydown', onKeyDown, true);
+
+      // 1. 立即停止并释放 boot video 硬件解码管道，彻底释放 macOS AVFoundation / VideoToolbox 硬件解码器
+      if (video) {
+        try {
+          video.pause();
+          video.src = '';
+          video.load();
+        } catch(e) {}
       }
       host.style.opacity = '0';
+
+      // 2. 节点淡出并移除后，安全平滑唤醒壁纸
       setTimeout(() => {
-        if (video) {
-          try { video.pause(); } catch(e) {}
+        try { host.remove(); } catch(e) {}
+        if (typeof window.__agyResumeBootWallpaper === 'function') {
+          try { window.__agyResumeBootWallpaper(); } catch(e) {}
+        } else {
+          resumeWallpaperVideo();
         }
-        host.remove();
-        resumeWallpaperVideo();
         restoreTitleBarOverlay();
-      }, 400);
-      window.removeEventListener('keydown', onKeyDown, true);
+      }, 250);
     }
 
     function onKeyDown(e) {
@@ -264,16 +273,17 @@
         try { customCleanup(); } catch(e) {}
       }
       restoreTitleBarOverlay();
-      if (typeof window.__agyResumeBootWallpaper === 'function') {
-        try { window.__agyResumeBootWallpaper(); } catch(e) {}
-      }
+      window.removeEventListener('keydown', onKeyDown, true);
       host.style.opacity = '0';
       setTimeout(() => {
-        host.remove();
-        resumeWallpaperVideo();
+        try { host.remove(); } catch(e) {}
+        if (typeof window.__agyResumeBootWallpaper === 'function') {
+          try { window.__agyResumeBootWallpaper(); } catch(e) {}
+        } else {
+          resumeWallpaperVideo();
+        }
         restoreTitleBarOverlay();
-      }, 400);
-      window.removeEventListener('keydown', onKeyDown, true);
+      }, 250);
     }
 
     function onKeyDown(e) {

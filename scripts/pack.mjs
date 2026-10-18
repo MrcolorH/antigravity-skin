@@ -47,12 +47,16 @@ for (const dir of WHITELIST_DIRS) {
   }
 }
 
-// 确保打包目录中具备 assets/videos 目录结构与 .gitkeep
+// 确保打包目录中具备 assets/videos 目录结构与各专属子库 .gitkeep
 const destVideosDir = path.join(stagingDir, 'assets', 'videos');
+const destWallDir = path.join(destVideosDir, 'wallpaper');
+const destBootDir = path.join(destVideosDir, 'boot');
 fs.mkdirSync(destVideosDir, { recursive: true });
-const gitkeepFile = path.join(destVideosDir, '.gitkeep');
-if (!fs.existsSync(gitkeepFile)) {
-  fs.writeFileSync(gitkeepFile, '', 'utf8');
+fs.mkdirSync(destWallDir, { recursive: true });
+fs.mkdirSync(destBootDir, { recursive: true });
+for (const p of [destVideosDir, destWallDir, destBootDir]) {
+  const k = path.join(p, '.gitkeep');
+  if (!fs.existsSync(k)) fs.writeFileSync(k, '', 'utf8');
 }
 
 for (const file of WHITELIST_FILES) {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,22 +9,52 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 console.log('==================================================');
-console.log('  Antigravity 前置开机动画终极防闪白溶出补丁');
+console.log('  Antigravity 前置开机动画防闪白补丁 (Windows 专用)');
 console.log('==================================================');
+
+if (process.platform !== 'win32') {
+  console.log('📌 提示：当前脚本仅适用于 Windows 系统。');
+  console.log('   macOS 平台采用纯净非侵入式架构，无需篡改系统 app.asar。');
+  process.exit(0);
+}
 
 // 1. 定位 Antigravity resources 目录
 function findResourcesDir() {
-  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  const candidates = [
-    path.join(localAppData, 'Programs', 'antigravity', 'resources'),
-    path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
-    'C:\\Program Files\\Antigravity\\resources',
-    'C:\\Program Files (x86)\\Antigravity\\resources'
-  ];
-
-  for (const c of candidates) {
-    if (fs.existsSync(path.join(c, 'app.asar'))) {
-      return c;
+  const home = os.homedir();
+  if (process.platform === 'darwin') {
+    const candidates = [
+      '/Applications/Antigravity.app/Contents/Resources',
+      path.join(home, 'Applications', 'Antigravity.app', 'Contents', 'Resources')
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(path.join(c, 'app.asar'))) {
+        return c;
+      }
+    }
+  } else if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const candidates = [
+      path.join(localAppData, 'Programs', 'antigravity', 'resources'),
+      path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
+      'C:\\Program Files\\Antigravity\\resources',
+      'C:\\Program Files (x86)\\Antigravity\\resources'
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(path.join(c, 'app.asar'))) {
+        return c;
+      }
+    }
+  } else {
+    const candidates = [
+      '/usr/lib/antigravity/resources',
+      '/opt/Antigravity/resources',
+      '/opt/antigravity/resources',
+      path.join(home, '.local', 'share', 'antigravity', 'resources')
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(path.join(c, 'app.asar'))) {
+        return c;
+      }
     }
   }
   return null;
@@ -43,26 +73,58 @@ console.log(`[1/5] 检测到 Antigravity resources 目录: ${resourcesDir}`);
 // 2. 检查并自动关闭运行中的 Antigravity 客户端（解除文件锁定）
 function ensureProcessClosed() {
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-    if (out.toLowerCase().includes('antigravity.exe')) {
-      console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
+    if (process.platform === 'win32') {
+      const out = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+      if (out.toLowerCase().includes('antigravity.exe')) {
+        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
+        try {
+          execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' });
+        } catch (_) {}
+
+        // 等待进程完全释放，最长等待 3 秒
+        const start = Date.now();
+        while (Date.now() - start < 3000) {
+          try {
+            const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
+            if (!chk.toLowerCase().includes('antigravity.exe')) break;
+          } catch (_) {
+            break;
+          }
+          const t = Date.now();
+          while (Date.now() - t < 150) {}
+        }
+        console.log('     ✅ Antigravity 客户端已成功退出，文件句柄已完全释放。');
+      }
+    } else if (process.platform === 'darwin') {
+      let isRunning = false;
       try {
-        execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' });
+        const out = execSync('pgrep -i antigravity', { encoding: 'utf8' });
+        if (out && out.trim()) isRunning = true;
       } catch (_) {}
 
-      // 等待进程完全释放，最长等待 3 秒
-      const start = Date.now();
-      while (Date.now() - start < 3000) {
+      if (isRunning) {
+        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
         try {
-          const chk = execSync('tasklist /FI "IMAGENAME eq Antigravity.exe" /NH', { encoding: 'utf8' });
-          if (!chk.toLowerCase().includes('antigravity.exe')) break;
-        } catch (_) {
-          break;
+          execSync('pkill -i antigravity', { stdio: 'ignore' });
+        } catch (_) {}
+
+        const start = Date.now();
+        while (Date.now() - start < 3000) {
+          try {
+            const chk = execSync('pgrep -i antigravity', { encoding: 'utf8' });
+            if (!chk || !chk.trim()) break;
+          } catch (_) {
+            break;
+          }
+          const t = Date.now();
+          while (Date.now() - t < 150) {}
         }
-        const t = Date.now();
-        while (Date.now() - t < 150) {}
+        console.log('     ✅ Antigravity 客户端已成功退出，文件句柄已完全释放。');
       }
-      console.log('     ✅ Antigravity 客户端已成功退出，文件句柄已完全释放。');
+    } else {
+      try {
+        execSync('pkill -f antigravity', { stdio: 'ignore' });
+      } catch (_) {}
     }
   } catch (_) {}
 }
@@ -134,6 +196,12 @@ function resolveAssetPath(relOrAbs, subDir) {
     const rel = path.resolve(pluginRoot, relOrAbs);
     if (fs.existsSync(rel)) return rel;
     const base = path.basename(relOrAbs);
+    if (subDir === "videos") {
+      const inBoot = path.join(pluginRoot, "assets", "videos", "boot", base);
+      if (fs.existsSync(inBoot)) return inBoot;
+      const inWp = path.join(pluginRoot, "assets", "videos", "wallpaper", base);
+      if (fs.existsSync(inWp)) return inWp;
+    }
     const inSub = path.join(pluginRoot, "assets", subDir, base);
     if (fs.existsSync(inSub)) return inSub;
   } catch (_) {}
@@ -249,7 +317,8 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
   if (bootType === "video") {
     const vidPath = resolveAssetPath(bootCfg.videoPath, "videos");
     if (vidPath) {
-      const vidUrl = "file:///" + vidPath.replace(/\\\\/g, "/");
+      const cleanVidPath = vidPath.replace(/\\\\/g, "/");
+      const vidUrl = cleanVidPath.startsWith('/') ? ("file://" + cleanVidPath) : ("file:///" + cleanVidPath);
       return \`<!DOCTYPE html>
 <html>
 <head>
@@ -871,36 +940,61 @@ try {
     console.log('  4. 【电影级溶图衔接】：450ms 贝塞尔曲线淡出完成后后台静默卸载视图，实现平滑溶出主界面。');
 
     // 7. 自动重新启动 Antigravity 客户端
-    function findAntigravityExe() {
-      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      const candidates = [
-        path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
-        path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
-        'C:\\Program Files\\Antigravity\\Antigravity.exe',
-        'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
-      ];
-      for (const c of candidates) {
-        if (fs.existsSync(c)) return c;
-      }
-      return null;
-    }
-
-    try {
-      const exe = findAntigravityExe();
-      if (exe) {
+    function restartAntigravity() {
+      try {
         console.log('');
         console.log('🚀 正在自动为您启动 Antigravity 客户端...');
-        const { spawn } = await import('node:child_process');
-        const child = spawn(exe, [], {
-          detached: true,
-          stdio: 'ignore'
-        });
-        child.unref();
-        console.log('✨ 客户端已成功拉起启动！');
+        if (process.platform === 'darwin') {
+          const home = os.homedir();
+          const candidates = [
+            '/Applications/Antigravity.app',
+            path.join(home, 'Applications', 'Antigravity.app')
+          ];
+          for (const app of candidates) {
+            if (fs.existsSync(app)) {
+              execSync(`open -a "${app}"`, { stdio: 'ignore' });
+              console.log('✨ 客户端已成功拉起启动！');
+              return;
+            }
+          }
+          execSync('open -b com.google.antigravity', { stdio: 'ignore' });
+          console.log('✨ 客户端已成功拉起启动！');
+        } else if (process.platform === 'win32') {
+          function findAntigravityExe() {
+            const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+            const candidates = [
+              path.join(localAppData, 'Programs', 'antigravity', 'Antigravity.exe'),
+              path.join(localAppData, 'Programs', 'Antigravity', 'Antigravity.exe'),
+              'C:\\Program Files\\Antigravity\\Antigravity.exe',
+              'C:\\Program Files (x86)\\Antigravity\\Antigravity.exe'
+            ];
+            for (const c of candidates) {
+              if (fs.existsSync(c)) return c;
+            }
+            return null;
+          }
+
+          const exe = findAntigravityExe();
+          if (exe) {
+            const child = spawn(exe, [], {
+              detached: true,
+              stdio: 'ignore'
+            });
+            child.unref();
+            console.log('✨ 客户端已成功拉起启动！');
+          } else {
+            console.log('💡 未能自动找到 Antigravity.exe，请手动启动客户端。');
+          }
+        } else {
+          execSync('antigravity &', { stdio: 'ignore' });
+          console.log('✨ 客户端已成功拉起启动！');
+        }
+      } catch (_) {
+        console.log('💡 如未自动启动，请手动打开 Antigravity 客户端。');
       }
-    } catch (_) {
-      console.log('💡 如未自动启动，请手动打开 Antigravity 客户端。');
     }
+
+    restartAntigravity();
   } else {
     throw new Error('打包后的临时 asar 文件大小异常');
   }
