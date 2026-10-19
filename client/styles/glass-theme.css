@@ -675,12 +675,18 @@
            4.2 会话条目：绝无常驻底色高亮（保持完全通透无灰框），仅悬停才高亮
            ======================================================== */
         /* ========================================================
-           4.2 会话条目：侧边栏长列表内核级虚拟化 (Sidebar Viewport Virtualization)
-           视口外会话条目自动跳过排版与绘制，大幅释放 CPU 与 GPU 开销
+           4.2 会话条目：侧边栏长列表渲染稳定性保障
+           官方自身已具备 React-Virtual 虚拟滚动，严禁在子项嵌套 content-visibility: auto，
+           彻底消除 Chromium 合成层在 backdrop-filter 下将列表项误判为 offscreen 导致的幽灵隐形 Bug
            ======================================================== */
+        [role="navigation"] [data-testid="conversation-row-sidebar"],
+        [role="navigation"] button[class*="group/headerbtn"],
+        [role="navigation"] [class*="group/header"] {
+          content-visibility: visible !important;
+          contain: none !important;
+        }
+
         [role="navigation"] [data-testid="conversation-row-sidebar"] {
-          content-visibility: auto !important;
-          contain-intrinsic-size: auto 36px !important;
           margin-left: 16px !important;
           width: calc(100% - 16px) !important;
           padding-left: 14px !important;
@@ -810,16 +816,16 @@
         }
 
         /* 展开项目底部的“查看全部”按钮（如 查看全部 (18) / See all） */
-        [role="navigation"] button[class*="text-muted-foreground"],
-        [role="navigation"] button[class*="opacity-75"],
-        [role="navigation"] button[class*="hover:opacity-100"] {
+        [role="navigation"] button[class*="text-muted-foreground"]:not([class*="group/headerbtn"]):not([data-project-card="true"]),
+        [role="navigation"] button[class*="opacity-75"]:not([class*="group/headerbtn"]):not([data-project-card="true"]),
+        [role="navigation"] button[class*="hover:opacity-100"]:not([class*="group/headerbtn"]):not([data-project-card="true"]) {
           color: #1e293b !important;
           opacity: 0.95 !important;
           font-weight: 500 !important;
         }
 
-        [role="navigation"] button[class*="text-muted-foreground"]:hover,
-        [role="navigation"] button[class*="opacity-75"]:hover {
+        [role="navigation"] button[class*="text-muted-foreground"]:not([class*="group/headerbtn"]):not([data-project-card="true"]):hover,
+        [role="navigation"] button[class*="opacity-75"]:not([class*="group/headerbtn"]):not([data-project-card="true"]):hover {
           color: #000000 !important;
           opacity: 1 !important;
           font-weight: 600 !important;
