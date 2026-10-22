@@ -4001,5 +4001,32 @@
           color: #94a3b8 !important;
         }
 
+        /* ========================================================
+           15. 设置弹窗与交互模态框平滑进场抗闪烁体系 (Anti-Flicker & Smooth Modals)
+           - 杜绝弹窗文字替换时的字体跳动、闪白与二次布局回流
+           - 提供优雅平滑的微动画过渡
+           ======================================================== */
+        .settings-modal-backdrop,
+        .settings-modal-container,
+        [role="dialog"] {
+          text-rendering: optimizeLegibility !important;
+          -webkit-font-smoothing: antialiased !important;
+        }
 
+        #agy-integrated-lang-row,
+        #agy-integrated-custom-switch-row,
+        #agy-integrated-custom-options {
+          will-change: opacity, transform;
+          animation: agySmoothInsert 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        }
 
+        @keyframes agySmoothInsert {
+          from {
+            opacity: 0.4;
+            transform: translateY(-2px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }

@@ -2063,11 +2063,18 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       if (!hasHostMutation) return;
     }
 
+    const modal = getSettingsModal();
+    // 关键时序优化：如果检测到设置模态框挂载且插件菜单尚未接入，立即同步接入，消除 150ms 闪现与布局抖动！
+    if (modal && (!document.getElementById('agy-integrated-custom-switch-row') || !document.getElementById('agy-integrated-lang-row'))) {
+      integrateNativeMenu();
+      return;
+    }
+
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
       integrateNativeMenu();
-    }, 150);
+    }, 60);
   });
   window.__agyIntegratedMenuObserver = observer;
 
@@ -2095,7 +2102,6 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
   // 全局捕获点击事件（利用 closest 穿透图标与子元素，确保点击“外观”100% 触发）
   if (!window.__agyGlobalClickBound) {
     window.__agyGlobalClickBound = true;
-    let clickDebounceTimer = null;
     document.addEventListener('click', (e) => {
       const target = e.target;
       if (!target) return;
@@ -2104,8 +2110,16 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       const aria = (el?.getAttribute && (el.getAttribute('aria-label') || '')) || '';
       if (text.includes('设置') || text.includes('Settings') || text.includes('外观') || text.includes('Appearance') ||
           aria.includes('设置') || aria.includes('Settings') || aria.includes('外观') || aria.includes('Appearance')) {
-        if (clickDebounceTimer) clearTimeout(clickDebounceTimer);
-        clickDebounceTimer = setTimeout(integrateNativeMenu, 60);
+        // 关键：触发汉化引擎的紧急直译模式，在点击后的 1500ms 内，所有新挂载的设置节点 0 延迟同步微任务翻译！
+        if (window.__agyI18n && typeof window.__agyI18n.triggerUrgent === 'function') {
+          window.__agyI18n.triggerUrgent(1500);
+        } else if (typeof window.__agyTriggerUrgentTranslation === 'function') {
+          window.__agyTriggerUrgentTranslation(1500);
+        }
+        // 立即尝试挂载菜单，并在 20ms 和 80ms 快速微任务复核，消除 150ms 迟滞！
+        integrateNativeMenu();
+        setTimeout(integrateNativeMenu, 20);
+        setTimeout(integrateNativeMenu, 80);
       }
     }, true);
   }

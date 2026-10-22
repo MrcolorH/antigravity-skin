@@ -976,6 +976,10 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
     if (!isMainWindow) return true;
 
     const containerSelector = [
+      '.settings-modal-backdrop',
+      '.settings-modal-container',
+      '[class*="settings-modal"]',
+      '[class*="modal"]',
       '[class*="antigravity"]',
       '[id*="antigravity"]',
       '[class*="jetski"]',
@@ -1120,6 +1124,22 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
   let i18nObserver = null;
   let i18nTimer = null;
   const pendingNodes = new Set();
+  let urgentTranslationUntil = 0;
+
+  function triggerUrgentTranslationMode(durationMs = 1500) {
+    urgentTranslationUntil = Date.now() + durationMs;
+  }
+  window.__agyTriggerUrgentTranslation = triggerUrgentTranslationMode;
+
+  function isUrgentNode(node) {
+    if (!node) return false;
+    if (Date.now() < urgentTranslationUntil) return true;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (!el) return false;
+    return !!el.closest?.(
+      '.settings-modal-backdrop, .settings-modal-container, [role="dialog"], .monaco-dialog-box, .dialog-box, .monaco-menu, .context-view, .quick-input-widget, [class*="modal"], [class*="settings"], .monaco-hover'
+    );
+  }
 
   function flushPendingTranslations() {
     i18nTimer = null;
@@ -1139,9 +1159,24 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
 
   function scheduleIncrementalTranslation(node) {
     if (!node) return;
+    // 关键突破：遇到设置弹窗、交互菜单或处于点击预热期，0 延迟在当前微任务中直接同步翻译！
+    // 浏览器在首帧 Paint 绘制前，DOM 节点内容即已是中文，彻底斩断任何肉眼可见的闪现与跳变！
+    if (isUrgentNode(node)) {
+      translateNode(node);
+      return;
+    }
+
     pendingNodes.add(node);
     if (!i18nTimer) {
-      i18nTimer = setTimeout(flushPendingTranslations, 60);
+      // 普通非弹窗节点使用微任务/极速微帧调度（16ms 极速防抖），绝不拖延到 60ms
+      if (typeof queueMicrotask === 'function') {
+        i18nTimer = 1;
+        queueMicrotask(() => {
+          flushPendingTranslations();
+        });
+      } else {
+        i18nTimer = setTimeout(flushPendingTranslations, 16);
+      }
     }
   }
 
@@ -1198,7 +1233,8 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
 
   window.__agyI18n = {
     getLanguage: () => window.__agyCurrentLang || 'zh-CN',
-    setLanguage: (lang) => applyLanguage(lang)
+    setLanguage: (lang) => applyLanguage(lang),
+    triggerUrgent: triggerUrgentTranslationMode
   };
 
   const initialLang = (window.__AG_SKIN_CONFIG__ && window.__AG_SKIN_CONFIG__.features?.language) || 'zh-CN';
