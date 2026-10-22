@@ -4,6 +4,7 @@ dist/
 *.log
 *.png
 !docs/images/**
+!docs/bugs/assets/**
 *.tmp
 *.tmp.*
 

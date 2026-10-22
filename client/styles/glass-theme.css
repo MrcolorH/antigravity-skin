@@ -1,20 +1,27 @@
-#agy-dynamic-video {
+        /* 阶段五：几何以 top/right/bottom/left + 100% 表达。
+           原写法 100vw 包含纵向滚动条宽度，窗口出现滚动条时会水平溢出、右侧被裁；
+           本规则与 wallpaper.js 的几何控制器互为双保险 —— 即使这份 CSS 整份丢失，
+           控制器也会以内联 !important 保证素材始终铺满视口。 */
+        #agy-dynamic-video {
           position: fixed;
-          top: 0; left: 0;
-          width: 100vw; height: 100vh;
+          top: 0; right: 0; bottom: 0; left: 0;
+          width: 100%; height: 100%;
+          max-width: none; max-height: none;
           object-fit: cover;
+          object-position: center;
           z-index: -999999;
           pointer-events: none;
+          background: transparent;
           filter: brightness(var(--agy-bg-brightness, 0.85)) contrast(var(--agy-bg-contrast, 1.05));
           will-change: transform;
           transform: translateZ(0);
-          contain: strict;
+          contain: layout paint;
         }
 
         #agy-wallpaper-backdrop {
           position: fixed;
-          top: 0; left: 0;
-          width: 100vw; height: 100vh;
+          top: 0; right: 0; bottom: 0; left: 0;
+          width: 100%; height: 100%;
           z-index: -1000000;
           background-color: #ffffff !important;
           pointer-events: none;
@@ -2356,7 +2363,11 @@
           font-weight: 600 !important;
         }
         .theme-dark .animate-modalScaleIn h2,
-        .theme-dark div[class*="animate-modalScaleIn"] h2 {
+        .theme-dark div[class*="animate-modalScaleIn"] h2,
+        .theme-dark .animate-modalScaleIn [class*="font-medium"][class*="text-foreground"],
+        .dark .animate-modalScaleIn h2,
+        .dark div[class*="animate-modalScaleIn"] h2,
+        .dark .animate-modalScaleIn [class*="font-medium"][class*="text-foreground"] {
           color: #f9fafb !important;
         }
 
@@ -4020,6 +4031,12 @@
           animation: agySmoothInsert 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
         }
 
+        #agy-integrated-lang-row[data-agy-ready="true"],
+        #agy-integrated-custom-switch-row[data-agy-ready="true"],
+        #agy-integrated-custom-options[data-agy-ready="true"] {
+          animation: none !important;
+        }
+
         @keyframes agySmoothInsert {
           from {
             opacity: 0.4;
@@ -4030,3 +4047,99 @@
             transform: translateY(0);
           }
         }
+
+
+/* ========================================================
+   16. 阶段八：参数弹窗化、独立渲染设置与纵向素材库侧边Tab
+   ======================================================== */
+/* 融入外观框内部的素材库行内按钮与内嵌横幅 */
+#agy-btn-wallpaper-display:hover,
+#agy-btn-wallpaper-display-native:hover,
+#agy-btn-boot-display:hover,
+#agy-btn-boot-display-native:hover,
+#agy-btn-open-wall-lib:hover,
+#agy-btn-open-boot-lib:hover {
+  transform: scale(1.03);
+}
+
+.agy-library-embedded-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 10px 0;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+.agy-library-embedded-banner:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.agy-library-embedded-banner .agy-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.agy-library-embedded-banner .agy-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.agy-btn-browse-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.agy-btn-browse-inline:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+body:not(.dark):not(.theme-dark) .agy-library-embedded-banner {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+body:not(.dark):not(.theme-dark) .agy-library-embedded-banner:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(2, 132, 199, 0.35);
+}
+body:not(.dark):not(.theme-dark) .agy-library-embedded-banner .agy-banner-badge {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+  border-color: rgba(2, 132, 199, 0.3);
+}
+body:not(.dark):not(.theme-dark) .agy-btn-browse-inline {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.35);
+}
+body:not(.dark):not(.theme-dark) .agy-btn-browse-inline:hover {
+  background: #0284c7;
+  color: #ffffff;
+}

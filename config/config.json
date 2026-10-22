@@ -5,15 +5,36 @@
     "bootAnimationConfig": {
       "type": "video",
       "customCodePath": "",
-      "videoPath": "assets/videos/合成_1_3.mp4"
+      "videoPath": "assets/videos/合成_1_3.mp4",
+      "wallpaperDir": "",
+      "previewFile": ""
     },
     "themeStyles": true,
+    "crtScanlines": false,
     "chineseLocalization": true,
     "dynamicWallpaper": {
       "enabled": true,
-      "videoPath": "assets/videos/custom_wallpaper.mp4",
+      "sourceType": "scene",
+      "videoPath": "",
+      "wallpaperDir": "E:\\SteamLibrary\\steamapps\\workshop\\content\\431960\\3233141951",
+      "wallpaperId": "3233141951",
+      "entryFile": "scene.pkg",
+      "previewFile": "preview.gif",
+      "audioFile": "",
+      "audioEnabled": false,
+      "title": "熠烛 御剑驭龙-红鸾樱落 高度自定义Red Warbler-Sakura falls （Highly customizable）",
       "brightness": 0.85,
-      "contrast": 1.05
+      "contrast": 1.05,
+      "fit": "cover",
+      "fitMigrated": true,
+      "fitPosition": "center"
+    },
+    "externalWallpaperLibrary": {
+      "wallpaperEnabled": true,
+      "bootEnabled": true,
+      "libraryPath": "E:\\SteamLibrary\\steamapps\\workshop\\content\\431960",
+      "autoScan": true,
+      "mountedFolders": []
     },
     "language": "zh-CN"
   }

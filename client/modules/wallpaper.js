@@ -33,6 +33,7 @@ function syncTitleBarOverlay(force = false) {
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
+                          !!document.getElementById('agy-scene-boot-host') ||
                           (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
 
     // 无论开机动画还是主界面视频壁纸/毛玻璃，底色始终强制纯透明
@@ -99,8 +100,27 @@ export function initWallpaper(options = {}) {
     brightness = 0.85,
     contrast = 1.05,
     glassThemeCss = '',
-    enableVideo = true
+    enableVideo = true,
+    // —— 多形态壁纸适配（阶段三）——
+    sourceType = 'video',      // 'video' | 'web' | 'scene'
+    wallpaperDir = '',         // 外部壁纸绝对目录（零拷贝）
+    previewFile = '',
+    entryFile = '',
+    webUrl = '',               // 网页壁纸入口（Sidecar web-proxy 绝对 URL）
+    audioUrl = '',             // 场景壁纸内嵌氛围音
+    audioEnabled = false,
+    // —— 阶段五：铺满策略（auto / cover / blur / contain / fill）——
+    // auto = 按素材形态自动选择：场景壁纸用「完整显示 + 模糊填充」，视频/网页用铺满裁切
+    fit = 'auto',
+    fitPosition = 'center',
+    // —— 阶段八：解耦渲染模式与精细性能项 ——
+    fps = 60,
+    renderDpr = 1.0,
+    sceneRenderer = 'dynamic', // 'dynamic' 实时WebGL2 | 'static' 静态海报
+    sceneScripts = false  // SceneScript 沙箱非安全边界，同源宿主默认关（配置可开）
   } = options;
+
+  const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
 
   // 1. 设置滤镜变量（安全容错防早期 null）
   function applyFilterVars() {
@@ -176,14 +196,59 @@ export function initWallpaper(options = {}) {
   function shouldDeferWallpaperForBoot() {
     if (window.__agyBootPlaying) return true;
     const hasBootDom = !!document.getElementById('agy-video-boot-host') ||
-                       !!document.getElementById('agy-custom-code-boot-host');
+                       !!document.getElementById('agy-custom-code-boot-host') ||
+                       !!document.getElementById('agy-scene-boot-host');
     if (hasBootDom) return true;
     return false;
   }
 
-  // 开机动画结束时与壁纸同步的平滑渐入接口
+  // 开机动画结束时与壁纸同步的平滑渐入接口（视频 / 网页 / 场景统一接管，增量幂等唤醒，绝不销毁已有管线）
   window.__agyResumeBootWallpaper = function() {
     window.__agyBootPlaying = false;
+    const mode = currentMode();
+
+    if (mode === 'scene') {
+      const box = document.getElementById('agy-dynamic-scene');
+      if (box) {
+        delete box.dataset.bootPaused;
+        box.style.visibility = 'visible';
+        box.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        box.style.opacity = '1';
+        if (sceneRendererInstance && typeof sceneRendererInstance.resume === 'function') {
+          try { sceneRendererInstance.resume(); } catch (_) {}
+        }
+        const audio = document.getElementById('agy-dynamic-audio');
+        if (audio && audioEnabled && audio.paused) {
+          try { audio.play().catch(() => {}); } catch (_) {}
+        }
+        return;
+      }
+      const el = mountMedia(true);
+      if (el) {
+        el.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        el.style.opacity = '1';
+      }
+      return;
+    }
+
+    if (mode === 'web') {
+      const frame = document.getElementById('agy-dynamic-iframe');
+      if (frame) {
+        delete frame.dataset.bootPaused;
+        frame.style.visibility = 'visible';
+        frame.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        frame.style.opacity = '1';
+        try { frame.contentWindow?.postMessage({ type: 'agy-wallpaper-resume' }, '*'); } catch (_) {}
+        return;
+      }
+      const el = mountMedia(true);
+      if (el) {
+        el.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        el.style.opacity = '1';
+      }
+      return;
+    }
+
     let v = document.getElementById('agy-dynamic-video');
     if (!v) {
       v = realMountVideo(true);
@@ -226,6 +291,859 @@ export function initWallpaper(options = {}) {
         return String(src).replace(/\\/g, '/');
       }
     }
+  }
+
+  // ==========================================================
+  // 多形态壁纸渲染适配器（Video / Web / Scene）
+  // 统一使用 z-index: -999999 的固定底层容器，互斥挂载，切形态时彻底销毁旧节点
+  // ==========================================================
+  function buildPreviewUrl() {
+    if (!wallpaperDir) return '';
+    const file = previewFile || 'preview.jpg';
+    return `${API_BASE}/api/wallpaper-library/preview?folder=${encodeURIComponent(wallpaperDir)}&file=${encodeURIComponent(file)}`;
+  }
+
+  // 场景壁纸真实画面：优先用 scene.pkg 解包出的原生分辨率纹理，
+  // 缩略图 preview.* 仅作兜底（它是正方形小图，直接渲染会模糊且比例错误）
+  function buildScenePosterUrl() {
+    if (!wallpaperDir) return '';
+    return `${API_BASE}/api/wallpaper-library/scene-poster?folder=${encodeURIComponent(wallpaperDir)}`;
+  }
+
+  function buildWebUrl() {
+    if (!webUrl) return '';
+    return /^https?:\/\//i.test(webUrl) ? webUrl : `${API_BASE}${webUrl}`;
+  }
+
+  function currentMode() {
+    if (!enableVideo) return 'none';
+    const st = sourceType || (wallpaperDir ? 'scene' : 'video');
+    if (st === 'web' && (webUrl || wallpaperDir)) return 'web';
+    if (st === 'scene' && (wallpaperDir || previewFile)) return 'scene';
+    if (videoUrl) return 'video';
+    if (wallpaperDir) return 'scene';
+    return 'none';
+  }
+
+  function ensureSceneStyle() {
+    if (document.getElementById('agy-scene-style')) return;
+    const style = document.createElement('style');
+    style.id = 'agy-scene-style';
+    style.textContent = `
+      #agy-dynamic-scene { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; z-index: -999999; pointer-events: none; contain: strict; transform: translateZ(0); }
+      #agy-dynamic-scene .agy-scene-img {
+        position: absolute; inset: -2%;
+        width: 104%; height: 104%;
+        object-fit: cover;
+        display: block;
+        animation: agySceneKenBurns 32s ease-in-out infinite alternate;
+        will-change: transform, opacity;
+        transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      @keyframes agySceneKenBurns {
+        0%   { transform: scale(1.02) translate3d(0, 0, 0); }
+        100% { transform: scale(1.10) translate3d(-1.2%, -1.4%, 0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #agy-dynamic-scene .agy-scene-img { animation: none; }
+      }
+      #agy-dynamic-scene canvas.agy-scene-canvas {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%;
+        display: block;
+        opacity: 0;
+        transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: none;
+      }
+      #agy-dynamic-scene canvas.agy-scene-canvas.agy-scene-live { opacity: 1; }
+    `;
+    const host = document.head || document.documentElement;
+    if (host) host.appendChild(style);
+  }
+
+  function applyMediaFilter(el) {
+    if (!el || !el.style) return;
+    el.style.filter = 'brightness(var(--agy-bg-brightness, 0.85)) contrast(var(--agy-bg-contrast, 1.05))';
+  }
+
+  // ==========================================================
+  // 2.6 统一媒体几何控制器（阶段五：铺满视口 / 彻底消除黑边）
+  //
+  // 历史缺陷：三种背景形态的定位尺寸写法不一致——
+  //   - iframe 在 mountWeb() 里用 cssText 内联写死（安全）
+  //   - scene  依赖独立注入的 #agy-scene-style（安全，不依赖毛玻璃 CSS）
+  //   - video  的 width/height/object-fit 完全依赖 glass-theme.css 注入的 <style>
+  //            → 一旦该 style 节点内容被清空（updateStyle('') / 宿主重渲染 / CSS 读取失败），
+  //              <video> 就退回「素材原始分辨率」裸渲染，表现为无法铺满窗口、四周大片黑边，
+  //              且与素材本身是横屏还是竖屏毫无关系。
+  //
+  // 本控制器把所有几何属性统一以 !important 内联写到元素自身，任何外部 CSS 都无法影响；
+  // 同时用 top/right/bottom/left + 100% 取代 100vw/100vh —— 后者含纵向滚动条宽度，
+  // 会出现水平溢出与右侧被裁，百分比相对 initial containing block，在高 DPI 缩放下更精确。
+  // ==========================================================
+  const FIT_MODES = ['cover', 'contain', 'fill', 'blur'];
+  // auto：按素材形态自动决定（场景壁纸默认完整显示，其余铺满裁切）
+  const FIT_SETTINGS = ['auto'].concat(FIT_MODES);
+  const FIT_POSITIONS = [
+    'center', 'top', 'bottom', 'left', 'right',
+    'top left', 'top right', 'bottom left', 'bottom right'
+  ];
+
+  function normalizeFitMode(v) {
+    const s = String(v == null ? '' : v).trim().toLowerCase();
+    return FIT_MODES.indexOf(s) >= 0 ? s : 'cover';
+  }
+
+  // 配置层（可含 auto），与 normalizeFitMode 的「具体模式」区分开
+  function normalizeFitSetting(v) {
+    const s = String(v == null ? '' : v).trim().toLowerCase();
+    return FIT_SETTINGS.indexOf(s) >= 0 ? s : 'auto';
+  }
+
+  function normalizeFitPosition(v) {
+    const s = String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' ');
+    return FIT_POSITIONS.indexOf(s) >= 0 ? s : 'center';
+  }
+
+  // 场景壁纸的画质底线：缩略图本身只有 1024²（部分甚至 160²~256²），
+  // 无上限放大会直接糊成色块，因此限制最大放大倍数，超出部分交给模糊填充层兜底。
+  const SCENE_MAX_UPSCALE = 2;
+
+  // 当前生效的铺满策略（支持运行时热更新，无需重建媒体节点）
+  // wallpaperFitSetting 保存配置原值（可能是 auto），wallpaperFit 保存解析后的具体模式
+  let wallpaperFitSetting = normalizeFitSetting(fit);
+  let wallpaperFit = 'cover';
+  let wallpaperFitPosition = normalizeFitPosition(fitPosition);
+
+  // auto 解析：场景壁纸的素材是正方形缩略图，铺满裁切会切掉近一半画面，故默认完整显示
+  function resolveFitSetting(setting) {
+    const s = normalizeFitSetting(setting);
+    if (s !== 'auto') return s;
+    return currentMode() === 'scene' ? 'blur' : 'cover';
+  }
+
+  function refreshResolvedFit() {
+    wallpaperFit = resolveFitSetting(wallpaperFitSetting);
+    return wallpaperFit;
+  }
+  refreshResolvedFit();
+
+  // 模糊填充层的低频时间轴校正定时器（双实例解码会缓慢漂移）
+  let videoBackdropSyncTimer = null;
+  let geometryRaf = null;
+
+  // 内联写 !important，压过宿主 Tailwind preflight 的 img,video{max-width:100%;height:auto}
+  function setImp(el, prop, value) {
+    if (!el || !el.style || value === undefined || value === null) return;
+    try { el.style.setProperty(prop, String(value), 'important'); } catch (_) {}
+  }
+
+  function clearImp(el, prop) {
+    if (!el || !el.style) return;
+    try { el.style.removeProperty(prop); } catch (_) {}
+  }
+
+  // 视口盒子：fixed + 四边贴合 + 100% 尺寸，永不受滚动条与宿主容器影响
+  function applyViewportBox(el, zIndex) {
+    if (!el) return;
+    setImp(el, 'position', 'fixed');
+    setImp(el, 'top', '0px');
+    setImp(el, 'right', '0px');
+    setImp(el, 'bottom', '0px');
+    setImp(el, 'left', '0px');
+    setImp(el, 'width', '100%');
+    setImp(el, 'height', '100%');
+    setImp(el, 'max-width', 'none');
+    setImp(el, 'max-height', 'none');
+    setImp(el, 'min-width', '0px');
+    setImp(el, 'min-height', '0px');
+    setImp(el, 'margin', '0px');
+    setImp(el, 'padding', '0px');
+    setImp(el, 'box-sizing', 'border-box');
+    setImp(el, 'z-index', String(zIndex == null ? -999999 : zIndex));
+    setImp(el, 'pointer-events', 'none');
+  }
+
+  // 替换元素（video / img）的填充方式；blur 模式下前景层退化为 contain
+  function applyElementFit(el, mode, position) {
+    const fitMode = mode === 'blur' ? 'contain' : mode;
+    setImp(el, 'object-fit', fitMode);
+    setImp(el, 'object-position', position);
+    return fitMode;
+  }
+
+  // —— 视频：主层 + 可选模糊填充层 ——
+  function syncBackdropTime() {
+    const fg = document.getElementById('agy-dynamic-video');
+    const bg = document.getElementById('agy-dynamic-video-backdrop');
+    if (!fg || !bg) return;
+    try {
+      if (fg.paused && !bg.paused) bg.pause();
+      else if (!fg.paused && bg.paused) {
+        const p = bg.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+      if (Math.abs((bg.currentTime || 0) - (fg.currentTime || 0)) > 0.4) {
+        bg.currentTime = fg.currentTime || 0;
+      }
+    } catch (_) {}
+  }
+
+  function destroyVideoBackdrop() {
+    if (videoBackdropSyncTimer) {
+      clearInterval(videoBackdropSyncTimer);
+      videoBackdropSyncTimer = null;
+    }
+    const bg = document.getElementById('agy-dynamic-video-backdrop');
+    if (!bg) return;
+    try {
+      bg.pause();
+      bg.removeAttribute('src');
+      bg.load();
+    } catch (_) {}
+    bg.remove();
+  }
+
+  function syncVideoBackdrop(enable) {
+    if (!enable) {
+      destroyVideoBackdrop();
+      return;
+    }
+    const fg = document.getElementById('agy-dynamic-video');
+    const src = fg ? (fg.currentSrc || fg.src) : '';
+    // readyState < 1 表示元数据还没到：此时不预建模糊层，避免为坏链/未就绪素材
+    // 白白拉起第二路解码管道。loadedmetadata 后的几何回调会自动补建。
+    if (!fg || !src || fg.readyState < 1) {
+      destroyVideoBackdrop();
+      return;
+    }
+
+    let bg = document.getElementById('agy-dynamic-video-backdrop');
+    // 已就绪且素材未变：只校准播放状态。
+    // resize 期间会被高频调用，此处必须短路，避免重复写样式与反复 play() 引发抖动。
+    if (bg && bg.getAttribute('data-agy-src') === src) {
+      if (bg.paused && !fg.paused) {
+        try {
+          const p = bg.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (_) {}
+      }
+      return;
+    }
+    if (!bg) {
+      bg = document.createElement('video');
+      bg.id = 'agy-dynamic-video-backdrop';
+      bg.muted = true;
+      bg.defaultMuted = true;
+      bg.loop = true;
+      bg.autoplay = true;
+      bg.playsInline = true;
+      bg.preload = 'auto';
+      bg.setAttribute('muted', '');
+      bg.setAttribute('loop', '');
+      bg.setAttribute('autoplay', '');
+      bg.setAttribute('playsinline', '');
+      bg.setAttribute('preload', 'auto');
+      bg.setAttribute('aria-hidden', 'true');
+      // 插到主视频之前：两层同为 z-index:-999999，DOM 顺序决定模糊层在下
+      try {
+        const parent = fg.parentNode || document.body || document.documentElement;
+        if (parent) parent.insertBefore(bg, fg);
+        else if (document.body) document.body.appendChild(bg);
+      } catch (_) {
+        if (document.body) document.body.appendChild(bg);
+      }
+    }
+    if (bg.getAttribute('src') !== src) {
+      bg.setAttribute('src', src);
+      try { bg.load(); } catch (_) {}
+    }
+    bg.setAttribute('data-agy-src', src);
+
+    applyViewportBox(bg, -999999);
+    setImp(bg, 'display', 'block');
+    setImp(bg, 'object-fit', 'cover');
+    setImp(bg, 'object-position', 'center');
+    // 重度模糊 + 压暗 + 轻微放大，避免模糊边缘透出容器底色
+    setImp(bg, 'filter', 'blur(48px) brightness(0.7) saturate(1.15)');
+    setImp(bg, 'transform', 'scale(1.16)');
+    setImp(bg, 'will-change', 'transform');
+    setImp(bg, 'background', 'transparent');
+
+    try {
+      const p = bg.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_) {}
+    syncBackdropTime();
+
+    if (!videoBackdropSyncTimer) {
+      videoBackdropSyncTimer = setInterval(syncBackdropTime, 8000);
+    }
+  }
+
+  function applyVideoGeometry() {
+    const v = document.getElementById('agy-dynamic-video');
+    if (!v) {
+      destroyVideoBackdrop();
+      return;
+    }
+    // 形态可能在 applyMediaGeometry 之外被单独切换（例如 setVideoEnabled 直接挂载），
+    // 这里再解析一次 auto，避免沿用上一个形态的解析结果（scene→contain 会污染 video）
+    refreshResolvedFit();
+    applyViewportBox(v, -999999);
+    setImp(v, 'display', 'block');
+    setImp(v, 'background', 'transparent');
+    setImp(v, 'transform', 'translateZ(0)');
+    setImp(v, 'will-change', 'transform');
+    applyElementFit(v, wallpaperFit, wallpaperFitPosition);
+    applyMediaFilter(v);
+    syncVideoBackdrop(wallpaperFit === 'blur');
+  }
+
+  // —— 网页壁纸：iframe 无 object-fit 语义，仅保证容器 100% 覆盖视口 ——
+  function applyWebGeometry() {
+    const f = document.getElementById('agy-dynamic-iframe');
+    if (!f) return;
+    applyViewportBox(f, -999999);
+    setImp(f, 'border', '0px');
+    setImp(f, 'background', '#000');
+    applyMediaFilter(f);
+  }
+
+  // —— 场景壁纸：静态图 + 可选模糊填充层 ——
+  function syncSceneBackdrop(box, img, src, enable) {
+    let bg = box.querySelector('img.agy-scene-bg');
+    if (!enable || !src) {
+      if (bg) bg.remove();
+      return;
+    }
+    if (!bg) {
+      bg = document.createElement('img');
+      bg.className = 'agy-scene-bg';
+      bg.alt = '';
+      bg.decoding = 'async';
+      bg.setAttribute('aria-hidden', 'true');
+      box.insertBefore(bg, img);
+    }
+    if (bg.getAttribute('src') !== src) bg.setAttribute('src', src);
+    setImp(bg, 'position', 'absolute');
+    setImp(bg, 'top', '0px');
+    setImp(bg, 'right', '0px');
+    setImp(bg, 'bottom', '0px');
+    setImp(bg, 'left', '0px');
+    setImp(bg, 'width', '100%');
+    setImp(bg, 'height', '100%');
+    setImp(bg, 'max-width', 'none');
+    setImp(bg, 'max-height', 'none');
+    setImp(bg, 'margin', '0px');
+    setImp(bg, 'display', 'block');
+    setImp(bg, 'object-fit', 'cover');
+    setImp(bg, 'object-position', 'center');
+    setImp(bg, 'filter', 'blur(48px) brightness(0.7) saturate(1.15)');
+    setImp(bg, 'transform', 'scale(1.16)');
+  }
+
+  function applySceneGeometry() {
+    const box = document.getElementById('agy-dynamic-scene');
+    if (!box) return;
+    // 形态切换（video→scene）与首帧挂载都会走到这里，auto 必须按当前形态重新解析，
+    // 否则会沿用上一形态的解析结果（例如视频的 cover 被带进场景，正方形图又被裁一刀）
+    refreshResolvedFit();
+    applyViewportBox(box, -999999);
+    setImp(box, 'overflow', 'hidden');
+    setImp(box, 'transform', 'translateZ(0)');
+
+    const img = box.querySelector('img.agy-scene-img');
+    if (!img) return;
+
+    const blurMode = wallpaperFit === 'blur';
+    const vw = box.clientWidth || window.innerWidth || 0;
+    const vh = box.clientHeight || window.innerHeight || 0;
+    const natW = img.naturalWidth || 0;
+    const natH = img.naturalHeight || 0;
+    // cover 模式沿用 CSS 的 inset:-2% / 104% 安全边，供 Ken Burns 位移动画使用；
+    // 其余模式必须回正到 100%，否则缩放会露出容器底色（视觉上就是黑边）。
+    if (wallpaperFit === 'cover') {
+      // 从 contain/fill 切回 cover 时必须清掉运行时覆盖，否则安全边丢失、动画会露边
+      clearImp(img, 'top');
+      clearImp(img, 'right');
+      clearImp(img, 'bottom');
+      clearImp(img, 'left');
+      clearImp(img, 'width');
+      clearImp(img, 'height');
+      clearImp(img, 'animation');
+      // 但 max-* 覆盖必须保留：宿主 Tailwind preflight 的 img{max-width:100%} 会把
+      // CSS 的 width:104% 安全边压回 100%，Ken Burns 位移动画就会露出容器底色（即黑边）。
+      setImp(img, 'max-width', 'none');
+      setImp(img, 'max-height', 'none');
+    } else if (wallpaperFit === 'fill') {
+      // 拉伸铺满：铺满视口、允许形变，由用户显式选择时才生效
+      setImp(img, 'top', '0px');
+      setImp(img, 'left', '0px');
+      setImp(img, 'width', '100%');
+      setImp(img, 'height', '100%');
+      clearImp(img, 'right');
+      clearImp(img, 'bottom');
+      setImp(img, 'max-width', 'none');
+      setImp(img, 'max-height', 'none');
+      setImp(img, 'animation', 'none');
+    } else {
+      // contain / blur：完整显示首要，且限制最大放大倍数，避免小缩略图被拉成马赛克。
+      // 先算「不超过原生分辨率 × SCENE_MAX_UPSCALE」的可视盒，再按原比例内接并居中。
+      let w = vw;
+      let h = vh;
+      if (natW > 0 && natH > 0 && vw > 0 && vh > 0) {
+        const maxW = Math.min(vw, natW * SCENE_MAX_UPSCALE);
+        const maxH = Math.min(vh, natH * SCENE_MAX_UPSCALE);
+        const s = Math.min(maxW / natW, maxH / natH);
+        w = Math.max(1, Math.round(natW * s));
+        h = Math.max(1, Math.round(natH * s));
+      }
+      setImp(img, 'left', Math.max(0, Math.round((vw - w) / 2)) + 'px');
+      setImp(img, 'top', Math.max(0, Math.round((vh - h) / 2)) + 'px');
+      setImp(img, 'width', w + 'px');
+      setImp(img, 'height', h + 'px');
+      clearImp(img, 'right');
+      clearImp(img, 'bottom');
+      setImp(img, 'max-width', 'none');
+      setImp(img, 'max-height', 'none');
+      // include 模式下 Ken Burns 会把元素整体放大，导致画面被容器裁掉，这里必须关掉
+      setImp(img, 'animation', 'none');
+    }
+    setImp(img, 'display', 'block');
+    setImp(img, 'margin', '0px');
+    applyElementFit(img, wallpaperFit, wallpaperFitPosition);
+    syncSceneBackdrop(box, img, img.getAttribute('src') || '', blurMode);
+  }
+
+  // 统一入口：任何形态、任何时刻都能把几何重新收敛到「铺满视口」
+  function applyMediaGeometry() {
+    if (isDestroyed) return;
+    // 形态可能已切换（video/scene/web），auto 策略须先按当前形态重新解析
+    refreshResolvedFit();
+    if (document.documentElement && document.documentElement.dataset) {
+      document.documentElement.dataset.agyFit = wallpaperFit;
+    }
+    applyVideoGeometry();
+    applyWebGeometry();
+    applySceneGeometry();
+  }
+
+  // 视口变化（窗口缩放 / 分屏 / 全屏 / DevTools 停靠 / 高 DPI 切换）统一重算
+  function scheduleGeometrySync() {
+    if (isDestroyed || geometryRaf) return;
+    geometryRaf = requestAnimationFrame(() => {
+      geometryRaf = null;
+      applyMediaGeometry();
+    });
+  }
+  window.addEventListener('resize', scheduleGeometrySync, { passive: true });
+  window.addEventListener('orientationchange', scheduleGeometrySync, { passive: true });
+  document.addEventListener('fullscreenchange', scheduleGeometrySync);
+  if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
+    try {
+      const vpObserver = new ResizeObserver(scheduleGeometrySync);
+      vpObserver.observe(document.documentElement);
+      window.__agyViewportObserver = vpObserver;
+    } catch (_) {}
+  }
+
+  function destroyVideoEl() {
+    // 先撤模糊填充层，避免主视频销毁后残留一路解码管道
+    destroyVideoBackdrop();
+    const v = document.getElementById('agy-dynamic-video');
+    if (!v) return;
+    try {
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+    } catch (_) {}
+    v.remove();
+  }
+
+  function destroyWebEl() {
+    const f = document.getElementById('agy-dynamic-iframe');
+    if (!f) return;
+    try {
+      f.setAttribute('src', 'about:blank');
+    } catch (_) {}
+    f.remove();
+  }
+
+  // ==========================================================
+  // 阶段七：场景动态渲染轨（WebWallGL / WebGL2）
+  // - sceneRenderer !== 'static' 时在静态海报之上叠加 WebGL canvas，
+  //   onReady 后淡入并隐藏海报；mount 失败则海报继续兜底（永不黑屏）
+  // - 实例句柄全局单例：同一时间只允许一个 WebGL 上下文
+  // ==========================================================
+  let sceneRendererInstance = null;
+  let sceneRendererDir = '';
+  let sceneRendererMounting = false;
+  let sceneRendererModule = null; // 全局包加载缓存（window.WebWallGL）
+  let sceneRendererLoadSeq = 0;   // 换壁纸竞态守卫
+
+  function normalizeSceneRenderer(v) {
+    return v === 'static' ? 'static' : 'dynamic';
+  }
+
+  // webwallgl 以 UMD 全局包（window.WebWallGL）注入：其 ESM 版含裸依赖 mediabunny，
+  // 无法直接 import()，故用经典 <script> 加载自包含 bundle
+  function importSceneRenderer() {
+    return new Promise((resolve, reject) => {
+      if (sceneRendererModule) return resolve(sceneRendererModule);
+      if (window.WebWallGL && typeof window.WebWallGL.mount === 'function') {
+        sceneRendererModule = window.WebWallGL;
+        return resolve(sceneRendererModule);
+      }
+      const s = document.createElement('script');
+      s.src = `${API_BASE}/vendor/webwallgl.js`;
+      s.async = true;
+      s.onload = () => {
+        if (window.WebWallGL && typeof window.WebWallGL.mount === 'function') {
+          sceneRendererModule = window.WebWallGL;
+          resolve(sceneRendererModule);
+        } else {
+          reject(new Error('WebWallGL global missing after load'));
+        }
+      };
+      s.onerror = () => reject(new Error('webwallgl bundle load failed'));
+      // initWallpaper 可能在 document.head/body 尚未就绪时同步触发，此时 appendChild 会拿到 null。
+      // 这里轮询等待宿主节点出现后再挂载（最长 ~6s，之后交由上层静态海报兜底）
+      const startedAt = Date.now();
+      const tryAppend = () => {
+        const host = document.head || document.body || document.documentElement;
+        if (host) {
+          host.appendChild(s);
+          return;
+        }
+        if (Date.now() - startedAt > 6000) {
+          reject(new Error('document host not ready for vendor script'));
+          return;
+        }
+        setTimeout(tryAppend, 50);
+      };
+      tryAppend();
+    });
+  }
+
+  function destroySceneRenderer() {
+    if (sceneRendererInstance) {
+      try { sceneRendererInstance.destroy(); } catch (e) {}
+      sceneRendererInstance = null;
+    }
+    if (typeof window !== 'undefined') window.__agySceneRenderer = null;
+    sceneRendererDir = '';
+    // canvas 一并移除（无论是否带 agy-scene-canvas 类，彻底清空）
+    const box = document.getElementById('agy-dynamic-scene');
+    if (box) {
+      box.querySelectorAll('canvas').forEach(c => { try { c.remove(); } catch (e) {} });
+    }
+  }
+
+  // Source 适配器：scene.pkg 整包交给库自行解析（sidecar file 路由流式供给）
+  function buildSceneSource(dir) {
+    const pkgUrl = `${API_BASE}/api/wallpaper-library/file?folder=${encodeURIComponent(dir)}&file=scene.pkg`;
+    const projectUrl = `${API_BASE}/api/wallpaper-library/file?folder=${encodeURIComponent(dir)}&file=project.json`;
+    const dirName = String(dir).split(/[\\/]/).filter(Boolean).pop() || 'scene';
+    return {
+      key: `workshop-${dirName}`,
+      scenePkg: async (signal) => {
+        const r = await fetch(pkgUrl, { signal });
+        if (!r.ok) throw new Error('scene.pkg fetch failed: ' + r.status);
+        return r.arrayBuffer();
+      },
+      project: async () => {
+        try {
+          const r = await fetch(projectUrl);
+          if (!r.ok) return null;
+          return await r.json();
+        } catch (_) { return null; }
+      }
+    };
+  }
+
+  async function mountSceneDynamic(box) {
+    if (isDestroyed || !wallpaperDir) return;
+    if (normalizeSceneRenderer(sceneRenderer) === 'static') { destroySceneRenderer(); return; }
+    const dir = wallpaperDir;
+    const targetFps = Number.isFinite(fps) ? fps : 60;
+    const targetDpr = (Number.isFinite(renderDpr) ? renderDpr : 1.0) * (window.devicePixelRatio || 1);
+
+    // 已在渲染同一目录：仅按独立参数热调，不重建上下文
+    if (sceneRendererInstance && sceneRendererDir === dir) {
+      try {
+        sceneRendererInstance.setFps(targetFps);
+        sceneRendererInstance.setRenderDpr(targetDpr);
+        const c = sceneRendererInstance.canvas || (box ? box.querySelector('canvas') : null);
+        if (c) {
+          c.classList.add('agy-scene-canvas');
+          c.classList.add('agy-scene-live');
+        }
+        const imgEl2 = box ? box.querySelector('img.agy-scene-img') : null;
+        if (imgEl2) imgEl2.style.opacity = '0';
+      } catch (e) {}
+      return;
+    }
+    if (sceneRendererMounting) return; // 上一轮还在装配，等它落地（或被新目录判废）
+    sceneRendererMounting = true;
+    const seq = ++sceneRendererLoadSeq;
+
+    try {
+      const mod = await importSceneRenderer();
+      if (isDestroyed || seq !== sceneRendererLoadSeq || wallpaperDir !== dir) return;
+
+      // mount() 期望容器元素并自建 canvas；彻底清理所有历史 canvas
+      box.querySelectorAll('canvas').forEach(c => { try { c.remove(); } catch (e) {} });
+
+      // 传入容器 box，库在其内自建 WebGL canvas 并管理 backing store 与适配。
+      // 注意：mount() 的 Promise 由首帧(onReady)落地，onReady 在 await 返回前触发，
+      // 因此回调内不能引用尚未赋值的 inst——所有 canvas 样式一律放到 await 之后处理。
+      const inst = await mod.mount(box, {
+        source: buildSceneSource(dir),
+        fit: 'cover',
+        fps: targetFps,
+        renderDpr: targetDpr,
+        autoQuality: true,
+        scripts: !!sceneScripts,
+        volume: 0,
+        mountTimeoutMs: 20000,
+        onError: (err) => {
+          console.warn('[Scene Renderer] mount failed, fallback to static poster:', err);
+          if (seq === sceneRendererLoadSeq) destroySceneRenderer();
+        }
+      });
+      if (isDestroyed || seq !== sceneRendererLoadSeq || wallpaperDir !== dir) {
+        try { inst.destroy(); } catch (e) {}
+        return;
+      }
+      // 首帧已就绪（mount 已 resolve）：接管 canvas 样式铺满容器，淡入盖过静态海报
+      const c = inst.canvas || box.querySelector('canvas');
+      if (c) {
+        c.classList.add('agy-scene-canvas');
+        c.style.position = 'absolute';
+        c.style.inset = '0';
+        c.style.width = '100%';
+        c.style.height = '100%';
+        c.classList.add('agy-scene-live');
+      }
+      const imgEl2 = box.querySelector('img.agy-scene-img');
+      if (imgEl2) {
+        imgEl2.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        // 关键无缝 Cross-fade：等待 WebGL canvas 600ms 淡入完成、画面完全呈现后，底下的海报再淡出，彻底消除黑闪！
+        setTimeout(() => {
+          if (!isDestroyed && sceneRendererInstance === inst && imgEl2) {
+            imgEl2.style.opacity = '0';
+          }
+        }, 550);
+      }
+      console.log('[Scene Renderer] first frame ready, dynamic track live');
+      sceneRendererInstance = inst;
+      sceneRendererDir = dir;
+      if (typeof window !== 'undefined') window.__agySceneRenderer = inst;
+      if (document.hidden) { try { inst.pause(); } catch (e) {} }
+    } catch (e) {
+      console.warn('[Scene Renderer] dynamic track unavailable, static poster stays:', e);
+      if (seq === sceneRendererLoadSeq) destroySceneRenderer();
+    } finally {
+      if (seq === sceneRendererLoadSeq) sceneRendererMounting = false;
+    }
+  }
+
+  function destroySceneEl() {
+    destroySceneRenderer();
+    const box = document.getElementById('agy-dynamic-scene');
+    if (box) {
+      // 同时清理模糊填充层（agy-scene-bg）与前景层（agy-scene-img）
+      box.querySelectorAll('img').forEach(img => img.removeAttribute('src'));
+      box.remove();
+    }
+  }
+
+  function destroyAudioEl() {
+    const audio = document.getElementById('agy-dynamic-audio');
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    } catch (_) {}
+    audio.remove();
+  }
+
+  function mountWeb() {
+    ensureBackdrop();
+    let frame = document.getElementById('agy-dynamic-iframe');
+    const url = buildWebUrl();
+    if (!frame) {
+      frame = document.createElement('iframe');
+      frame.id = 'agy-dynamic-iframe';
+      frame.setAttribute('title', 'Dynamic Web Wallpaper');
+      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-pointer-lock allow-popups');
+      frame.setAttribute('allow', 'autoplay; fullscreen');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      frame.style.cssText = 'border:0;z-index:-999999;pointer-events:none;background:#000;opacity:1;transition:opacity .6s cubic-bezier(.4,0,.2,1);contain:strict;transform:translateZ(0);';
+      applyMediaFilter(frame);
+      const parent = document.body || document.documentElement;
+      if (parent) parent.prepend(frame);
+    }
+    if (url && frame.getAttribute('src') !== url) {
+      frame.setAttribute('src', url);
+    }
+    if (document.documentElement && document.documentElement.dataset) {
+      document.documentElement.dataset.agyHasVideo = 'true';
+    }
+    // 几何统一收口到控制器（iframe 无 object-fit 语义，仅保证容器铺满）
+    applyWebGeometry();
+    return frame;
+  }
+
+  function mountScene(fadeIn = true) {
+    ensureBackdrop();
+    ensureSceneStyle();
+    const posterUrl = buildScenePosterUrl();
+    const fallbackUrl = buildPreviewUrl();
+    const url = posterUrl || fallbackUrl;
+    let box = document.getElementById('agy-dynamic-scene');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'agy-dynamic-scene';
+      box.style.opacity = fadeIn ? '0' : '1';
+      box.style.transition = 'opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+      const img = document.createElement('img');
+      img.className = 'agy-scene-img';
+      img.alt = '';
+      img.decoding = 'async';
+      box.appendChild(img);
+      applyMediaFilter(box);
+      const parent = document.body || document.documentElement;
+      if (parent) parent.prepend(box);
+    }
+    const imgEl = box.querySelector('img.agy-scene-img');
+    if (imgEl) {
+      // 静态海报是动态轨的兜底：若动态画布已经活跃渲染，海报保持 0 透明度；否则作为主画面展示
+      if (!box.querySelector('canvas.agy-scene-live')) {
+        imgEl.style.opacity = '';
+      }
+      // poster 加载失败（pkg 缺失/解包失败）时回落到缩略图，保证至少有画面
+      if (posterUrl && fallbackUrl && posterUrl !== fallbackUrl) {
+        imgEl.addEventListener('error', () => {
+          if (isDestroyed) return;
+          if (imgEl.getAttribute('src') !== fallbackUrl) {
+            imgEl.setAttribute('src', fallbackUrl);
+          }
+        }, { once: true });
+      }
+      if (url && imgEl.getAttribute('src') !== url) {
+        // 图像双缓冲防闪：若已有图片在显示，预加载新图就绪后再替换，避免网络下载期间闪黑
+        const currentSrc = imgEl.getAttribute('src');
+        if (currentSrc) {
+          const preloader = new Image();
+          preloader.decoding = 'async';
+          preloader.onload = () => {
+            if (isDestroyed || !box) return;
+            imgEl.setAttribute('src', url);
+            imgEl.style.opacity = '1';
+            try { applyMediaGeometry(); } catch (_) {}
+            scheduleGeometrySync();
+          };
+          preloader.onerror = () => {
+            if (isDestroyed || !box) return;
+            imgEl.setAttribute('src', fallbackUrl || url);
+            imgEl.style.opacity = '1';
+          };
+          preloader.src = url;
+        } else {
+          imgEl.setAttribute('src', url);
+        }
+      }
+    }
+    if (imgEl) {
+      const reveal = () => {
+        if (!box || isDestroyed) return;
+        requestAnimationFrame(() => { box.style.opacity = '1'; });
+      };
+      const onReady = () => {
+        reveal();
+        if (isDestroyed) return;
+        try { applyMediaGeometry(); } catch (_) {}
+        scheduleGeometrySync();
+      };
+      if (imgEl.complete && imgEl.naturalWidth > 0) onReady();
+      else {
+        imgEl.addEventListener('load', onReady, { once: true });
+        imgEl.addEventListener('error', reveal, { once: true });
+      }
+    } else {
+      box.style.opacity = '1';
+    }
+    if (document.documentElement && document.documentElement.dataset) {
+      document.documentElement.dataset.agyHasVideo = 'true';
+    }
+    // 几何统一收口到控制器（含 blur 模式下的模糊填充层）
+    applySceneGeometry();
+    mountSceneAudio();
+    // 动态渲染轨：异步装配，时序保护（避免冷启动早期 DOM 骨架未就绪 / 尺寸为 0 导致装配异常）
+    const triggerDynamic = () => {
+      if (isDestroyed) return;
+      mountSceneDynamic(box).catch(() => {});
+    };
+    if (typeof document !== 'undefined' && document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        requestAnimationFrame(() => requestAnimationFrame(triggerDynamic));
+      }, { once: true });
+    } else {
+      requestAnimationFrame(triggerDynamic);
+    }
+    return box;
+  }
+
+  function mountSceneAudio() {
+    if (!audioEnabled || !audioUrl) {
+      destroyAudioEl();
+      return null;
+    }
+    let audio = document.getElementById('agy-dynamic-audio');
+    const src = /^https?:\/\//i.test(audioUrl) ? audioUrl : `${API_BASE}${audioUrl}`;
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.id = 'agy-dynamic-audio';
+      audio.loop = true;
+      audio.volume = 0.28;
+      audio.preload = 'none';
+      audio.style.display = 'none';
+      (document.body || document.documentElement).appendChild(audio);
+    }
+    if (audio.getAttribute('src') !== src) {
+      audio.setAttribute('src', src);
+    }
+    if (document.visibilityState === 'visible') {
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+    return audio;
+  }
+
+  // 互斥挂载：切换形态时彻底释放旧解码/渲染管道，避免内存与 GPU 资源泄漏
+  function mountMedia(fadeIn = true) {
+    if (isDestroyed) return null;
+    const mode = currentMode();
+
+    if (mode === 'web') {
+      destroyVideoEl();
+      destroySceneEl();
+      destroyAudioEl();
+      return mountWeb();
+    }
+    if (mode === 'scene') {
+      destroyVideoEl();
+      destroyWebEl();
+      return mountScene(fadeIn);
+    }
+    // 视频模式（含无素材时的清理）
+    destroyWebEl();
+    destroySceneEl();
+    destroyAudioEl();
+    return realMountVideo(fadeIn);
   }
 
   function realMountVideo(fadeIn = true) {
@@ -351,6 +1269,11 @@ export function initWallpaper(options = {}) {
       videoEl.__agyBound = true;
       const onDataReady = () => {
         onPlayReady();
+        // 元数据就绪后补一次几何收敛：blur 模式下模糊层需要真实的 currentSrc 才能复制
+        if (videoEl && videoEl.dataset.agyGeomReady !== '1') {
+          videoEl.dataset.agyGeomReady = '1';
+          applyVideoGeometry();
+        }
         if (videoEl && videoEl.paused && enableVideo) {
           safePlay();
         }
@@ -370,18 +1293,96 @@ export function initWallpaper(options = {}) {
       safePlay();
     }
 
+    // 几何控制器介入：尺寸与 object-fit 不再依赖 glass-theme.css 是否成功注入
+    applyVideoGeometry();
     ensureStyle();
     return videoEl;
   }
 
-  // 挂载/卸载动态视频元素
+  // 挂载/卸载动态壁纸（按 sourceType 自动路由到视频 / 网页 / 场景适配器）
   function mountVideo() {
     if (isDestroyed) return null;
     syncTitleBarOverlay();
-    return realMountVideo(true);
+    return mountMedia(true);
   }
 
   mountVideo();
+
+  // ==========================================================
+  // 性能守卫：窗口失焦 / 最小化时挂起解码与合成，回到前台瞬间平滑唤醒
+  // ==========================================================
+  let suspendTimer = null;
+  let suspended = false;
+
+  function suspendMedia(reason) {
+    if (suspended) return;
+    suspended = true;
+    const v = document.getElementById('agy-dynamic-video');
+    if (v) {
+      try {
+        v.dataset.agySuspended = '1';
+        v.pause();
+      } catch (_) {}
+    }
+    const f = document.getElementById('agy-dynamic-iframe');
+    if (f) {
+      f.style.visibility = 'hidden';
+      try {
+        f.contentWindow?.postMessage({ type: 'agy-wallpaper-pause' }, '*');
+      } catch (_) {}
+    }
+    const audio = document.getElementById('agy-dynamic-audio');
+    if (audio) {
+      try { audio.pause(); } catch (_) {}
+    }
+    void reason;
+  }
+
+  function resumeMedia() {
+    if (!suspended) return;
+    suspended = false;
+    const v = document.getElementById('agy-dynamic-video');
+    if (v && v.dataset.agySuspended === '1') {
+      delete v.dataset.agySuspended;
+      const p = v.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+    const f = document.getElementById('agy-dynamic-iframe');
+    if (f) {
+      f.style.visibility = 'visible';
+      try {
+        f.contentWindow?.postMessage({ type: 'agy-wallpaper-resume' }, '*');
+      } catch (_) {}
+    }
+    const audio = document.getElementById('agy-dynamic-audio');
+    if (audio && audioEnabled) {
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (isDestroyed) return;
+    if (document.visibilityState === 'hidden') {
+      suspendMedia('hidden');
+    } else {
+      resumeMedia();
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    if (isDestroyed) return;
+    clearTimeout(suspendTimer);
+    // 轻微延迟，避免点击 DevTools / 系统弹窗造成的抖动式挂起
+    suspendTimer = setTimeout(() => {
+      if (document.visibilityState === 'hidden') suspendMedia('blur');
+    }, 1200);
+  });
+
+  window.addEventListener('focus', () => {
+    clearTimeout(suspendTimer);
+    resumeMedia();
+  });
 
   // 4. 用户提问气泡智能折叠/展开胶囊按钮与防遮挡管理 (遵照 floating_user_bubble_spec.md v1.2.0)
   function updateCollapseBtnIcon(btn, isCollapsed) {
@@ -817,8 +1818,10 @@ export function initWallpaper(options = {}) {
         syncTitleBarOverlay();
         return;
       }
-      const needVideo = enableVideo && videoUrl;
-      const hasVid = !!document.getElementById('agy-dynamic-video');
+      const needVideo = currentMode() !== 'none';
+      const hasVid = !!document.getElementById('agy-dynamic-video') ||
+                     !!document.getElementById('agy-dynamic-iframe') ||
+                     !!document.getElementById('agy-dynamic-scene');
       const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
       if ((needVideo && !hasVid) || !hasStyle) {
         mountVideo();
@@ -838,6 +1841,15 @@ export function initWallpaper(options = {}) {
       attributeFilter: ['class', 'data-theme']
     });
   }
+  // 阶段七：窗口不可见 → 暂停 WebGL 帧循环（GPU 归零），恢复可见自动续帧
+  document.addEventListener('visibilitychange', () => {
+    if (!sceneRendererInstance) return;
+    try {
+      if (document.hidden) sceneRendererInstance.pause();
+      else sceneRendererInstance.resume();
+    } catch (e) {}
+  });
+
   window.__agyWallpaperObserver = unifiedObserver;
 
   return {
@@ -851,6 +1863,38 @@ export function initWallpaper(options = {}) {
     updateVideoUrl: (newUrl) => {
       if (isDestroyed) return;
       videoUrl = newUrl;
+      mountVideo();
+    },
+    // 阶段五：铺满策略热更新（只重写几何，不重建解码管道，切换零闪烁）
+    updateFit: (payload = {}) => {
+      if (isDestroyed) return;
+      if (payload.fit !== undefined) wallpaperFitSetting = normalizeFitSetting(payload.fit);
+      if (payload.fitPosition !== undefined) wallpaperFitPosition = normalizeFitPosition(payload.fitPosition);
+      refreshResolvedFit();
+      applyMediaGeometry();
+    },
+    // 多形态素材切换（视频 / 网页 / 场景），供配置变更时统一调用
+    updateMedia: (payload = {}) => {
+      if (isDestroyed) return;
+      if (payload.fit !== undefined) wallpaperFitSetting = normalizeFitSetting(payload.fit);
+      if (payload.fitPosition !== undefined) wallpaperFitPosition = normalizeFitPosition(payload.fitPosition);
+      if (payload.sourceType !== undefined) sourceType = payload.sourceType || 'video';
+      if (payload.wallpaperDir !== undefined) wallpaperDir = payload.wallpaperDir || '';
+      if (payload.previewFile !== undefined) previewFile = payload.previewFile || '';
+      if (payload.entryFile !== undefined) entryFile = payload.entryFile || '';
+      if (payload.webUrl !== undefined) webUrl = payload.webUrl || '';
+      if (payload.audioUrl !== undefined) audioUrl = payload.audioUrl || '';
+      if (payload.audioEnabled !== undefined) audioEnabled = !!payload.audioEnabled;
+      if (payload.videoUrl !== undefined) videoUrl = payload.videoUrl || '';
+      if (payload.enabled !== undefined) enableVideo = !!payload.enabled;
+      // 阶段八：精细渲染控制与模式解耦
+      if (payload.fps !== undefined) fps = Number.isFinite(payload.fps) ? payload.fps : 60;
+      if (payload.renderDpr !== undefined) renderDpr = Number.isFinite(payload.renderDpr) ? payload.renderDpr : 1.0;
+      if (payload.sceneRenderer !== undefined) sceneRenderer = normalizeSceneRenderer(payload.sceneRenderer);
+      if (payload.sceneScripts !== undefined) sceneScripts = !!payload.sceneScripts;
+      if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
+        isWallpaperDeferred = false;
+      }
       mountVideo();
     },
     setVideoEnabled: (enabled, newUrl) => {
@@ -908,11 +1952,22 @@ export function initWallpaper(options = {}) {
         window.__agyBubbleObserver = null;
       }
       enableVideo = false;
-      const v = document.getElementById('agy-dynamic-video');
-      if (v) {
-        try { v.pause(); } catch(e) {}
-        v.remove();
+      // 阶段五：几何控制器资源回收
+      if (geometryRaf) {
+        cancelAnimationFrame(geometryRaf);
+        geometryRaf = null;
       }
+      window.removeEventListener('resize', scheduleGeometrySync);
+      window.removeEventListener('orientationchange', scheduleGeometrySync);
+      document.removeEventListener('fullscreenchange', scheduleGeometrySync);
+      if (window.__agyViewportObserver) {
+        try { window.__agyViewportObserver.disconnect(); } catch (e) {}
+        window.__agyViewportObserver = null;
+      }
+      destroyVideoEl();
+      destroyWebEl();
+      destroySceneEl();
+      destroyAudioEl();
       const backdrop = document.getElementById('agy-wallpaper-backdrop');
       if (backdrop) backdrop.remove();
       if (document.documentElement && document.documentElement.dataset) {

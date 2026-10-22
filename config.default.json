@@ -5,15 +5,46 @@
     "bootAnimationConfig": {
       "type": "video",
       "customCodePath": "",
-      "videoPath": ""
+      "videoPath": "",
+      "wallpaperDir": "",
+      "previewFile": "",
+      "fit": "cover",
+      "fitPosition": "center",
+      "brightness": 1.0,
+      "contrast": 1.0,
+      "fps": 60,
+      "renderDpr": 1.0,
+      "autoEnterDelay": 3
     },
     "themeStyles": false,
     "chineseLocalization": true,
     "dynamicWallpaper": {
       "enabled": false,
+      "sourceType": "video",
       "videoPath": "",
+      "wallpaperDir": "",
+      "wallpaperId": "",
+      "entryFile": "",
+      "previewFile": "",
+      "audioFile": "",
+      "audioEnabled": false,
+      "title": "",
       "brightness": 0.85,
-      "contrast": 1.05
+      "contrast": 1.05,
+      "fit": "auto",
+      "fitPosition": "center",
+      "fitMigrated": true,
+      "fps": 60,
+      "renderDpr": 1.0,
+      "sceneRenderer": "dynamic",
+      "sceneScripts": false
+    },
+    "externalWallpaperLibrary": {
+      "wallpaperEnabled": false,
+      "bootEnabled": false,
+      "libraryPath": "",
+      "autoScan": true,
+      "mountedFolders": []
     }
   }
 }

@@ -37,36 +37,91 @@
     isVideoOn: undefined,
     videoPath: undefined,
     brightness: undefined,
-    contrast: undefined
+    contrast: undefined,
+    fitKey: undefined
   };
+
+  // 外部素材库路径 → web-proxy 路径安全编码（支持中文 / 空格 / 反斜杠）
+  function toBase64UrlPath(str) {
+    try {
+      const bytes = new TextEncoder().encode(String(str || ''));
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch (_) {
+      return '';
+    }
+  }
 
   function applyFeatures(cfg) {
     const f = cfg.features || {};
     const dw = f.dynamicWallpaper || {};
 
-    // A. 背景视频与毛玻璃增量细粒度更新
+    // A. 背景素材（视频 / 网页 / 场景）与毛玻璃增量细粒度更新
     const isCustomTheme = f.themeStyles !== false;
     if (isCustomTheme) {
       const isVideoOn = dw.enabled === true;
       const videoPath = dw.videoPath || '';
+      const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+      const wallpaperDir = dw.wallpaperDir || '';
+      const previewFile = dw.previewFile || '';
+      const entryFile = dw.entryFile || '';
+      const audioFile = dw.audioFile || '';
+      const audioEnabled = dw.audioEnabled === true;
       const brightness = dw.brightness || 0.85;
       const contrast = dw.contrast || 1.05;
-      const videoUrl = (isVideoOn && videoPath) ? `${API_BASE}/wallpaper.mp4?path=${encodeURIComponent(videoPath)}` : '';
+      // 阶段六：铺满策略改为 auto——场景壁纸按「完整显示」处理，视频/网页仍铺满裁切
+      const fit = dw.fit || 'auto';
+      const fitPosition = dw.fitPosition || 'center';
+      // 阶段七/八：场景动态渲染模式与精细控制（fps, renderDpr）
+      const sceneRenderer = dw.sceneRenderer || 'dynamic';
+      const sceneScripts = dw.sceneScripts === true;
+      const fps = Number.isFinite(dw.fps) ? dw.fps : 60;
+      const renderDpr = Number.isFinite(dw.renderDpr) ? dw.renderDpr : 1.0;
+
+      const hasSource = sourceType === 'video' ? !!videoPath : !!wallpaperDir;
+      const mediaOn = isVideoOn && hasSource;
+      const videoUrl = (mediaOn && sourceType === 'video' && videoPath)
+        ? `${API_BASE}/wallpaper.mp4?path=${encodeURIComponent(videoPath)}`
+        : '';
+      const webUrl = (mediaOn && sourceType === 'web' && wallpaperDir && entryFile)
+        ? `${API_BASE}/api/wallpaper-library/web-proxy/${toBase64UrlPath(wallpaperDir)}/${String(entryFile).split('/').map(encodeURIComponent).join('/')}`
+        : '';
+      const audioUrl = (mediaOn && sourceType === 'scene' && audioFile && wallpaperDir)
+        ? `${API_BASE}/api/wallpaper-library/audio?folder=${encodeURIComponent(wallpaperDir)}&file=${encodeURIComponent(audioFile)}`
+        : '';
+      const mediaKey = [mediaOn, sourceType, videoPath, wallpaperDir, previewFile, entryFile, audioEnabled, audioUrl, sceneRenderer, sceneScripts, fps, renderDpr].join('|');
+      // 阶段五：铺满策略单独成键——它只影响几何，绝不该触发解码管道重建
+      const fitKey = [fit, fitPosition].join('|');
 
       try {
         if (!wallpaperHandle) {
           if (typeof window.__agyInitWallpaper === 'function') {
             wallpaperHandle = window.__agyInitWallpaper({
               videoUrl,
-              enableVideo: isVideoOn && !!videoPath,
+              enableVideo: mediaOn,
               brightness,
               contrast,
-              glassThemeCss: window.__AG_SKIN_GLASS_CSS__ || ''
+              glassThemeCss: window.__AG_SKIN_GLASS_CSS__ || '',
+              sourceType,
+              wallpaperDir,
+              previewFile,
+              entryFile,
+              webUrl,
+              audioUrl,
+              audioEnabled,
+              fit,
+              fitPosition,
+              fps,
+              renderDpr,
+              sceneRenderer,
+              sceneScripts
             });
-            lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast };
+            window.__agyWallpaperInstance = wallpaperHandle;
+            lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey };
           }
         } else {
-          // 仅当滤镜参数发生改变时才更新 CSS 变量（0 渲染开销，视频完全不中断）
+          // 仅当滤镜参数发生改变时才更新 CSS 变量（0 渲染开销，素材完全不中断）
           if (lastWallpaperState.brightness !== brightness || lastWallpaperState.contrast !== contrast) {
             wallpaperHandle.updateFilters(brightness, contrast);
             lastWallpaperState.brightness = brightness;
@@ -75,40 +130,63 @@
           if (typeof wallpaperHandle.updateStyle === 'function') {
             wallpaperHandle.updateStyle(window.__AG_SKIN_GLASS_CSS__ || '');
           }
-          // 仅当视频开启状态、视频素材路径变动或视频元素未在播放时更新，杜绝无效重载同时保障开机自愈
-          const vidEl = document.getElementById('agy-dynamic-video');
-          const shouldRunVideo = isVideoOn && !!videoPath;
-          const needVideoUpdate = lastWallpaperState.isVideoOn !== isVideoOn ||
-                                  lastWallpaperState.videoPath !== videoPath ||
-                                  lastWallpaperState.isCustomTheme !== isCustomTheme ||
-                                  (shouldRunVideo && (!vidEl || vidEl.paused || vidEl.style.opacity !== '1'));
-          if (needVideoUpdate) {
-            if (typeof wallpaperHandle.setVideoEnabled === 'function') {
-              wallpaperHandle.setVideoEnabled(shouldRunVideo, videoUrl);
+          // 阶段五：铺满策略热更新——仅重写几何声明，不触碰解码管道（切换零闪烁）
+          if (lastWallpaperState.fitKey !== fitKey) {
+            if (typeof wallpaperHandle.updateFit === 'function') {
+              try { wallpaperHandle.updateFit({ fit, fitPosition }); } catch (e) {}
             }
-            if (!shouldRunVideo) {
-              const oldVid = document.getElementById('agy-dynamic-video');
-              if (oldVid) {
-                try { oldVid.pause(); } catch(e) {}
-                oldVid.remove();
-              }
+            lastWallpaperState.fitKey = fitKey;
+          }
+          if (lastWallpaperState.mediaKey !== mediaKey) {
+            if (typeof wallpaperHandle.updateMedia === 'function') {
+              wallpaperHandle.updateMedia({
+                enabled: mediaOn,
+                sourceType,
+                wallpaperDir,
+                previewFile,
+                entryFile,
+                webUrl,
+                audioUrl,
+                audioEnabled,
+                videoUrl,
+                fit,
+                fitPosition,
+                fps,
+                renderDpr,
+                sceneRenderer,
+                sceneScripts
+              });
+            } else if (typeof wallpaperHandle.setVideoEnabled === 'function') {
+              wallpaperHandle.setVideoEnabled(mediaOn, videoUrl);
+            }
+            if (!mediaOn) {
               if (document.documentElement && document.documentElement.dataset) {
                 document.documentElement.dataset.agyHasVideo = 'false';
               }
             }
+            lastWallpaperState.mediaKey = mediaKey;
             lastWallpaperState.isVideoOn = isVideoOn;
             lastWallpaperState.videoPath = videoPath;
             lastWallpaperState.isCustomTheme = isCustomTheme;
+          } else if (mediaOn && sourceType === 'video') {
+            // 视频自愈保障：元素丢失或处于暂停态时轻量补挂，不触发场景/网页重建
+            const vidEl = document.getElementById('agy-dynamic-video');
+            if (!vidEl || vidEl.paused || vidEl.style.opacity !== '1') {
+              if (typeof wallpaperHandle.setVideoEnabled === 'function') {
+                wallpaperHandle.setVideoEnabled(true, videoUrl);
+              }
+            }
           }
         }
       } catch (err) {
         console.warn('[Antigravity Skin] Failed to init/update wallpaper:', err);
       }
     } else {
-      lastWallpaperState = { isCustomTheme: false, isVideoOn: false, videoPath: '', brightness: 0, contrast: 0 };
+      lastWallpaperState = { isCustomTheme: false, isVideoOn: false, videoPath: '', brightness: 0, contrast: 0, mediaKey: '' };
       if (wallpaperHandle) {
         try { wallpaperHandle.destroy(); } catch(e) {}
         wallpaperHandle = null;
+        window.__agyWallpaperInstance = null;
       }
       try {
         const oldVid = document.getElementById('agy-dynamic-video');
@@ -116,6 +194,12 @@
           try { oldVid.pause(); } catch(e) {}
           oldVid.remove();
         }
+        const oldFrame = document.getElementById('agy-dynamic-iframe');
+        if (oldFrame) { try { oldFrame.setAttribute('src', 'about:blank'); } catch(e) {} oldFrame.remove(); }
+        const oldScene = document.getElementById('agy-dynamic-scene');
+        if (oldScene) oldScene.remove();
+        const oldAudio = document.getElementById('agy-dynamic-audio');
+        if (oldAudio) { try { oldAudio.pause(); } catch(e) {} oldAudio.remove(); }
         const oldBackdrop = document.getElementById('agy-wallpaper-backdrop');
         if (oldBackdrop) oldBackdrop.remove();
         if (document.documentElement && document.documentElement.dataset) {
@@ -257,18 +341,29 @@
         }
       );
     }
-    // 关键自愈：如果视频或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
+    // 关键自愈：如果素材或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
     const needStyle = currentConfig.features?.themeStyles !== false;
-    const needWallpaper = needStyle && currentConfig.features?.dynamicWallpaper?.enabled === true && !!currentConfig.features?.dynamicWallpaper?.videoPath;
+    const dwCfg = currentConfig.features?.dynamicWallpaper || {};
+    const dwSource = dwCfg.sourceType || (dwCfg.wallpaperDir ? 'scene' : 'video');
+    const dwHasSource = dwSource === 'video' ? !!dwCfg.videoPath : !!dwCfg.wallpaperDir;
+    const needWallpaper = needStyle && dwCfg.enabled === true && dwHasSource;
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
-                          !!document.getElementById('agy-custom-code-boot-host');
-    const hasVideo = !!document.getElementById('agy-dynamic-video');
+                          !!document.getElementById('agy-custom-code-boot-host') ||
+                          !!document.getElementById('agy-scene-boot-host');
+    const hasVideo = !!document.getElementById('agy-dynamic-video') ||
+                     !!document.getElementById('agy-dynamic-iframe') ||
+                     !!document.getElementById('agy-dynamic-scene');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
     if (!isBootPlaying) {
       if (!needWallpaper && hasVideo) {
-        const oldVid = document.getElementById('agy-dynamic-video');
-        if (oldVid) { try { oldVid.pause(); } catch(e){} oldVid.remove(); }
+        ['agy-dynamic-video', 'agy-dynamic-iframe', 'agy-dynamic-scene', 'agy-dynamic-audio'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            try { if (el.pause) el.pause(); } catch(e) {}
+            el.remove();
+          }
+        });
       }
       if ((needWallpaper && !hasVideo) || (needStyle && !hasStyle)) {
         console.log('[Antigravity Skin] Missing video or style in DOM, re-applying features immediately...');

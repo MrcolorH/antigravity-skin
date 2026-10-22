@@ -3,7 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, execFile } from 'node:child_process';
+import {
+  parseWallpaperFolder,
+  scanLibrary,
+  detectLibraryCandidates,
+  resolveFolderByHint,
+  serveLocalFile,
+  isSubPath,
+  clearScanCache
+} from './wallpaper-library.mjs';
+import { getScenePoster } from './scene-pkg.mjs';
 
 // 1. 确保启用原生 WebSocket (Node 20+ --experimental-websocket)
 if (typeof WebSocket === 'undefined' && !process.env.__AG_WS_SPAWNED) {
@@ -66,17 +76,15 @@ function getDevToolsPortPath() {
 }
 
 // 3. 配置读写
-function readConfig() {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    }
-    if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error('[Skin Engine] Failed to read config:', e);
-  }
+// 阶段五：媒体铺满策略白名单（与客户端 wallpaper.js 的 FIT_MODES / FIT_POSITIONS 保持一致）
+const WALLPAPER_FIT_MODES = new Set(['auto', 'cover', 'contain', 'fill', 'blur']);
+const WALLPAPER_FIT_POSITIONS = new Set([
+  'center', 'top', 'bottom', 'left', 'right',
+  'top left', 'top right', 'bottom left', 'bottom right'
+]);
+
+// 默认配置（作为一切旧版本配置的补全基线，确保向后兼容）
+function buildDefaultConfig() {
   return {
     enabled: true,
     features: {
@@ -84,19 +92,153 @@ function readConfig() {
       bootAnimationConfig: {
         type: 'video',
         customCodePath: '',
-        videoPath: ''
+        videoPath: '',
+        wallpaperDir: '',
+        previewFile: '',
+        // —— 阶段八：开屏独立几何、调色、性能与时序控制 ——
+        fit: 'cover',
+        fitPosition: 'center',
+        brightness: 1.0,
+        contrast: 1.0,
+        fps: 60,
+        renderDpr: 1.0,
+        autoEnterDelay: 3
       },
       themeStyles: false,
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {
         enabled: false,
+        sourceType: 'video',
         videoPath: '',
+        wallpaperDir: '',
+        wallpaperId: '',
+        entryFile: '',
+        previewFile: '',
+        audioFile: '',
+        audioEnabled: false,
+        title: '',
         brightness: 0.85,
-        contrast: 1.05
+        contrast: 1.05,
+        // —— 阶段五/六：媒体铺满策略 ——
+        fit: 'auto',
+        fitMigrated: true,
+        fitPosition: 'center',
+        // —— 阶段八：壁纸独立性能与渲染精细控制 ——
+        fps: 60,
+        renderDpr: 1.0,
+        sceneRenderer: 'dynamic',
+        sceneScripts: false
+      },
+      externalWallpaperLibrary: {
+        wallpaperEnabled: false,
+        bootEnabled: false,
+        libraryPath: '',
+        autoScan: true,
+        mountedFolders: []
       }
     }
   };
+}
+
+// 深合并：仅补齐缺失字段，绝不覆盖用户已有配置
+function normalizeConfig(raw) {
+  const base = buildDefaultConfig();
+  if (!raw || typeof raw !== 'object') return base;
+  const out = { ...base, ...raw };
+  out.features = { ...base.features, ...(raw.features || {}) };
+  out.features.dynamicWallpaper = { ...base.features.dynamicWallpaper, ...(raw.features?.dynamicWallpaper || {}) };
+  out.features.bootAnimationConfig = { ...base.features.bootAnimationConfig, ...(raw.features?.bootAnimationConfig || {}) };
+  const lib = raw.features?.externalWallpaperLibrary || {};
+  out.features.externalWallpaperLibrary = {
+    ...base.features.externalWallpaperLibrary,
+    ...lib,
+    mountedFolders: Array.isArray(lib.mountedFolders) ? lib.mountedFolders.filter(Boolean) : []
+  };
+  // 路径归一化：容忍用户手填 E:////foo 或正反斜杠混写
+  try {
+    const libCfg = out.features.externalWallpaperLibrary;
+    if (libCfg.libraryPath) {
+      libCfg.libraryPath = path.resolve(String(libCfg.libraryPath).trim().replace(/^["']|["']$/g, ''));
+    }
+    libCfg.mountedFolders = libCfg.mountedFolders.map(p => {
+      try { return path.resolve(String(p).trim()); } catch (_) { return p; }
+    });
+  } catch (_) {}
+
+  // 双开关迁移：旧版单开关 enabled → 壁纸/开屏同时开启；新字段存在时以新字段为准
+  try {
+    const libCfg = out.features.externalWallpaperLibrary;
+    const hasNewSwitches = lib.wallpaperEnabled !== undefined || lib.bootEnabled !== undefined;
+    const legacyEnabled = lib.enabled === true;
+    libCfg.wallpaperEnabled = hasNewSwitches ? lib.wallpaperEnabled === true : legacyEnabled;
+    libCfg.bootEnabled = hasNewSwitches ? lib.bootEnabled === true : legacyEnabled;
+    delete libCfg.enabled;
+  } catch (_) {}
+  // 旧配置兼容：仅有 videoPath 时自动推导 sourceType
+  const dw = out.features.dynamicWallpaper;
+  if (!dw.sourceType) {
+    dw.sourceType = dw.wallpaperDir ? 'scene' : 'video';
+  }
+  // 阶段五：铺满策略枚举白名单，非法值静默回退默认（旧配置无这两个字段时即自动补齐）
+  // 归一化口径与客户端 wallpaper.js 的 normalizeFitMode / normalizeFitPosition 保持一致：
+  // 容忍大小写、首尾空格与多空格（用户手改 config.json 时写 " Cover " 也应生效）
+  const fitRaw = typeof dw.fit === 'string' ? dw.fit.trim().toLowerCase().replace(/\s+/g, ' ') : '';
+  if (dw.fitMigrated !== true) {
+    // 阶段六迁移：旧的全局默认 cover 会让正方形的场景缩略图被裁掉近一半画面，
+    // 且叠加 Ken Burns 后放大到 1.1 倍，观感就是「只看到一部分 + 很糊」。
+    // 这里把「未显式配置」或「仍是旧默认 cover」的配置一次性升级为 auto，并打标记，
+    // 之后用户在设置里手动选 cover 不会被反复覆盖。
+    dw.fit = (!WALLPAPER_FIT_MODES.has(fitRaw) || fitRaw === 'cover') ? 'auto' : fitRaw;
+    dw.fitMigrated = true;
+  } else {
+    dw.fit = WALLPAPER_FIT_MODES.has(fitRaw) ? fitRaw : 'auto';
+  }
+  const posRaw = typeof dw.fitPosition === 'string' ? dw.fitPosition.trim().toLowerCase().replace(/\s+/g, ' ') : '';
+  dw.fitPosition = WALLPAPER_FIT_POSITIONS.has(posRaw) ? posRaw : 'center';
+
+  // 阶段八：剔除阶段七粗粒度复合档位，针对旧配置的 'eco' 档位做无损拆解迁移
+  const rawDw = raw.features?.dynamicWallpaper || {};
+  if (rawDw.sceneRenderer === 'eco') {
+    dw.sceneRenderer = 'dynamic';
+    if (rawDw.fps === undefined) dw.fps = 30;
+    if (rawDw.renderDpr === undefined) dw.renderDpr = 0.75;
+  } else if (dw.sceneRenderer === 'static') {
+    dw.sceneRenderer = 'static';
+  } else {
+    dw.sceneRenderer = 'dynamic';
+  }
+  dw.fps = Number.isFinite(dw.fps) ? Math.max(0, Math.round(dw.fps)) : 60;
+  dw.renderDpr = Number.isFinite(dw.renderDpr) ? Math.max(0.5, Math.min(2.0, dw.renderDpr)) : 1.0;
+  dw.sceneScripts = dw.sceneScripts === true;
+
+  // 阶段八：开屏动效独立参数校验与 clamp
+  const boot = out.features.bootAnimationConfig || {};
+  boot.fit = (boot.fit && typeof boot.fit === 'string') ? boot.fit : 'cover';
+  boot.fitPosition = (boot.fitPosition && typeof boot.fitPosition === 'string') ? boot.fitPosition : 'center';
+  boot.brightness = Number.isFinite(boot.brightness) ? Math.max(0.2, Math.min(1.5, boot.brightness)) : 1.0;
+  boot.contrast = Number.isFinite(boot.contrast) ? Math.max(0.5, Math.min(1.5, boot.contrast)) : 1.0;
+  boot.fps = Number.isFinite(boot.fps) ? Math.max(0, Math.round(boot.fps)) : 60;
+  boot.renderDpr = Number.isFinite(boot.renderDpr) ? Math.max(0.5, Math.min(2.0, boot.renderDpr)) : 1.0;
+  boot.autoEnterDelay = Number.isFinite(boot.autoEnterDelay)
+    ? Math.min(10, Math.max(0, Math.round(boot.autoEnterDelay)))
+    : 3;
+
+  return out;
+}
+
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')));
+    }
+    if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
+      return normalizeConfig(JSON.parse(fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf8')));
+    }
+  } catch (e) {
+    console.error('[Skin Engine] Failed to read config:', e);
+  }
+  return buildDefaultConfig();
 }
 
 function writeConfig(newConfig) {
@@ -479,6 +621,127 @@ async function extractAndDeploy(zipFilePath) {
     // 清理临时解压目录
     try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (_) {}
   }
+}
+
+// ==========================================
+// 外部 Wallpaper 素材库：权限白名单与 URL 装饰
+// ==========================================
+function getLibraryConfig() {
+  const cfg = readConfig();
+  return cfg.features?.externalWallpaperLibrary || { libraryPath: '', autoScan: true, mountedFolders: [] };
+}
+
+// 已授权的可读取根目录：库根目录 + 已挂载的单壁纸目录
+function getAuthorizedRoots() {
+  const lib = getLibraryConfig();
+  const roots = [];
+  if (lib.libraryPath) roots.push(path.resolve(lib.libraryPath));
+  for (const p of (Array.isArray(lib.mountedFolders) ? lib.mountedFolders : [])) {
+    if (p) roots.push(path.resolve(p));
+  }
+  return roots;
+}
+
+function isAuthorizedPath(target) {
+  if (!target) return false;
+  const abs = path.resolve(target);
+  return getAuthorizedRoots().some(root => isSubPath(root, abs));
+}
+
+function toBase64Url(str) {
+  return Buffer.from(String(str), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function fromBase64Url(str) {
+  try {
+    return Buffer.from(String(str).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+  } catch (_) {
+    return '';
+  }
+}
+
+// 呼出系统原生目录选择对话框（桌面系统原生窗口，避免浏览器上传控件）
+function pickDirectoryNative(title = '选择素材库根目录') {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      const psScript = `
+        Add-Type -AssemblyName System.Windows.Forms
+        $f = New-Object System.Windows.Forms.FolderBrowserDialog
+        $f.Description = '${String(title || '选择素材库根目录').replace(/'/g, "''")}'
+        $f.ShowNewFolderButton = $false
+        if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+          [Console]::Out.Write($f.SelectedPath)
+        }
+      `.trim();
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command', psScript], { timeout: 120000 }, (err, stdout) => {
+        if (err || !stdout) resolve(null);
+        else resolve(stdout.trim());
+      });
+    } else if (process.platform === 'darwin') {
+      const osaScript = `POSIX path of (choose folder with prompt "${String(title || '选择素材库根目录').replace(/"/g, '\\"')}")`;
+      execFile('osascript', ['-e', osaScript], { timeout: 120000 }, (err, stdout) => {
+        if (err || !stdout) resolve(null);
+        else resolve(stdout.trim());
+      });
+    } else {
+      resolve(null);
+    }
+  });
+}
+
+// 为壁纸补充可直接使用的前端 URL（客户端无需自行拼接与转义）
+function decorateWallpaper(w) {
+  if (!w) return w;
+  const enc = encodeURIComponent;
+  const folder = w.folderPath || '';
+  return {
+    ...w,
+    previewUrl: w.previewFile
+      ? `/api/wallpaper-library/preview?folder=${enc(folder)}&file=${enc(w.previewFile)}`
+      : '',
+    // 场景壁纸的真实画面（从 scene.pkg 解包，原生分辨率）；前端优先用它，失败再回落缩略图
+    posterUrl: w.type === 'scene'
+      ? `/api/wallpaper-library/scene-poster?folder=${enc(folder)}`
+      : '',
+    audioUrl: w.audioFile
+      ? `/api/wallpaper-library/audio?folder=${enc(folder)}&file=${enc(w.audioFile)}`
+      : '',
+    fileUrl: w.entryFile
+      ? `/api/wallpaper-library/file?folder=${enc(folder)}&file=${enc(w.entryFile)}`
+      : '',
+    streamUrl: (w.type === 'video' && w.entryFile)
+      ? `/api/video?path=${enc(path.join(folder, w.entryFile))}`
+      : '',
+    webUrl: (w.type === 'web' && w.entryFile)
+      ? `/api/wallpaper-library/web-proxy/${toBase64Url(folder)}/${String(w.entryFile).split('/').map(enc).join('/')}`
+      : ''
+  };
+}
+
+function persistLibraryConfig(mutator) {
+  const cfg = readConfig();
+  if (!cfg.features) cfg.features = {};
+  const lib = cfg.features.externalWallpaperLibrary || {};
+  lib.mountedFolders = Array.isArray(lib.mountedFolders) ? lib.mountedFolders : [];
+  mutator(lib, cfg);
+  // 去重 + 去掉被库根目录覆盖的冗余条目
+  const seen = new Set();
+  lib.mountedFolders = lib.mountedFolders.filter(p => {
+    if (!p) return false;
+    const abs = path.resolve(p);
+    const key = process.platform === 'win32' ? abs.toLowerCase() : abs;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (lib.libraryPath && isSubPath(lib.libraryPath, abs)) return false;
+    return true;
+  });
+  cfg.features.externalWallpaperLibrary = lib;
+  writeConfig(cfg);
+  return cfg;
 }
 
 const server = http.createServer((req, res) => {
@@ -1219,6 +1482,276 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ==========================================================
+  // 外部 Wallpaper 素材库 API（零拷贝原地引用 / 阶段一）
+  // ==========================================================
+  function sendJson(status, payload) {
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(payload));
+  }
+
+  // 1. 自动探测本机常见素材库目录（Steam 创意工坊 / WallpaperMachine）
+  if (url.pathname === '/api/wallpaper-library/detect' && req.method === 'GET') {
+    try {
+      const candidates = detectLibraryCandidates();
+      sendJson(200, {
+        ok: true,
+        platform: process.platform,
+        candidates,
+        configuredPath: getLibraryConfig().libraryPath || ''
+      });
+    } catch (err) {
+      sendJson(500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  // 1.5 原生系统目录选择对话框（避免网页文件上传控件）
+  if (url.pathname === '/api/wallpaper-library/pick-directory' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      let title = '选择素材库根目录';
+      try {
+        const parsed = JSON.parse(body || '{}');
+        if (parsed.title) title = String(parsed.title);
+      } catch (_) {}
+      try {
+        const picked = await pickDirectoryNative(title);
+        sendJson(200, { ok: true, path: picked || null, canceled: !picked });
+      } catch (err) {
+        sendJson(500, { ok: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // 2. 扫描素材库根目录（mount=1 时同时持久化挂载该根目录）
+  if (url.pathname === '/api/wallpaper-library/scan' && req.method === 'GET') {
+    const libCfg = getLibraryConfig();
+    const rawPath = (url.searchParams.get('path') || libCfg.libraryPath || '').trim().replace(/^["']|["']$/g, '');
+    const force = url.searchParams.get('force') === '1' || url.searchParams.get('refresh') === '1';
+    const shouldMount = url.searchParams.get('mount') === '1';
+
+    if (!rawPath) {
+      sendJson(400, { ok: false, error: '请提供素材库根目录路径（?path=）或在设置中先完成挂载' });
+      return;
+    }
+
+    scanLibrary(rawPath, { force })
+      .then(result => {
+        if (!result.ok) {
+          sendJson(400, result);
+          return;
+        }
+        let mounted = false;
+        if (shouldMount) {
+          try {
+            persistLibraryConfig(lib => {
+              lib.libraryPath = result.root;
+              lib.autoScan = true;
+            });
+            mounted = true;
+          } catch (_) {}
+        }
+        const authorized = isAuthorizedPath(result.root);
+        sendJson(200, {
+          ...result,
+          mounted,
+          authorized,
+          wallpapers: result.wallpapers.map(decorateWallpaper),
+          libraryPath: getLibraryConfig().libraryPath || ''
+        });
+      })
+      .catch(err => sendJson(500, { ok: false, error: err.message }));
+    return;
+  }
+
+  // 3. 挂载单个壁纸目录（支持绝对路径，也支持仅传工坊 id 由服务端在已知根目录中定位）
+  if (url.pathname === '/api/wallpaper-library/import-folder' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        let parsed = {};
+        try { parsed = body ? JSON.parse(body) : {}; } catch (_) { parsed = {}; }
+        const hint = parsed.folderPath || parsed.folder || parsed.id || '';
+        if (!hint) {
+          sendJson(400, { ok: false, error: '请提供壁纸目录路径（folderPath）或工坊文件夹 id' });
+          return;
+        }
+
+        const roots = getAuthorizedRoots();
+        const resolvedFolder = resolveFolderByHint(hint, roots);
+        if (!resolvedFolder) {
+          sendJson(404, {
+            ok: false,
+            error: `未找到壁纸目录：${hint}。请粘贴完整绝对路径，或先挂载所在素材库根目录。`
+          });
+          return;
+        }
+
+        const result = parseWallpaperFolder(resolvedFolder);
+        if (!result.ok) {
+          sendJson(400, { ok: false, error: result.error });
+          return;
+        }
+        if (result.skipped) {
+          const reasonMap = {
+            application: '该壁纸为 application（可执行程序）类型，出于安全策略已严格过滤，不予载入。',
+            'unknown-type': '无法识别该目录的壁纸类型（缺少 project.json 或有效入口文件）。',
+            'missing-media': '该目录内未找到可用的媒体入口或封面素材。'
+          };
+          sendJson(200, {
+            ok: false,
+            filtered: true,
+            reason: result.reason,
+            error: reasonMap[result.reason] || '该壁纸不受支持，已跳过。',
+            wallpaper: result.wallpaper || null
+          });
+          return;
+        }
+
+        if (parsed.mount !== false) {
+          try {
+            persistLibraryConfig(lib => {
+              const libPath = lib.libraryPath ? path.resolve(lib.libraryPath) : '';
+              if (!libPath || !isSubPath(libPath, path.resolve(resolvedFolder))) {
+                lib.mountedFolders.push(path.resolve(resolvedFolder));
+              }
+            });
+          } catch (_) {}
+        }
+
+        sendJson(200, {
+          ok: true,
+          mounted: parsed.mount !== false,
+          authorized: isAuthorizedPath(resolvedFolder),
+          wallpaper: decorateWallpaper(result.wallpaper)
+        });
+      } catch (err) {
+        sendJson(500, { ok: false, error: err.message });
+      }
+    });
+    return;
+  }
+
+  // 4. 外部封面图代理（强缓存，减少重复解码）
+  if (url.pathname === '/api/wallpaper-library/preview' && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || '';
+    const file = url.searchParams.get('file') || '';
+    if (!folder) {
+      sendJson(400, { ok: false, error: '缺少 folder 参数' });
+      return;
+    }
+    if (!isAuthorizedPath(folder)) {
+      sendJson(403, { ok: false, error: '该目录尚未挂载或不在已授权的素材库范围内' });
+      return;
+    }
+    const target = path.resolve(folder, file || 'preview.jpg');
+    if (!isSubPath(folder, target)) {
+      sendJson(403, { ok: false, error: '非法路径，禁止访问壁纸目录以外的文件' });
+      return;
+    }
+    serveLocalFile(req, res, target, { cacheControl: 'public, max-age=86400' });
+    return;
+  }
+
+  // 4.5 场景壁纸真实画面：从 scene.pkg 解包主纹理（原生分辨率，非正方形缩略图）
+  if (url.pathname === '/api/wallpaper-library/scene-poster' && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || '';
+    const refresh = url.searchParams.get('refresh') === '1';
+    if (!folder) {
+      sendJson(400, { ok: false, error: '缺少 folder 参数' });
+      return;
+    }
+    if (!isAuthorizedPath(folder)) {
+      sendJson(403, { ok: false, error: '该目录尚未挂载或不在已授权的素材库范围内' });
+      return;
+    }
+    const pkgPath = path.resolve(folder, 'scene.pkg');
+    if (!isSubPath(path.resolve(folder), pkgPath) || !fs.existsSync(pkgPath)) {
+      sendJson(404, { ok: false, error: '该目录下没有 scene.pkg' });
+      return;
+    }
+    try {
+      const poster = getScenePoster(pkgPath, { refresh });
+      if (!poster || !poster.buffer || !poster.buffer.length) {
+        sendJson(404, { ok: false, error: '无法从 scene.pkg 解析出画面纹理' });
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': poster.mime || 'image/jpeg',
+        'Content-Length': poster.buffer.length,
+        'Cache-Control': 'public, max-age=86400',
+        'X-Poster-Width': String(poster.width || 0),
+        'X-Poster-Height': String(poster.height || 0),
+        'X-Poster-Cached': poster.cached ? '1' : '0'
+      });
+      res.end(poster.buffer);
+    } catch (e) {
+      sendJson(500, { ok: false, error: 'scene.pkg 解包失败: ' + e.message });
+    }
+    return;
+  }
+
+  // 5. 场景壁纸内嵌音频 / 通用文件读取
+  if ((url.pathname === '/api/wallpaper-library/audio' || url.pathname === '/api/wallpaper-library/file') && req.method === 'GET') {
+    const folder = url.searchParams.get('folder') || '';
+    const file = url.searchParams.get('file') || '';
+    if (!folder || !file) {
+      sendJson(400, { ok: false, error: '缺少 folder 或 file 参数' });
+      return;
+    }
+    if (!isAuthorizedPath(folder)) {
+      sendJson(403, { ok: false, error: '该目录尚未挂载或不在已授权的素材库范围内' });
+      return;
+    }
+    const target = path.resolve(folder, file);
+    if (!isSubPath(folder, target)) {
+      sendJson(403, { ok: false, error: '非法路径，禁止访问壁纸目录以外的文件' });
+      return;
+    }
+    serveLocalFile(req, res, target, { cacheControl: 'public, max-age=3600' });
+    return;
+  }
+
+  // 6. Web 壁纸静态托管（/api/wallpaper-library/web-proxy/<base64url 目录>/<相对路径>）
+  if (url.pathname.startsWith('/api/wallpaper-library/web-proxy/') && (req.method === 'GET' || req.method === 'HEAD')) {
+    const prefix = '/api/wallpaper-library/web-proxy/';
+    const rest = url.pathname.slice(prefix.length);
+    let folder = url.searchParams.get('folder') || '';
+    let relPath = url.searchParams.get('file') || '';
+
+    if (!folder) {
+      const slashIdx = rest.indexOf('/');
+      const folderToken = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+      const relToken = slashIdx === -1 ? '' : rest.slice(slashIdx + 1);
+      folder = fromBase64Url(folderToken);
+      if (!relPath) {
+        try { relPath = decodeURIComponent(relToken); } catch (_) { relPath = relToken; }
+      }
+    }
+
+    if (!folder) {
+      sendJson(400, { ok: false, error: '缺少素材目录标识' });
+      return;
+    }
+    if (!isAuthorizedPath(folder)) {
+      sendJson(403, { ok: false, error: '该目录尚未挂载或不在已授权的素材库范围内' });
+      return;
+    }
+
+    const folderAbs = path.resolve(folder);
+    const target = relPath ? path.resolve(folderAbs, relPath) : path.join(folderAbs, 'index.html');
+    if (!isSubPath(folderAbs, target)) {
+      sendJson(403, { ok: false, error: '非法路径，禁止访问壁纸目录以外的文件' });
+      return;
+    }
+    serveLocalFile(req, res, target, { cacheControl: 'public, max-age=600' });
+    return;
+  }
+
   function getVideoMimeType(filePath) {
     const ext = path.extname(filePath || '').toLowerCase();
     switch (ext) {
@@ -1330,6 +1863,21 @@ const server = http.createServer((req, res) => {
     return streamVideoFile(vidPath);
   }
 
+  // 5. Vendor 静态库托管（场景动态渲染核心 webwallgl，仅本仓库随包文件，无路径参数）
+  if (url.pathname === '/vendor/webwallgl.js' && (req.method === 'GET' || req.method === 'HEAD')) {
+    const vendorFile = path.join(__dirname, 'vendor', 'webwallgl.js');
+    if (!fs.existsSync(vendorFile)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('vendor library not found');
+      return;
+    }
+    serveLocalFile(req, res, vendorFile, {
+      contentType: 'application/javascript; charset=utf-8',
+      cacheControl: 'public, max-age=86400'
+    });
+    return;
+  }
+
   // 4. 自定义动效脚本读取接口（支持智能路径解析与 fallback）
   if (url.pathname === '/api/script') {
     const targetPath = url.searchParams.get('path');
@@ -1388,9 +1936,12 @@ function buildClientBundle() {
   }
 
 
+  const agyModalMod = readClientModule('client/modules/agy-modal.js');
+  const mediaDisplayModalMod = readClientModule('client/modules/media-display-modal.js');
   const bootCode = readClientModule('client/modules/boot-animation.js');
   const wallpaperMod = readClientModule('client/modules/wallpaper.js');
   const crtMod = readClientModule('client/modules/crt-theme.js');
+  const libraryUiMod = readClientModule('client/modules/wallpaper-library-ui.js');
   const appearanceMenuMod = readClientModule('client/modules/appearance-menu.js');
   const indexMod = readClientModule('client/index.js');
 
@@ -1418,11 +1969,18 @@ function buildClientBundle() {
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
 
+  // 0.5 弹窗基座与独立参数设置弹窗（优先载入就绪）
+  if (agyModalMod) bundleParts.push(agyModalMod);
+  if (mediaDisplayModalMod) bundleParts.push(mediaDisplayModalMod);
+
   // 1. 开机动画模块（优先载入就绪，确保开机最早期捕获播放状态与挂载素材）
   if (bootCode) bundleParts.push(bootCode);
 
   // 2. 动态壁纸与毛玻璃模块
   bundleParts.push(wallpaperMod);
+
+  // 2.5 外部 Wallpaper 素材库资产中心（须先于外观菜单注册到全局）
+  if (libraryUiMod) bundleParts.push(libraryUiMod);
 
   // 3. CRT 及设置菜单模块
   bundleParts.push(crtMod);
@@ -1590,13 +2148,21 @@ function createCdpSession(target, port) {
           // 关键防护：若开机动画正在全屏播放中，判定为健康活跃态，严禁重复注入打断动画或提前挂载壁纸！
           if (window.__agyBootPlaying ||
               document.getElementById('agy-video-boot-host') ||
-              document.getElementById('agy-custom-code-boot-host')) {
+              document.getElementById('agy-custom-code-boot-host') ||
+              document.getElementById('agy-scene-boot-host')) {
             return true;
           }
           const needStyle = cfg?.features?.themeStyles !== false;
           const wallCfg = cfg?.features?.dynamicWallpaper;
-          const needWall = needStyle && wallCfg?.enabled === true && !!(wallCfg?.videoPath && String(wallCfg.videoPath).trim());
-          if (needWall && !document.getElementById("agy-dynamic-video")) return false;
+          const wallType = wallCfg?.sourceType || (wallCfg?.wallpaperDir ? 'scene' : 'video');
+          const wallHasSource = wallType === 'video'
+            ? !!(wallCfg?.videoPath && String(wallCfg.videoPath).trim())
+            : !!(wallCfg?.wallpaperDir && String(wallCfg.wallpaperDir).trim());
+          const needWall = needStyle && wallCfg?.enabled === true && wallHasSource;
+          if (needWall) {
+            const wallElId = wallType === 'web' ? 'agy-dynamic-iframe' : (wallType === 'scene' ? 'agy-dynamic-scene' : 'agy-dynamic-video');
+            if (!document.getElementById(wallElId)) return false;
+          }
           if (needStyle && !document.getElementById("agy-dynamic-wallpaper-style")) return false;
           return true;
         })()`,

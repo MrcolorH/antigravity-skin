@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
+import crypto from 'node:crypto';
 
 const portFile = path.join(process.env.APPDATA, 'Antigravity', 'DevToolsActivePort');
 const port = parseInt(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0].trim(), 10);
@@ -20,19 +21,38 @@ const targetPluginDir = path.join(process.env.USERPROFILE, '.gemini', 'config', 
 // 1. 同步文件到已部署的插件目录
 const filesToSync = [
   'client/modules/i18n-engine.js',
+  'client/modules/agy-modal.js',
+  'client/modules/media-display-modal.js',
   'client/modules/appearance-menu.js',
+  'client/modules/wallpaper-library-ui.js',
+  'client/modules/wallpaper.js',
+  'client/modules/boot-animation.js',
   'client/styles/glass-theme.css',
-  'client/index.js'
+  'client/index.js',
+  // Sidecar 后端：拷贝后其内置 watchFile 会优雅退出并由宿主自动拉起最新逻辑
+  'sidecars/skin-engine/main.mjs',
+  'sidecars/skin-engine/wallpaper-library.mjs',
+  'sidecars/skin-engine/scene-pkg.mjs',
+  'sidecars/skin-engine/vendor/webwallgl.js',
+  'sidecars/skin-engine/sidecar.json'
 ];
+
+const sha1 = (p) => crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');
 
 for (const f of filesToSync) {
   const src = path.resolve(f);
   const dest = path.join(targetPluginDir, f);
-  if (fs.existsSync(src)) {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(src, dest);
-    console.log(`✅ Synced ${f} to installed plugin directory.`);
-  }
+  if (!fs.existsSync(src)) continue;
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  // 内容一致则跳过：避免无意义的 sidecar 拷贝触发其自退出，导致宿主不重启而服务中断
+  try {
+    if (fs.existsSync(dest) && sha1(src) === sha1(dest)) {
+      console.log(`⏭  Unchanged ${f}`);
+      continue;
+    }
+  } catch (_) {}
+  fs.copyFileSync(src, dest);
+  console.log(`✅ Synced ${f} to installed plugin directory.`);
 }
 
 // 2. 连接 CDP 热更新客户端运行时
@@ -81,8 +101,14 @@ function readClientModule(relPath) {
 }
 
 const glassCss = fs.readFileSync(path.resolve('client/styles/glass-theme.css'), 'utf8');
+const agyModalMod = readClientModule('client/modules/agy-modal.js');
+const mediaDisplayModalMod = readClientModule('client/modules/media-display-modal.js');
+const bootAnimationMod = readClientModule('client/modules/boot-animation.js');
+const wallpaperMod = readClientModule('client/modules/wallpaper.js');
+const libraryUiMod = readClientModule('client/modules/wallpaper-library-ui.js');
 const appearanceMenuMod = readClientModule('client/modules/appearance-menu.js');
 const hansCode = readClientModule('client/modules/i18n-engine.js');
+const indexCode = fs.readFileSync(path.resolve('client/index.js'), 'utf8');
 
 await send('Runtime.evaluate', {
   expression: `(() => {
@@ -93,9 +119,20 @@ await send('Runtime.evaluate', {
     }
     window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};
 
+    // 注入 Modal 基座与独立设置弹窗
+    ${agyModalMod}
+    ${mediaDisplayModalMod}
+    ${bootAnimationMod}
+
+    // 重新加载 wallpaper 模块
+    ${wallpaperMod}
+
     // 重新加载 i18n-engine
     window.__antigravityZhPatchInstalled = false;
     ${hansCode}
+
+    // 重新加载外部素材库资产中心（必须先于菜单重新注册到全局）
+    ${libraryUiMod}
 
     // 重新初始化设置菜单
     if (window.__agyCurrentMenuInstance && typeof window.__agyCurrentMenuInstance.destroy === 'function') {
@@ -116,6 +153,29 @@ await send('Runtime.evaluate', {
         }
       );
     }
+    // 重新执行 index.js 以刷新主控制器和 applyFeatures
+    try {
+      ${indexCode}
+    } catch (e) {
+      console.warn('Re-exec index.js error:', e);
+    }
+
+    // 重新触发一次壁纸应用
+    try {
+      const activeCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig)
+        ? window.__agySkinBridge.getConfig()
+        : window.__AG_SKIN_CONFIG__;
+      if (activeCfg && typeof window.__agyApplyFeatures === 'function') {
+        if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.destroy === 'function') {
+          try { window.__agyWallpaperInstance.destroy(); } catch (_) {}
+          window.__agyWallpaperInstance = null;
+        }
+        window.__agyApplyFeatures(activeCfg);
+      }
+    } catch (e) {
+      console.warn('Re-apply features error:', e);
+    }
+
     console.log('✅ Hot reload applied successfully in runtime window.');
     return true;
   })()`
@@ -123,3 +183,22 @@ await send('Runtime.evaluate', {
 
 console.log('🎉 Runtime evaluation completed successfully.');
 ws.close();
+
+// 4. 侧车健康检查：main.mjs 变更会让旧进程优雅退出，宿主并不一定会自动重新拉起
+await new Promise(r => setTimeout(r, 6000));
+const sidecarAlive = await new Promise((resolve) => {
+  const req = http.get('http://127.0.0.1:59288/api/system-info', { timeout: 2500 }, res => {
+    res.resume();
+    resolve(res.statusCode === 200);
+  });
+  req.on('error', () => resolve(false));
+  req.on('timeout', () => { req.destroy(); resolve(false); });
+});
+if (sidecarAlive) {
+  console.log('✅ Sidecar is healthy on http://127.0.0.1:59288');
+} else {
+  console.log('');
+  console.log('⚠️  侧车进程未在监听 59288（宿主没有自动拉起）。');
+  console.log('    👉 请重启一次 Antigravity 客户端；配置与素材不会丢失。');
+  console.log('');
+}
