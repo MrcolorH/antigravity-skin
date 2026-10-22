@@ -1184,6 +1184,11 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
     if (i18nObserver) {
       try { i18nObserver.disconnect(); } catch (e) {}
     }
+    // 热重载防泄漏：旧引擎实例被重新求值替换后，其观察器仍存活于上一个闭包中，
+    // 因此统一登记到全局，重载时先断开旧实例，避免观察器随热更新次数叠加。
+    if (window.__agyI18nObserver && window.__agyI18nObserver !== i18nObserver) {
+      try { window.__agyI18nObserver.disconnect(); } catch (e) {}
+    }
     i18nObserver = new MutationObserver((mutations) => {
       if (window.__agyCurrentLang === 'en') return;
       for (let i = 0; i < mutations.length; i++) {
@@ -1208,6 +1213,7 @@ return `是，并在${scopes[scope] || scope}保存 '${target}' 的规则`;
       attributes: true,
       attributeFilter: ['aria-label', 'title', 'placeholder', 'alt', 'data-testid']
     });
+    window.__agyI18nObserver = i18nObserver;
   }
 
   function applyLanguage(lang) {
