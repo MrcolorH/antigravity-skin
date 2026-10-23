@@ -65,8 +65,8 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
     outline: none !important;
   }
   html, body {
-    background: #000000 !important;
-    background-color: #000000 !important;
+    background: transparent !important;
+    background-color: transparent !important;
     width: 100vw; height: 100vh;
     overflow: hidden;
     -webkit-user-select: none; user-select: none;
@@ -77,8 +77,8 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
     position: fixed; inset: 0; width: 100vw; height: 100vh;
     background: #000000;
     display: flex; align-items: center; justify-content: center;
-    transition: opacity 450ms cubic-bezier(0.25, 1, 0.5, 1);
-    will-change: opacity;
+    transition: opacity 450ms cubic-bezier(0.25, 1, 0.5, 1), transform 450ms cubic-bezier(0.25, 1, 0.5, 1);
+    will-change: opacity, transform;
     transform: translateZ(0);
     backface-visibility: hidden;
     z-index: 1000;
@@ -213,6 +213,7 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
       }
       if (stage) {
         stage.style.opacity = '0';
+        stage.style.transform = 'scale(1.02) translateZ(0)';
       }
 
       setTimeout(() => {
@@ -349,7 +350,7 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
     });
 
     try {
-      view.setBackgroundColor('#000000');
+      view.setBackgroundColor('#00000000');
     } catch (_) {}
 
     const html = generateOverlayHtml(cfg, foregroundColor, backgroundColor);

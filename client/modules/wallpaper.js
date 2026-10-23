@@ -1953,7 +1953,7 @@ if (typeof window !== 'undefined') {
       );
       if (!isLiveCanvas) return false;
       const liveDuration = Date.now() - (window.__agySceneFirstFrameTime || 0);
-      if (liveDuration < 600) return false;
+      if (liveDuration < 1000) return false;
       return true;
     } else if (source === 'video') {
       const vid = document.getElementById('agy-dynamic-video');
