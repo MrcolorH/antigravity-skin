@@ -147,6 +147,23 @@
     }
   }
 
+  function cleanMacAntiFlashAndNotify() {
+    try {
+      const st = document.getElementById('agy-macos-anti-flash');
+      if (st) st.remove();
+      if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+        document.documentElement.style.background = '';
+      }
+      if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+        document.body.style.background = '';
+      }
+    } catch (_) {}
+    if (typeof window !== 'undefined' && window.__AG_SKIN_PORT__) {
+      fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__}/api/boot-finished`, { method: 'POST' }).catch(() => {});
+    }
+  }
+  window.__agyCleanMacAntiFlash = cleanMacAntiFlashAndNotify;
+
   function mountHost(el) {
     if (!el || el.parentElement) return;
     const target = document.body || document.documentElement;
@@ -431,6 +448,7 @@
         }
         try { host.remove(); } catch(e) {}
         restoreTitleBarOverlay();
+        cleanMacAntiFlashAndNotify();
       }, 520);
     }
 
@@ -646,6 +664,7 @@
   function startSceneBoot() {
     window.__agyBootPlaying = false;
     restoreTitleBarOverlay();
+    cleanMacAntiFlashAndNotify();
     if (typeof window.__agyResumeBootWallpaper === 'function') {
       try { window.__agyResumeBootWallpaper(); } catch (e) {}
     } else {
@@ -735,6 +754,7 @@
         }
         try { host.remove(); } catch(e) {}
         restoreTitleBarOverlay();
+        cleanMacAntiFlashAndNotify();
       }, 520);
     }
 

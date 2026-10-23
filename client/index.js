@@ -319,7 +319,12 @@
   function checkAndTriggerBootAnimation() {
     const bridge = window.__agySkinBridge;
     const cfg = bridge ? bridge.getConfig() : (window.__AG_SKIN_CONFIG__ || currentConfig);
-    if (shouldAbandonBootAnimation(cfg)) return;
+    if (shouldAbandonBootAnimation(cfg)) {
+      if (typeof window.__agyCleanMacAntiFlash === 'function') {
+        try { window.__agyCleanMacAntiFlash(); } catch (_) {}
+      }
+      return;
+    }
     if (typeof window.__triggerBootAnimation === 'function') {
       window.__triggerBootAnimation();
     }

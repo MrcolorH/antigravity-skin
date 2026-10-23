@@ -247,7 +247,7 @@ function writeConfig(newConfig) {
 
 // 4. 本地 HTTP 服务（分块视频流 + 配置接口）
 let currentVideoPath = '';
-const HTTP_PORT = process.env.AGY_SKIN_PORT ? parseInt(process.env.AGY_SKIN_PORT, 10) : 59288;
+let HTTP_PORT = process.env.AGY_SKIN_PORT ? parseInt(process.env.AGY_SKIN_PORT, 10) : 59288;
 
 function resolveVideoPath(videoPath, preferredSubdir = '') {
   if (!videoPath) {
@@ -747,14 +747,23 @@ function persistLibraryConfig(mutator) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
 
-  // CORS
+  // CORS & Chromium Private Network Access (PNA)
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
   if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Max-Age', '86400');
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // API: 健康检查（用于端口自检与保活探活）
+  if (url.pathname === '/api/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, app: 'antigravity-skin', port: HTTP_PORT, uptime: process.uptime() }));
     return;
   }
 
@@ -833,6 +842,20 @@ const server = http.createServer((req, res) => {
       isMac: process.platform === 'darwin',
       isLinux: process.platform === 'linux'
     }));
+    return;
+  }
+
+  // API: 跨平台开屏动画完成通知（macOS 解除底层 CDP 视口置黑覆盖）
+  if (url.pathname === '/api/boot-finished' && req.method === 'POST') {
+    if (process.platform === 'darwin') {
+      for (const [id, session] of activeSessions.entries()) {
+        try {
+          session.send('Emulation.setDefaultBackgroundColorOverride', {});
+        } catch (_) {}
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -1979,17 +2002,83 @@ const server = http.createServer((req, res) => {
   res.end('Not Found');
 });
 
-server.listen(HTTP_PORT, '127.0.0.1', () => {
-  console.log(`[Skin Engine] Local media & config server running on http://127.0.0.1:${HTTP_PORT}`);
-  try { optimizeVideoAssets(); } catch (_) {}
-});
-server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') {
-    console.warn(`[Skin Engine] Port ${HTTP_PORT} already in use, assuming active daemon.`);
-  } else {
-    console.error('[Skin Engine] Server error:', e);
+function checkDaemonHealth(port) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/config`, { timeout: 1500 }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(Boolean(json && (json.enabled !== undefined || json.features)));
+        } catch (_) {
+          resolve(res.statusCode >= 200 && res.statusCode < 500);
+        }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function startServer(targetPort = HTTP_PORT, retries = 5) {
+  server.removeAllListeners('error');
+  server.removeAllListeners('listening');
+
+  server.once('error', async (e) => {
+    if (e.code === 'EADDRINUSE') {
+      console.warn(`[Skin Engine] Port ${targetPort} is busy, checking if existing daemon is alive...`);
+      const isAlive = await checkDaemonHealth(targetPort);
+      if (isAlive) {
+        console.log(`[Skin Engine] Verified active daemon running on http://127.0.0.1:${targetPort}.`);
+        HTTP_PORT = targetPort;
+        return;
+      }
+
+      if (retries > 0) {
+        console.log(`[Skin Engine] Port ${targetPort} not responding cleanly, retrying in 1s... (${retries} attempts left)`);
+        setTimeout(() => startServer(targetPort, retries - 1), 1000);
+      } else {
+        const fallbackPort = targetPort === 59288 ? 59289 : 0;
+        console.warn(`[Skin Engine] Port ${targetPort} still unavailable after retries, falling back to port ${fallbackPort}...`);
+        startServer(fallbackPort, 2);
+      }
+    } else {
+      console.error('[Skin Engine] Server error:', e);
+    }
+  });
+
+  server.once('listening', () => {
+    const addr = server.address();
+    HTTP_PORT = typeof addr === 'object' && addr ? addr.port : targetPort;
+    console.log(`[Skin Engine] Local media & config server running on http://127.0.0.1:${HTTP_PORT}`);
+    try { optimizeVideoAssets(); } catch (_) {}
+  });
+
+  try {
+    server.listen(targetPort, '127.0.0.1');
+  } catch (err) {
+    console.error(`[Skin Engine] Failed to invoke server.listen on port ${targetPort}:`, err);
   }
+}
+
+// 注册退出信号处理以确保端口及时释放
+process.on('SIGINT', () => {
+  try { server.close(); } catch (_) {}
+  process.exit(0);
 });
+process.on('SIGTERM', () => {
+  try { server.close(); } catch (_) {}
+  process.exit(0);
+});
+process.on('beforeExit', () => {
+  try { server.close(); } catch (_) {}
+});
+
+startServer();
 
 // 5. 编译前端注入包 (Client Bundle)
 function buildClientBundle() {
@@ -2035,7 +2124,26 @@ function buildClientBundle() {
     }
   }
 
-  // 0. 最先置顶：第 0 毫秒强力实施标题栏完全透明，彻底消除开机动画加载前后的白条闪烁
+  // 0. 最先置顶：第 0 毫秒强力实施视口防白闪与标题栏完全透明
+  // 🍎 macOS 专属零闪白防线：官方遮罩移走与前端动效挂载之间，绝对不漏白底
+  bundleParts.push(`(() => {
+    try {
+      if (typeof document !== 'undefined') {
+        const cfg = ${JSON.stringify(config)};
+        if (cfg?.enabled && cfg?.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
+          document.documentElement.style.background = '#000000';
+          if (document.body) document.body.style.background = '#000000';
+          if (!document.getElementById('agy-macos-anti-flash')) {
+            const st = document.createElement('style');
+            st.id = 'agy-macos-anti-flash';
+            st.textContent = 'html, body { background: #000000 !important; }';
+            (document.head || document.documentElement).appendChild(st);
+          }
+        }
+      }
+    } catch (_) {}
+  })();`);
+
   bundleParts.push(`(() => {
     try {
       if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
@@ -2176,6 +2284,34 @@ function createCdpSession(target, port) {
 
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
+
+    // 🍎 macOS 专属视口零闪白防线：冷启动若开启开机动效且尚未完成引导，第 0 毫秒硬件级锁黑视口底板
+    if (process.platform === 'darwin') {
+      try {
+        const cfg = readConfig();
+        if (cfg?.enabled && cfg?.features?.bootAnimation) {
+          await send('Emulation.setDefaultBackgroundColorOverride', {
+            color: { r: 0, g: 0, b: 0, a: 1 }
+          });
+          await send('Runtime.evaluate', {
+            expression: `(() => {
+              try {
+                if (sessionStorage.getItem('__agy_booted__')) return;
+                document.documentElement.style.background = '#000000';
+                if (document.body) document.body.style.background = '#000000';
+                if (!document.getElementById('agy-macos-anti-flash')) {
+                  const st = document.createElement('style');
+                  st.id = 'agy-macos-anti-flash';
+                  st.textContent = 'html, body { background: #000000 !important; }';
+                  (document.head || document.documentElement).appendChild(st);
+                }
+              } catch (_) {}
+            })()`
+          });
+        }
+      } catch (_) {}
+    }
+
     // 关键优化：WebSocket 握手就绪时同步标题栏属性，绝不向 DOM 预埋多余全屏容器
     try {
       await send('Runtime.evaluate', {

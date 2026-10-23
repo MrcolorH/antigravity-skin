@@ -56,6 +56,8 @@
       libEmptyTip: '素材库为空，可能是路径下没有 Wallpaper Engine 项目文件夹',
       noMatch: '当前筛选无匹配，试试放宽分级或类型',
       scanFailed: '扫描失败',
+      scanTimeout: '扫描超时（壁纸文件较多或存储介质响应慢），请稍后重试',
+      daemonOffline: '无法连接本地引擎服务，请确认 Antigravity 插件正常运行或无代理拦截',
       mountFailed: '挂载失败',
       current: '使用中',
       video: '视频壁纸',
@@ -115,6 +117,8 @@
       libEmptyTip: 'Library is empty — no Wallpaper Engine project folders found',
       noMatch: 'Nothing matches the current filters — try relaxing rating or type',
       scanFailed: 'Scan failed',
+      scanTimeout: 'Scan timed out (large library or slow disk), please try again',
+      daemonOffline: 'Cannot connect to local engine service, check if plugin is active or proxy is bypassed',
       mountFailed: 'Mount failed',
       current: 'In use',
       video: 'Video',
@@ -974,7 +978,18 @@
       if (options.mount) params.set('mount', '1');
       if (options.force) params.set('force', '1');
       const url = `${apiBase()}/api/wallpaper-library/scan${params.toString() ? '?' + params.toString() : ''}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      let res;
+      try {
+        res = await fetch(url, { signal: AbortSignal.timeout(45000) });
+      } catch (firstErr) {
+        // 若为瞬时连接异常且非主动超时，短暂等待 800ms 后自动重试一次以避开服务冷启动竞态
+        if (firstErr.name !== 'TimeoutError' && !String(firstErr.name).includes('Abort')) {
+          await new Promise(r => setTimeout(r, 800));
+          res = await fetch(url, { signal: AbortSignal.timeout(45000) });
+        } else {
+          throw firstErr;
+        }
+      }
       const data = await res.json();
 
       if (!data.ok) {
@@ -1017,7 +1032,13 @@
       if (!state.list.length) showSuggest(t().libEmptyTip, true);
       else hideSuggest();
     } catch (err) {
-      state.error = `${t().scanFailed}：${err.message}`;
+      if (err.name === 'TimeoutError' || (err.message && err.message.toLowerCase().includes('timeout'))) {
+        state.error = `${t().scanFailed}：${t().scanTimeout}`;
+      } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+        state.error = `${t().scanFailed}：${t().daemonOffline} (${apiBase()})`;
+      } else {
+        state.error = `${t().scanFailed}：${err.message}`;
+      }
       renderStatus();
     } finally {
       state.loading = false;
