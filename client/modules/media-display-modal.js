@@ -208,7 +208,7 @@
       width: '560px',
       render: (bodyEl, modalApi) => {
         // 当前参数状态
-        let currentFit = dw.fit || 'auto';
+        let currentFit = dw.fit || 'cover';
         let currentPos = dw.fitPosition || 'center';
         let currentBrightness = Number.isFinite(dw.brightness) ? dw.brightness : 0.85;
         let currentContrast = Number.isFinite(dw.contrast) ? dw.contrast : 1.05;
@@ -252,8 +252,8 @@
               <div class="agy-control-group">
                 <label class="agy-control-label">铺满方式</label>
                 <select class="agy-control-select" id="agy-w-fit">
-                  <option value="auto">按素材形态自动 (推荐)</option>
-                  <option value="cover">铺满裁切 (Cover)</option>
+                  <option value="cover">铺满裁切 (Cover，默认)</option>
+                  <option value="auto">按素材形态自动</option>
                   <option value="blur">模糊铺满 (Blur Fill)</option>
                   <option value="contain">等比完整显示 (Contain)</option>
                   <option value="fill">非等比拉伸 (Fill)</option>
@@ -399,7 +399,7 @@
 
         // 恢复默认
         bodyEl.querySelector('#agy-w-reset').addEventListener('click', () => {
-          currentFit = 'auto';
+          currentFit = 'cover';
           currentPos = 'center';
           currentBrightness = 0.85;
           currentContrast = 1.05;

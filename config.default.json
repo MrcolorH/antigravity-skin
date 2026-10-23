@@ -31,7 +31,7 @@
       "title": "",
       "brightness": 0.85,
       "contrast": 1.05,
-      "fit": "auto",
+      "fit": "cover",
       "fitPosition": "center",
       "fitMigrated": true,
       "fps": 60,

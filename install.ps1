@@ -1,4 +1,4 @@
-# Antigravity Skin - Windows 一键安装脚本
+﻿# Antigravity Skin - Windows 一键安装脚本
 $ErrorActionPreference = "Stop"
 
 Write-Host "==================================================" -ForegroundColor Cyan

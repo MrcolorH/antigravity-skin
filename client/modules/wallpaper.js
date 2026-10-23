@@ -109,9 +109,9 @@ export function initWallpaper(options = {}) {
     webUrl = '',               // 网页壁纸入口（Sidecar web-proxy 绝对 URL）
     audioUrl = '',             // 场景壁纸内嵌氛围音
     audioEnabled = false,
-    // —— 阶段五：铺满策略（auto / cover / blur / contain / fill）——
-    // auto = 按素材形态自动选择：场景壁纸用「完整显示 + 模糊填充」，视频/网页用铺满裁切
-    fit = 'auto',
+    // —— 阶段五：铺满策略（cover / auto / blur / contain / fill）——
+    // 默认使用 cover 铺满裁切
+    fit = 'cover',
     fitPosition = 'center',
     // —— 阶段八：解耦渲染模式与精细性能项 ——
     fps = 60,
@@ -377,7 +377,7 @@ export function initWallpaper(options = {}) {
   // 配置层（可含 auto），与 normalizeFitMode 的「具体模式」区分开
   function normalizeFitSetting(v) {
     const s = String(v == null ? '' : v).trim().toLowerCase();
-    return FIT_SETTINGS.indexOf(s) >= 0 ? s : 'auto';
+    return FIT_SETTINGS.indexOf(s) >= 0 ? s : 'cover';
   }
 
   function normalizeFitPosition(v) {

@@ -121,7 +121,7 @@ function buildDefaultConfig() {
         brightness: 0.85,
         contrast: 1.05,
         // —— 阶段五/六：媒体铺满策略 ——
-        fit: 'auto',
+        fit: 'cover',
         fitMigrated: true,
         fitPosition: 'center',
         // —— 阶段八：壁纸独立性能与渲染精细控制 ——
@@ -183,17 +183,10 @@ function normalizeConfig(raw) {
   // 阶段五：铺满策略枚举白名单，非法值静默回退默认（旧配置无这两个字段时即自动补齐）
   // 归一化口径与客户端 wallpaper.js 的 normalizeFitMode / normalizeFitPosition 保持一致：
   // 容忍大小写、首尾空格与多空格（用户手改 config.json 时写 " Cover " 也应生效）
+  // 铺满策略默认收敛至 cover；未配置或旧默认 auto 统一收敛为 cover
   const fitRaw = typeof dw.fit === 'string' ? dw.fit.trim().toLowerCase().replace(/\s+/g, ' ') : '';
-  if (dw.fitMigrated !== true) {
-    // 阶段六迁移：旧的全局默认 cover 会让正方形的场景缩略图被裁掉近一半画面，
-    // 且叠加 Ken Burns 后放大到 1.1 倍，观感就是「只看到一部分 + 很糊」。
-    // 这里把「未显式配置」或「仍是旧默认 cover」的配置一次性升级为 auto，并打标记，
-    // 之后用户在设置里手动选 cover 不会被反复覆盖。
-    dw.fit = (!WALLPAPER_FIT_MODES.has(fitRaw) || fitRaw === 'cover') ? 'auto' : fitRaw;
-    dw.fitMigrated = true;
-  } else {
-    dw.fit = WALLPAPER_FIT_MODES.has(fitRaw) ? fitRaw : 'auto';
-  }
+  dw.fit = (fitRaw && fitRaw !== 'auto' && WALLPAPER_FIT_MODES.has(fitRaw)) ? fitRaw : 'cover';
+  dw.fitMigrated = true;
   const posRaw = typeof dw.fitPosition === 'string' ? dw.fitPosition.trim().toLowerCase().replace(/\s+/g, ' ') : '';
   dw.fitPosition = WALLPAPER_FIT_POSITIONS.has(posRaw) ? posRaw : 'center';
 

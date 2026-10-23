@@ -70,8 +70,8 @@
       const audioEnabled = dw.audioEnabled === true;
       const brightness = dw.brightness || 0.85;
       const contrast = dw.contrast || 1.05;
-      // 阶段六：铺满策略改为 auto——场景壁纸按「完整显示」处理，视频/网页仍铺满裁切
-      const fit = dw.fit || 'auto';
+      // 铺满策略默认 cover（铺满裁切）
+      const fit = dw.fit || 'cover';
       const fitPosition = dw.fitPosition || 'center';
       // 阶段七/八：场景动态渲染模式与精细控制（fps, renderDpr）
       const sceneRenderer = dw.sceneRenderer || 'dynamic';

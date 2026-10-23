@@ -927,6 +927,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           if (forceSelectedPath) {
             currentWallPath = forceSelectedPath;
             if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+            if (!config.features.dynamicWallpaper.fit || config.features.dynamicWallpaper.fit === 'auto') config.features.dynamicWallpaper.fit = 'cover';
             config.features.dynamicWallpaper.videoPath = forceSelectedPath;
             config.features.dynamicWallpaper.wallpaperDir = '';
             config.features.dynamicWallpaper.wallpaperId = '';
@@ -1722,6 +1723,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         if (data.ok && data.relPath) {
           if (isWallpaper) {
             if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+            if (!config.features.dynamicWallpaper.fit || config.features.dynamicWallpaper.fit === 'auto') config.features.dynamicWallpaper.fit = 'cover';
             config.features.dynamicWallpaper.videoPath = data.relPath;
             config.features.dynamicWallpaper.sourceType = 'video';
             config.features.dynamicWallpaper.wallpaperDir = '';
@@ -1984,6 +1986,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       selectBuiltinWallpaper.onchange = () => {
         const val = selectBuiltinWallpaper.value;
         if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+        if (!config.features.dynamicWallpaper.fit || config.features.dynamicWallpaper.fit === 'auto') config.features.dynamicWallpaper.fit = 'cover';
         config.features.dynamicWallpaper.videoPath = val;
         config.features.dynamicWallpaper.sourceType = 'video';
         config.features.dynamicWallpaper.wallpaperDir = '';

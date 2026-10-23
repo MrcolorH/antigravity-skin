@@ -1522,9 +1522,15 @@
   function applyWallpaper(w) {
     const cfg = readCfg();
     if (!cfg.features) cfg.features = {};
+    const existingFit = cfg.features.dynamicWallpaper?.fit;
+    // 默认使用 cover；若用户曾主动切换为 blur/contain/fill 则保留，未配置或旧默认 auto 一律收敛至 cover
+    const targetFit = (existingFit && existingFit !== 'auto') ? existingFit : 'cover';
     cfg.features.dynamicWallpaper = {
+      fit: targetFit,
+      fitPosition: 'center',
       ...(cfg.features.dynamicWallpaper || {}),
-      ...buildWallpaperPayload(w)
+      ...buildWallpaperPayload(w),
+      fit: targetFit
     };
     saveCfg(cfg);
     if (w.type === 'scene' && w.folderPath) {
