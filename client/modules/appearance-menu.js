@@ -795,7 +795,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                 <span class="text-xs font-medium text-foreground dark:text-gray-100 flex items-center gap-1">
                   <span>⚡ 插件版本与在线热更新</span>
                 </span>
-                <span id="agy-update-cur-ver" class="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 font-mono font-medium">v0.1.3</span>
+                <span id="agy-update-cur-ver" class="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 font-mono font-medium">v0.1.4</span>
                 <span id="agy-update-badge" style="display: none;" class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium items-center gap-0.5">
                   <span>✨ 发现新版本</span>
                 </span>
@@ -2223,7 +2223,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // ==========================================
     const curVerSpan = customOptions.querySelector('#agy-update-cur-ver');
     if (curVerSpan) {
-      curVerSpan.textContent = `v${window.__AG_SKIN_VERSION__ || '0.1.3'}`;
+      curVerSpan.textContent = `v${window.__AG_SKIN_VERSION__ || '0.1.4'}`;
     }
     const updateBadge = customOptions.querySelector('#agy-update-badge');
     const statusTip = customOptions.querySelector('#agy-update-status-tip');
@@ -2322,7 +2322,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               const ghData = await ghRes.json();
               if (ghData && ghData.tag_name) {
                 const latestTag = ghData.tag_name.replace(/^[^\d]*/, '');
-                const curVer = window.__AG_SKIN_VERSION__ || '0.1.3';
+                const curVer = window.__AG_SKIN_VERSION__ || '0.1.4';
                 const assetZip = ghData.assets && Array.isArray(ghData.assets)
                   ? ghData.assets.find(a => a.name && a.name.endsWith('.zip'))?.browser_download_url
                   : null;
@@ -2349,7 +2349,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               const cdnData = await cdnRes.json();
               if (cdnData && cdnData.version) {
                 const latestTag = cdnData.version;
-                const curVer = window.__AG_SKIN_VERSION__ || '0.1.3';
+                const curVer = window.__AG_SKIN_VERSION__ || '0.1.4';
                 data = {
                   ok: true,
                   currentVersion: curVer,
@@ -2374,7 +2374,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         applyUpdateUI(data);
 
         if (!data.hasUpdate && !isSilent && statusTip) {
-          statusTip.textContent = `当前已是最新版本 (v${data.currentVersion || window.__AG_SKIN_VERSION__ || '0.1.3'})，无需更新。`;
+          statusTip.textContent = `当前已是最新版本 (v${data.currentVersion || window.__AG_SKIN_VERSION__ || '0.1.4'})，无需更新。`;
           statusTip.className = 'text-[11px] text-muted-foreground opacity-75';
         }
       } catch (err) {
