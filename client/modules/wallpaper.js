@@ -259,7 +259,6 @@ export function initWallpaper(options = {}) {
         if (p && typeof p.catch === 'function') {
           p.catch(() => {
             try {
-              v.load();
               v.play().catch(() => {});
             } catch (_) {}
             const resumeOnInteraction = () => {

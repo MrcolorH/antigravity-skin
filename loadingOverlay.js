@@ -203,23 +203,9 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
       finished = true;
       if (autoEnterTimer) { clearTimeout(autoEnterTimer); autoEnterTimer = null; }
 
-      // 通知主进程启动平滑溶出联动（唤醒底层壁纸）
-      document.title = '__AGY_BOOT_FADING__';
-      console.log('__AGY_BOOT_FADING__');
-
-      if (pill) {
-        pill.style.transition = 'opacity 200ms ease';
-        pill.style.opacity = '0';
-      }
-      if (stage) {
-        stage.style.opacity = '0';
-        stage.style.transform = 'scale(1.02) translateZ(0)';
-      }
-
-      setTimeout(() => {
-        document.title = '__AGY_BOOT_DONE__';
-        console.log('__AGY_BOOT_DONE__');
-      }, 450);
+      // 核心修正：绝不在独立 WebContentsView 内部盲等 450ms 纯黑！立即解绑移除遮罩，直接无感切换至已 100% 渲染成型的主工作区
+      document.title = '__AGY_BOOT_DONE__';
+      console.log('__AGY_BOOT_DONE__');
     }
 
     function setReady() {
