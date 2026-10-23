@@ -471,7 +471,7 @@
           const hintEl = bodyEl.querySelector('#agy-b-delay-hint');
           if (!hintEl) return;
           if (currentDelay === 0) {
-            hintEl.innerHTML = `ℹ️ <strong>0 秒纯手动驻留模式</strong>：开屏呈现后<strong>保持停驻待机</strong>，需手动点击画面或按任意键进入首页。`;
+            hintEl.innerHTML = `ℹ️ <strong>0 秒纯手动驻留模式</strong>：开屏呈现后<strong>保持停驻待机</strong>，需按 ESC 或点击画面进入首页。`;
             hintEl.style.color = '#38bdf8';
           } else {
             hintEl.innerHTML = `ℹ️ 开屏准备完成后，等待 <strong>${currentDelay} 秒</strong> 自动平滑淡入主界面；播放期间也可随时点击画面跳过。`;

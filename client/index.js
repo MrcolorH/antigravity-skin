@@ -288,8 +288,12 @@
 
   // 核心时序防护：仅在已播放或用户已在工作区产生实质输入时跳过开机动画
   function shouldAbandonBootAnimation(activeCfg) {
+    // 1. 若主进程已接管开机引导（Windows 补丁），绝不二次触发
+    if (window.__agyMasterBootHandled) return true;
     if (sessionStorage.getItem('__agy_booted__')) return true;
     if (!activeCfg.features?.bootAnimation) return true;
+    if (window.__agyBootPlaying) return true;
+    if (document.getElementById('agy-video-boot-host') || document.getElementById('agy-custom-code-boot-host')) return true;
 
     try {
       // 关键修复：页面初始自动获得焦点（如聊天输入框）不等于用户正在输入！必须有非空输入内容才判定为正在打字

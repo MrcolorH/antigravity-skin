@@ -324,7 +324,7 @@ export function parseTex(buf) {
   if (!need(8)) return null;
   const imageCount = buf.readInt32LE(p); p += 4;
   const mipCount = buf.readInt32LE(p); p += 4;
-  if (imageCount < 1 || mipCount < 1 || mipCount > 64) return null;
+  if (imageCount < 0 || mipCount < 1 || mipCount > 64) return null;
 
   // 只取 mip0（最大的一级）
   if (!need(16)) return null;
@@ -397,14 +397,35 @@ function texToImage(tex, options = {}) {
 
 // ---------------- 从 scene.json 找主画面层 ----------------
 
-function parseVec3(str) {
-  const parts = String(str || '').trim().split(/\s+/).map(Number);
-  return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+function parseVec3(val, defaultVec = [0, 0, 0]) {
+  if (!val) return defaultVec;
+  if (typeof val === 'object' && val !== null) {
+    if (typeof val.value === 'string') return parseVec3(val.value, defaultVec);
+    if (typeof val.x === 'number' && typeof val.y === 'number') {
+      return [val.x, val.y, val.z || 0];
+    }
+  }
+  const parts = String(val || '').trim().split(/\s+/).map(Number);
+  return [
+    Number.isFinite(parts[0]) ? parts[0] : defaultVec[0],
+    Number.isFinite(parts[1]) ? parts[1] : defaultVec[1],
+    Number.isFinite(parts[2]) ? parts[2] : defaultVec[2]
+  ];
+}
+
+function isLayerVisible(obj) {
+  if (!obj) return false;
+  const v = obj.visible;
+  if (v === false || v === 'false' || v === 0) return false;
+  if (typeof v === 'object' && v !== null) {
+    if (v.value === false || v.value === 'false' || v.value === 0) return false;
+  }
+  return true;
 }
 
 function layerArea(obj) {
   const size = parseVec3(obj.size);
-  const scale = parseVec3(obj.scale || '1 1 1');
+  const scale = parseVec3(obj.scale, [1, 1, 1]);
   // 未写 size 的图层（例如部分 sprite）按 0 处理，会被排到后面
   return Math.abs(size[0] * scale[0]) * Math.abs(size[1] * scale[1]);
 }
@@ -462,19 +483,90 @@ export function extractScenePoster(pkgPath, options = {}) {
   let scene;
   try { scene = JSON.parse(sceneRaw.toString('utf8')); } catch (_) { return null; }
 
-  const imageLayers = (Array.isArray(scene.objects) ? scene.objects : [])
-    .filter(o => o && o.image && o.visible !== false);
-  if (!imageLayers.length) return null;
+  const projW = Number(scene.general?.orthogonalprojection?.width) || 0;
+  const projH = Number(scene.general?.orthogonalprojection?.height) || 0;
 
-  // 取覆盖面积最大的一层作为「主画面」
-  const ranked = imageLayers
-    .map(o => ({ obj: o, area: layerArea(o) }))
-    .sort((a, b) => b.area - a.area);
+  const allObjects = Array.isArray(scene.objects) ? scene.objects : [];
+  // 过滤不可见与非图形对象
+  const candidateLayers = allObjects.filter(o => {
+    if (!o || !o.image) return false;
+    if (!isLayerVisible(o)) return false;
+    const imgStr = String(o.image).toLowerCase();
+    if (imgStr.includes('composelayer')) return false; // 排除内部纯合成/shader遮罩层
+    return true;
+  });
+  if (!candidateLayers.length) return null;
 
-  for (const { obj } of ranked) {
+  // 预先解析纹理并进行多维度智能加权评分（Smart Ranker），选出真正的底板全景主图
+  const scored = [];
+  for (let i = 0; i < candidateLayers.length; i++) {
+    const obj = candidateLayers[i];
     const resolved = resolveTextureName(idx, obj.image);
     if (!resolved) continue;
 
+    const name = String(obj.name || '').toLowerCase();
+    const size = parseVec3(obj.size);
+
+    // 原生像素面积
+    const rawArea = Math.abs(size[0] * size[1]);
+    let score = rawArea > 0 ? rawArea : 1000;
+
+    // 1. 工程正交分辨率匹配度加权（极大幅加权，通常背景图完全贴合工程画布 1:1）
+    if (projW > 0 && projH > 0 && size[0] > 0 && size[1] > 0) {
+      const matchW = Math.abs(size[0] - projW) / projW;
+      const matchH = Math.abs(size[1] - projH) / projH;
+      if (matchW < 0.05 && matchH < 0.05) {
+        score += 25000000;
+      } else if (matchW < 0.25 && matchH < 0.25) {
+        score += 10000000;
+      }
+    }
+
+    // 2. 底层 Z-Order 加权：Wallpaper Engine 先绘制底层背景，后绘制人物与前景部件
+    const origIdx = allObjects.indexOf(obj);
+    if (origIdx >= 0) {
+      const zRatio = 1 - (origIdx / Math.max(1, allObjects.length));
+      score += zRatio * 3000000;
+    }
+
+    // 3. 正向语义词加权（背景相关）
+    if (/(?:背景|background|bg\b|base|wallpaper|壁纸|底图|main|scenery|scene)/i.test(name)) {
+      score += 15000000;
+    }
+
+    // 4. 负向语义词惩罚（部件、人物器官、挂件、粒子、阴影、遮罩、发光变色等）
+    if (/(?:指针|cursor|shadow|阴影|音条|visualizer|audio|bar|spectr|particle|粒子|光|light|fog|smoke|烟|rain|雨|snow|雪|dust|灰尘|ember|火|fire|spark|clock|time|时间|date|日期|mask|蒙版|负形|挂饰|发饰|饰品|眼|eye|面具|变色|衣服|head|头|body|身体|hand|手|leg|腿|arm|hair|毛|前|fore|overlay|watermark|水印|cloud|云)/i.test(name)) {
+      score -= 20000000;
+    }
+
+    // 5. 模型与材质深入体检：包含 puppet 骨骼动画网格扣大分；opaque 加分；additive 扣分
+    try {
+      const mBuf = readPkgEntry(idx, obj.image);
+      if (mBuf) {
+        const mdl = JSON.parse(mBuf.toString('utf8'));
+        if (mdl.puppet) {
+          score -= 25000000; // 人物骨骼网格变形图层，坚决不选为底板海报
+        }
+        if (mdl.material) {
+          const matBuf = readPkgEntry(idx, mdl.material);
+          if (matBuf) {
+            const mat = JSON.parse(matBuf.toString('utf8'));
+            const blend = mat.passes?.[0]?.blending;
+            if (blend === 'opaque') score += 6000000;
+            else if (blend === 'additive') score -= 10000000;
+          }
+        }
+      }
+    } catch (_) {}
+
+    scored.push({ obj, resolved, score });
+  }
+
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score);
+
+  for (const item of scored) {
+    const { obj, resolved } = item;
     let image = null;
     if (resolved.direct) {
       image = {
@@ -494,7 +586,7 @@ export function extractScenePoster(pkgPath, options = {}) {
     return {
       ...image,
       layer: String(obj.name || ''),
-      layers: imageLayers.length,
+      layers: candidateLayers.length,
       source: resolved.name
     };
   }
@@ -546,7 +638,7 @@ export function getScenePoster(pkgPath, options = {}) {
 
   const key = crypto
     .createHash('sha1')
-    .update(pkgPath + ':' + st.size + ':' + st.mtimeMs + ':' + (options.swapRB ? 'bgr' : 'rgb'))
+    .update(pkgPath + ':' + st.size + ':' + st.mtimeMs + ':' + (options.swapRB ? 'bgr' : 'rgb') + ':v2-smart-rank')
     .digest('hex')
     .slice(0, 20);
 

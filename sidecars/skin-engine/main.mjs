@@ -765,6 +765,41 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 自动提取并持久化场景原画大图，确保主进程冷启动时无需拉起 sidecar 即可秒级展示所选壁纸原图
+  function ensureScenePoster(folder, forceRefresh = false) {
+    if (!folder || typeof folder !== 'string') return;
+    try {
+      const localPosters = ['scene-poster.jpg', 'scene-poster.png', 'scene-poster.webp'];
+      if (!forceRefresh) {
+        for (const lp of localPosters) {
+          if (fs.existsSync(path.join(folder, lp))) return;
+        }
+      }
+      const wpId = path.basename(folder).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const cacheDir = path.join(os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin', 'cache');
+      if (!forceRefresh) {
+        for (const ext of ['.jpg', '.png', '.webp']) {
+          if (fs.existsSync(path.join(cacheDir, `poster-${wpId}${ext}`))) return;
+        }
+      }
+      const pkgPath = path.resolve(folder, 'scene.pkg');
+      if (!fs.existsSync(pkgPath)) return;
+      const poster = getScenePoster(pkgPath, { refresh: forceRefresh });
+      if (poster && poster.buffer && poster.buffer.length) {
+        const ext = poster.mime === 'image/jpeg' ? '.jpg' : '.png';
+        try {
+          fs.writeFileSync(path.join(folder, 'scene-poster' + ext), poster.buffer);
+        } catch (_) {}
+        try {
+          fs.mkdirSync(cacheDir, { recursive: true });
+          fs.writeFileSync(path.join(cacheDir, `poster-${wpId}${ext}`), poster.buffer);
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('[Skin Engine] ensureScenePoster failed:', err.message);
+    }
+  }
+
   // API: 保存配置
   if (url.pathname === '/api/config' && req.method === 'POST') {
     let body = '';
@@ -773,6 +808,11 @@ const server = http.createServer((req, res) => {
       try {
         const parsed = JSON.parse(body);
         writeConfig(parsed);
+        // 若配置了场景素材，后台静默自动提取并持久化该素材的高清大图，为冷启动提供 100% 动态对齐的高清原画
+        const bootWp = parsed?.features?.bootAnimationConfig?.wallpaperDir;
+        const dwWp = parsed?.features?.dynamicWallpaper?.wallpaperDir;
+        if (bootWp) setTimeout(() => ensureScenePoster(bootWp), 10);
+        if (dwWp && dwWp !== bootWp) setTimeout(() => ensureScenePoster(dwWp), 50);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -1669,6 +1709,29 @@ const server = http.createServer((req, res) => {
       sendJson(403, { ok: false, error: '该目录尚未挂载或不在已授权的素材库范围内' });
       return;
     }
+    // 优先命中本地已持久化的 4K/1080P 原生大图（秒级直出，杜绝重复解包与缩略图降级）
+    // 注意：若传入 refresh=1，强制跳过本地文件并重新解包覆盖
+    if (!refresh) {
+      const localPosters = ['scene-poster.png', 'scene-poster.jpg', 'scene-poster.webp'];
+      for (const lp of localPosters) {
+        const fullLp = path.join(folder, lp);
+        if (fs.existsSync(fullLp)) {
+          try {
+            const buf = fs.readFileSync(fullLp);
+            const mime = lp.endsWith('.png') ? 'image/png' : 'image/jpeg';
+            res.writeHead(200, {
+              'Content-Type': mime,
+              'Content-Length': buf.length,
+              'Cache-Control': 'public, max-age=86400',
+              'X-Poster-Direct': '1'
+            });
+            res.end(buf);
+            return;
+          } catch (_) {}
+        }
+      }
+    }
+
     const pkgPath = path.resolve(folder, 'scene.pkg');
     if (!isSubPath(path.resolve(folder), pkgPath) || !fs.existsSync(pkgPath)) {
       sendJson(404, { ok: false, error: '该目录下没有 scene.pkg' });
@@ -1680,6 +1743,20 @@ const server = http.createServer((req, res) => {
         sendJson(404, { ok: false, error: '无法从 scene.pkg 解析出画面纹理' });
         return;
       }
+
+      // 异步持久化保存一份到壁纸目录与全局缓存，确保主进程冷启动时无需启动 sidecar 即可直接读取原生大图
+      try {
+        const ext = poster.mime === 'image/jpeg' ? '.jpg' : '.png';
+        const targetFile = path.join(folder, 'scene-poster' + ext);
+        // refresh 或文件未就绪时直接覆盖写入
+        fs.writeFileSync(targetFile, poster.buffer);
+        const wpId = path.basename(folder).replace(/[^a-zA-Z0-9_\-]/g, '_');
+        const cacheDir = path.join(os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin', 'cache');
+        fs.mkdirSync(cacheDir, { recursive: true });
+        const cacheFile = path.join(cacheDir, `poster-${wpId}${ext}`);
+        fs.writeFileSync(cacheFile, poster.buffer);
+      } catch (_) {}
+
       res.writeHead(200, {
         'Content-Type': poster.mime || 'image/jpeg',
         'Content-Length': poster.buffer.length,
@@ -2052,7 +2129,9 @@ function createCdpSession(target, port) {
     ws,
     send,
     isHealthy: false,
-    injecting: false
+    injecting: false,
+    createdAt: Date.now(),
+    unhealthyCount: 0
   };
 
   async function executeInjection() {
@@ -2171,8 +2250,16 @@ function createCdpSession(target, port) {
 
       const isAlive = result?.result?.value === true;
       if (!isAlive) {
-        console.log(`[Skin Engine] Target ${targetId} lost skin or state out-of-sync, auto-healing...`);
-        await executeInjection();
+        session.unhealthyCount = (session.unhealthyCount || 0) + 1;
+        // 冷启动 20 秒内处于开屏或页面自然装配期，严禁触发暴力重注入打断已有渲染管线
+        const ageMs = Date.now() - (session.createdAt || 0);
+        if (ageMs > 20000 && session.unhealthyCount >= 3) {
+          console.log(`[Skin Engine] Target ${targetId} lost skin or state out-of-sync (3 consecutive fails), auto-healing...`);
+          session.unhealthyCount = 0;
+          await executeInjection();
+        }
+      } else {
+        session.unhealthyCount = 0;
       }
     } catch (e) {
       // 正在导航中，静默跳过
@@ -2257,11 +2344,21 @@ function handleNativeLoadingOverlay(target, port) {
 // 7. 纯事件驱动核心：Browser 级别长连接与 0 轮询目标发现 (0% CPU Idle)
 console.log('[Skin Engine] Antigravity Skin daemon active in Event-Driven mode (0% idle CPU).');
 
-function scheduleReconnect(delayMs = 2000) {
+const sidecarBootStartTime = Date.now();
+function getAdaptiveReconnectDelay() {
+  // 冷启动黄金 8 秒内：采用 100ms 极速快频探测，直接砍掉原先 2 秒盲等等待！
+  if (Date.now() - sidecarBootStartTime < 8000) {
+    return 100;
+  }
+  return 2000;
+}
+
+function scheduleReconnect(delayMs) {
   if (reconnectTimer) clearTimeout(reconnectTimer);
+  const finalDelay = delayMs !== undefined ? delayMs : getAdaptiveReconnectDelay();
   reconnectTimer = setTimeout(() => {
     ensureEventDrivenEngine();
-  }, delayMs);
+  }, finalDelay);
 }
 
 async function connectBrowserTarget(port) {
@@ -2349,25 +2446,47 @@ async function connectBrowserTarget(port) {
     ws.onclose = () => {
       console.log('[Skin Engine] Browser-level CDP connection closed.');
       browserWs = null;
-      scheduleReconnect(2000);
+      scheduleReconnect();
     };
 
     ws.onerror = (err) => {
       console.warn('[Skin Engine] Browser-level CDP error:', err.message || err);
       try { ws.close(); } catch (_) {}
       browserWs = null;
-      scheduleReconnect(2000);
+      scheduleReconnect();
     };
   } catch (err) {
     browserWs = null;
-    scheduleReconnect(2000);
+    scheduleReconnect();
   }
+}
+
+let portFileWatcher = null;
+function setupPortFileWatcher() {
+  if (portFileWatcher) return;
+  try {
+    const portFile = getDevToolsPortPath();
+    const dir = path.dirname(portFile);
+    if (fs.existsSync(dir)) {
+      portFileWatcher = fs.watch(dir, (eventType, filename) => {
+        if (filename === 'DevToolsActivePort') {
+          // 操作系统内核事件驱动：端口文件一旦创建或更新，0 毫秒即刻连接！
+          ensureEventDrivenEngine();
+        }
+      });
+      portFileWatcher.on('error', () => {
+        try { portFileWatcher.close(); } catch (_) {}
+        portFileWatcher = null;
+      });
+    }
+  } catch (_) {}
 }
 
 async function ensureEventDrivenEngine() {
   const portFile = getDevToolsPortPath();
   if (!fs.existsSync(portFile)) {
-    scheduleReconnect(2000);
+    setupPortFileWatcher();
+    scheduleReconnect();
     return;
   }
 
@@ -2377,12 +2496,12 @@ async function ensureEventDrivenEngine() {
     const p = parseInt(raw.split(/\r?\n/)[0].trim(), 10);
     if (!isNaN(p) && p > 0) port = p;
   } catch (e) {
-    scheduleReconnect(2000);
+    scheduleReconnect();
     return;
   }
 
   if (!port) {
-    scheduleReconnect(2000);
+    scheduleReconnect();
     return;
   }
 
@@ -2396,7 +2515,8 @@ async function ensureEventDrivenEngine() {
   }
 }
 
-// 启动事件引擎
+// 启动内核文件监听与事件引擎
+setupPortFileWatcher();
 ensureEventDrivenEngine();
 
 // 极温和保活巡检（每 4 秒检查一次，没有活跃窗口时完全不做 DOM 运算，0% CPU）
@@ -2419,6 +2539,10 @@ function gracefulShutdown(signal) {
   console.log(`[Skin Engine] Received ${signal}, cleanly shutting down...`);
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (healthCheckTimer) clearInterval(healthCheckTimer);
+  if (portFileWatcher) {
+    try { portFileWatcher.close(); } catch (_) {}
+    portFileWatcher = null;
+  }
   if (browserWs) {
     try { browserWs.close(); } catch (_) {}
     browserWs = null;

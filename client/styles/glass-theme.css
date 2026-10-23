@@ -1,3 +1,14 @@
+        /* 0. 桌面客户端视口绝对锁死防线：严禁 html、body 与根容器出现原生横向/纵向滚动条 */
+        html, body, #root, #app {
+          overflow: hidden !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: 100vw !important;
+          max-height: 100vh !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
         /* 阶段五：几何以 top/right/bottom/left + 100% 表达。
            原写法 100vw 包含纵向滚动条宽度，窗口出现滚动条时会水平溢出、右侧被裁；
            本规则与 wallpaper.js 的几何控制器互为双保险 —— 即使这份 CSS 整份丢失，
@@ -28,8 +39,15 @@
           contain: strict;
         }
         .dark #agy-wallpaper-backdrop,
-        .theme-dark #agy-wallpaper-backdrop {
-          background-color: #131313 !important;
+        .theme-dark #agy-wallpaper-backdrop,
+        body.dark #agy-wallpaper-backdrop,
+        body.theme-dark #agy-wallpaper-backdrop,
+        [data-agy-has-video="true"] #agy-wallpaper-backdrop,
+        html:has(#agy-dynamic-video) #agy-wallpaper-backdrop,
+        html:has(#agy-dynamic-scene) #agy-wallpaper-backdrop,
+        body:has(#agy-dynamic-video) #agy-wallpaper-backdrop,
+        body:has(#agy-dynamic-scene) #agy-wallpaper-backdrop {
+          background-color: #0b0f19 !important;
         }
 
         /* ==========================================================================
@@ -109,18 +127,11 @@
           background: none transparent !important;
         }
 
-        /* 2. 全局底板：根节点默认白底（深色模式为深底），容器透明穿透 */
-        html {
-          background-color: #ffffff !important;
-          background: #ffffff !important;
-        }
-        html.dark, html.theme-dark,
-        .dark html, .theme-dark html {
-          background-color: #131313 !important;
-          background: #131313 !important;
-        }
-
-        body, #root, #app, main,
+        /* 2. 全局底板：深色/浅色沉浸底色由 z-index: -1000000 的 #agy-wallpaper-backdrop 全权接管；
+           html 与 body 以及所有宿主根容器必须保持 100% 纯透明穿透，严禁在 body 上涂刷实色油漆遮挡底层动态壁纸！ */
+        html, html.dark, html.theme-dark, html[class*="dark"],
+        body, body.dark, body.theme-dark, body[class*="dark"], body[class*="theme-"],
+        #root, #app, main,
         .bg-background, [class*="bg-background"],
         .theme-standalone {
           background-color: transparent !important;
@@ -1956,12 +1967,12 @@
           border-color: rgba(255, 255, 255, 0.12) !important;
         }
 
-        /* 7. 底部输入栏与排队消息卡片：强化高透极细腻毛玻璃质感，内层彻底剔除死白 */
-        div[class*="bg-card-border"]:has([contenteditable]),
-        div[class*="bg-card-border"]:has(textarea),
-        div[class*="rounded-2xl"]:has([contenteditable]),
-        div[class*="rounded-2xl"]:has(textarea),
-        div:has(> form),
+        /* 7. 底部输入栏与排队消息卡片：强化高透极细腻毛玻璃质感，内层彻底剔除死白（严密封锁在工作区，绝不外溢至模态弹窗与设置面板） */
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+        div:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(> form),
         [data-testid="queued-messages-card"],
         div[role="region"][aria-label*="队列消息"],
         div[role="region"][aria-label*="Queued messages"] {
@@ -1972,10 +1983,10 @@
           border-radius: 20px !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
         }
-        .theme-dark div[class*="bg-card-border"]:has([contenteditable]),
-        .theme-dark div[class*="bg-card-border"]:has(textarea),
-        .theme-dark div[class*="rounded-2xl"]:has([contenteditable]),
-        .theme-dark div[class*="rounded-2xl"]:has(textarea),
+        .theme-dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+        .theme-dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+        .theme-dark div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+        .theme-dark div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
         .theme-dark [data-testid="queued-messages-card"],
         .theme-dark div[role="region"][aria-label*="队列消息"],
         .theme-dark div[role="region"][aria-label*="Queued messages"],
@@ -1985,19 +1996,20 @@
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35) !important;
         }
 
-        /* 拔除输入框内部与排队卡片内部所有的默认 bg-card 死白底色与杂色边框（排除交互按钮） */
-        div[class*="bg-card-border"]:has([contenteditable]) [class*="bg-card"],
-        div[class*="bg-card-border"]:has(textarea) [class*="bg-card"],
-        div[class*="rounded-2xl"]:has([contenteditable]) [class*="bg-card"],
-        div[class*="rounded-2xl"]:has(textarea) [class*="bg-card"],
-        div[class*="bg-card-border"]:has([contenteditable]) div:not(button):not(button *),
-        div[class*="bg-card-border"]:has(textarea) div:not(button):not(button *),
-        div[class*="rounded-2xl"]:has([contenteditable]) div:not(button):not(button *),
-        div[class*="rounded-2xl"]:has(textarea) div:not(button):not(button *),
+        /* 拔除输入框内部与排队卡片内部所有的默认 bg-card 死白底色与杂色边框（排除交互按钮、自动完成浮层与设置弹窗） */
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]) [class*="bg-card"]:not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *),
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea) [class*="bg-card"]:not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]) [class*="bg-card"]:not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea) [class*="bg-card"]:not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *),
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]) div:not(button):not(button *):not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *):not(.mentions-menu):not(.mentions-menu *):not([aria-label*="提及"]):not([aria-label*="提及"] *):not([aria-label*="Mention"]):not([aria-label*="Mention"] *),
+        div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea) div:not(button):not(button *):not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *):not(.mentions-menu):not(.mentions-menu *):not([aria-label*="提及"]):not([aria-label*="提及"] *):not([aria-label*="Mention"]):not([aria-label*="Mention"] *),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]) div:not(button):not(button *):not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *):not(.mentions-menu):not(.mentions-menu *):not([aria-label*="提及"]):not([aria-label*="提及"] *):not([aria-label*="Mention"]):not([aria-label*="Mention"] *),
+        div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea) div:not(button):not(button *):not([data-mention-menu]):not([data-mention-menu] *):not(#typeahead-menu):not(#typeahead-menu *):not(.typeahead-popover):not(.typeahead-popover *):not(.mentions-menu):not(.mentions-menu *):not([aria-label*="提及"]):not([aria-label*="提及"] *):not([aria-label*="Mention"]):not([aria-label*="Mention"] *),
         [data-testid="queued-messages-card"] .bg-card,
         [data-testid="queued-messages-card"] [class*="bg-card"],
         [data-testid="queued-messages-card"] div[class*="border"],
-        textarea, [contenteditable="true"] {
+        div:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *) > textarea,
+        div:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *) > [contenteditable="true"] {
           background: transparent !important;
           background-color: transparent !important;
           border: none !important;
@@ -2411,19 +2423,25 @@
           background-color: rgba(0, 0, 0, 0.72) !important;
         }
 
-        /* 2. 设置弹窗外壳容器：温润雅致微灰（稍微暗一点点，彻底告别刺眼死白） */
+        /* 2. 设置弹窗外壳容器：温润雅致微灰（阻光率 96%，彻底告别刺眼死白与 0.48 泛白透光） */
         .settings-modal-container,
-        [class*="settings-modal-container"] {
-          background-color: rgba(230, 233, 239, 0.96) !important;
+        [class*="settings-modal-container"],
+        [role="dialog"].settings-modal-container,
+        [role="dialog"]:has(.bg-sidebar) {
+          background-color: rgba(235, 238, 243, 0.96) !important;
           backdrop-filter: blur(40px) saturate(180%) !important;
           -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
-          border: 1px solid rgba(255, 255, 255, 0.45) !important;
+          border: 1px solid rgba(255, 255, 255, 0.7) !important;
           box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
         }
         .theme-dark .settings-modal-container,
         .dark .settings-modal-container,
         .theme-dark [class*="settings-modal-container"],
-        .dark [class*="settings-modal-container"] {
+        .dark [class*="settings-modal-container"],
+        .theme-dark [role="dialog"].settings-modal-container,
+        .dark [role="dialog"].settings-modal-container,
+        .theme-dark [role="dialog"]:has(.bg-sidebar),
+        .dark [role="dialog"]:has(.bg-sidebar) {
           background-color: rgba(22, 26, 35, 0.96) !important;
           border: 1px solid rgba(255, 255, 255, 0.12) !important;
           box-shadow: 0 25px 70px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
@@ -2431,8 +2449,10 @@
 
         /* 3. 设置弹窗左侧导航栏：比主区域略暗一阶的深邃质感灰 */
         .settings-modal-container .bg-sidebar,
-        .settings-modal-container [class*="bg-sidebar"] {
-          background-color: rgba(218, 222, 230, 0.96) !important;
+        .settings-modal-container [class*="bg-sidebar"],
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar,
+        [role="dialog"]:has(.bg-sidebar) [class*="bg-sidebar"] {
+          background-color: rgba(222, 226, 233, 0.96) !important;
           backdrop-filter: none !important;
           -webkit-backdrop-filter: none !important;
           border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
@@ -2440,32 +2460,46 @@
         .theme-dark .settings-modal-container .bg-sidebar,
         .dark .settings-modal-container .bg-sidebar,
         .theme-dark .settings-modal-container [class*="bg-sidebar"],
-        .dark .settings-modal-container [class*="bg-sidebar"] {
+        .dark .settings-modal-container [class*="bg-sidebar"],
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar,
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar,
+        .theme-dark [role="dialog"]:has(.bg-sidebar) [class*="bg-sidebar"],
+        .dark [role="dialog"]:has(.bg-sidebar) [class*="bg-sidebar"] {
           background-color: rgba(17, 21, 29, 0.96) !important;
           border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
         }
 
         /* 弹窗左侧导航按钮：悬停与选中高亮 */
         .settings-modal-container .bg-sidebar button,
-        .settings-modal-container .bg-sidebar [role="button"] {
+        .settings-modal-container .bg-sidebar [role="button"],
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar button,
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar [role="button"] {
           background-color: transparent !important;
           border-radius: 8px !important;
           transition: all 0.15s ease !important;
         }
         .settings-modal-container .bg-sidebar button:hover,
-        .settings-modal-container .bg-sidebar [role="button"]:hover {
+        .settings-modal-container .bg-sidebar [role="button"]:hover,
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar button:hover,
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar [role="button"]:hover {
           background-color: rgba(0, 0, 0, 0.05) !important;
         }
         .settings-modal-container .bg-sidebar button.bg-sidebar-secondary,
         .settings-modal-container .bg-sidebar [class*="bg-sidebar-secondary"],
         .settings-modal-container .bg-sidebar [aria-selected="true"],
-        .settings-modal-container .bg-sidebar button[class*="active"] {
+        .settings-modal-container .bg-sidebar button[class*="active"],
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar button.bg-sidebar-secondary,
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar [class*="bg-sidebar-secondary"],
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar [aria-selected="true"],
+        [role="dialog"]:has(.bg-sidebar) .bg-sidebar button[class*="active"] {
           background-color: rgba(0, 0, 0, 0.08) !important;
           font-weight: 600 !important;
           color: #111827 !important;
         }
         .theme-dark .settings-modal-container .bg-sidebar button:hover,
-        .dark .settings-modal-container .bg-sidebar button:hover {
+        .dark .settings-modal-container .bg-sidebar button:hover,
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar button:hover,
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar button:hover {
           background-color: rgba(255, 255, 255, 0.08) !important;
         }
         .theme-dark .settings-modal-container .bg-sidebar button.bg-sidebar-secondary,
@@ -2473,7 +2507,13 @@
         .theme-dark .settings-modal-container .bg-sidebar [class*="bg-sidebar-secondary"],
         .dark .settings-modal-container .bg-sidebar [class*="bg-sidebar-secondary"],
         .theme-dark .settings-modal-container .bg-sidebar [aria-selected="true"],
-        .dark .settings-modal-container .bg-sidebar [aria-selected="true"] {
+        .dark .settings-modal-container .bg-sidebar [aria-selected="true"],
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar button.bg-sidebar-secondary,
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar button.bg-sidebar-secondary,
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar [class*="bg-sidebar-secondary"],
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar [class*="bg-sidebar-secondary"],
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar [aria-selected="true"],
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-sidebar [aria-selected="true"] {
           background-color: rgba(255, 255, 255, 0.14) !important;
           color: #ffffff !important;
         }
@@ -2481,8 +2521,11 @@
         /* 4. 设置弹窗右侧主内容区：温润微暗米灰白阅读底板（彻底阻断全局 transparent 规则） */
         .settings-modal-container .bg-background,
         .settings-modal-container [class*="bg-background"],
-        .settings-modal-container .h-full.w-full {
-          background-color: rgba(230, 233, 239, 0.96) !important;
+        .settings-modal-container .h-full.w-full,
+        [role="dialog"]:has(.bg-sidebar) .bg-background,
+        [role="dialog"]:has(.bg-sidebar) [class*="bg-background"],
+        [role="dialog"]:has(.bg-sidebar) .h-full.w-full {
+          background-color: rgba(235, 238, 243, 0.96) !important;
           backdrop-filter: none !important;
           -webkit-backdrop-filter: none !important;
         }
@@ -2491,33 +2534,52 @@
         .theme-dark .settings-modal-container [class*="bg-background"],
         .dark .settings-modal-container [class*="bg-background"],
         .theme-dark .settings-modal-container .h-full.w-full,
-        .dark .settings-modal-container .h-full.w-full {
+        .dark .settings-modal-container .h-full.w-full,
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .bg-background,
+        .dark [role="dialog"]:has(.bg-sidebar) .bg-background,
+        .theme-dark [role="dialog"]:has(.bg-sidebar) [class*="bg-background"],
+        .dark [role="dialog"]:has(.bg-sidebar) [class*="bg-background"],
+        .theme-dark [role="dialog"]:has(.bg-sidebar) .h-full.w-full,
+        .dark [role="dialog"]:has(.bg-sidebar) .h-full.w-full {
           background-color: rgba(24, 28, 38, 0.96) !important;
         }
 
-        /* 5. 设置内容卡片：稍亮一点点的微灰白层次，形成自然立体的内嵌感 */
-        .settings-modal-container div[class*="rounded-xl"][class*="border"],
-        .settings-modal-container div[class*="rounded-2xl"][class*="border"] {
-          background-color: rgba(242, 244, 248, 0.9) !important;
-          border: 1px solid rgba(0, 0, 0, 0.07) !important;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        /* 5. 设置内容卡片：稍亮一点点的微灰白层次，形成自然立体的内嵌感（彻底阻断透明化） */
+        .settings-modal-container div[class*="rounded-xl"],
+        .settings-modal-container div[class*="rounded-2xl"]:not(.settings-modal-container),
+        [role="dialog"]:has(.bg-sidebar) div[class*="rounded-xl"]:not([role="dialog"]),
+        [role="dialog"]:has(.bg-sidebar) div[class*="rounded-2xl"]:not([role="dialog"]) {
+          background-color: rgba(246, 248, 252, 0.94) !important;
+          border: 1px solid rgba(0, 0, 0, 0.08) !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
         }
-        .theme-dark .settings-modal-container div[class*="rounded-xl"][class*="border"],
-        .dark .settings-modal-container div[class*="rounded-xl"][class*="border"],
-        .theme-dark .settings-modal-container div[class*="rounded-2xl"][class*="border"],
-        .dark .settings-modal-container div[class*="rounded-2xl"][class*="border"] {
-          background-color: rgba(30, 35, 48, 0.7) !important;
+        .theme-dark .settings-modal-container div[class*="rounded-xl"],
+        .dark .settings-modal-container div[class*="rounded-xl"],
+        .theme-dark .settings-modal-container div[class*="rounded-2xl"]:not(.settings-modal-container),
+        .dark .settings-modal-container div[class*="rounded-2xl"]:not(.settings-modal-container),
+        .theme-dark [role="dialog"]:has(.bg-sidebar) div[class*="rounded-xl"]:not([role="dialog"]),
+        .dark [role="dialog"]:has(.bg-sidebar) div[class*="rounded-xl"]:not([role="dialog"]),
+        .theme-dark [role="dialog"]:has(.bg-sidebar) div[class*="rounded-2xl"]:not([role="dialog"]),
+        .dark [role="dialog"]:has(.bg-sidebar) div[class*="rounded-2xl"]:not([role="dialog"]) {
+          background-color: rgba(30, 35, 48, 0.75) !important;
           border: 1px solid rgba(255, 255, 255, 0.08) !important;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
         }
 
         /* 卡片内部的分隔线 */
-        .settings-modal-container [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
-          border-color: rgba(0, 0, 0, 0.06) !important;
+        .settings-modal-container [class*="divide-border"] > :not([hidden]) ~ :not([hidden]),
+        [role="dialog"]:has(.bg-sidebar) [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
+          border-color: rgba(0, 0, 0, 0.08) !important;
+          border-top-width: 1px !important;
+          border-top-style: solid !important;
         }
         .theme-dark .settings-modal-container [class*="divide-border"] > :not([hidden]) ~ :not([hidden]),
-        .dark .settings-modal-container [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
+        .dark .settings-modal-container [class*="divide-border"] > :not([hidden]) ~ :not([hidden]),
+        .theme-dark [role="dialog"]:has(.bg-sidebar) [class*="divide-border"] > :not([hidden]) ~ :not([hidden]),
+        .dark [role="dialog"]:has(.bg-sidebar) [class*="divide-border"] > :not([hidden]) ~ :not([hidden]) {
           border-color: rgba(255, 255, 255, 0.08) !important;
+          border-top-width: 1px !important;
+          border-top-style: solid !important;
         }
 
         /* 6. 设置选项内的输入框、下拉框与操作按钮高对比度 */
@@ -2751,6 +2813,192 @@
           -webkit-backdrop-filter: blur(12px) !important;
           border-radius: 7px !important;
           color: #ffffff !important;
+        }
+
+        /* 12.7 输入框快捷指令与技能建议选择框（[data-mention-menu] / [aria-label*="提及"] / #typeahead-menu）毛玻璃与高对比度适配 */
+        /* 关键防线：空状态完全隐藏（严格限定在快捷指令浮层自身，绝不裸写 role="listbox" 干扰设置面板） */
+        #typeahead-menu:empty,
+        [data-mention-menu]:empty,
+        div.typeahead-popover:empty,
+        .mentions-menu:empty,
+        [data-mention-menu] [role="listbox"]:empty,
+        #typeahead-menu [role="listbox"]:empty,
+        [aria-label*="自动补全菜单"]:empty,
+        [aria-label*="Typeahead"]:empty {
+          display: none !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          height: 0 !important;
+          width: 0 !important;
+          overflow: hidden !important;
+          visibility: hidden !important;
+        }
+
+        /* 技能/快捷指令弹出框外层卡片毛玻璃质感 */
+        [data-mention-menu],
+        div[role="listbox"][data-mention-menu],
+        div[role="listbox"][aria-label*="提及"],
+        div[role="listbox"][aria-label*="Mention"],
+        div.typeahead-popover:not(:empty),
+        .mentions-menu:not(:empty),
+        #typeahead-menu:not(:empty) {
+          background-color: rgba(255, 255, 255, 0.88) !important;
+          background: rgba(255, 255, 255, 0.88) !important;
+          backdrop-filter: blur(36px) saturate(200%) !important;
+          -webkit-backdrop-filter: blur(36px) saturate(200%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.8) !important;
+          border-radius: 16px !important;
+          box-shadow: 0 16px 45px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.4) !important;
+          overflow: hidden !important;
+          z-index: 5000 !important;
+        }
+
+        .theme-dark [data-mention-menu],
+        .dark [data-mention-menu],
+        .theme-dark div[role="listbox"][data-mention-menu],
+        .dark div[role="listbox"][data-mention-menu],
+        .theme-dark div[role="listbox"][aria-label*="提及"],
+        .dark div[role="listbox"][aria-label*="提及"],
+        .theme-dark div[role="listbox"][aria-label*="Mention"],
+        .dark div[role="listbox"][aria-label*="Mention"],
+        .theme-dark div.typeahead-popover:not(:empty),
+        .dark div.typeahead-popover:not(:empty),
+        .theme-dark .mentions-menu:not(:empty),
+        .dark .mentions-menu:not(:empty),
+        .theme-dark #typeahead-menu:not(:empty),
+        .dark #typeahead-menu:not(:empty) {
+          background-color: rgba(18, 22, 34, 0.88) !important;
+          background: rgba(18, 22, 34, 0.88) !important;
+          backdrop-filter: blur(36px) saturate(200%) !important;
+          -webkit-backdrop-filter: blur(36px) saturate(200%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.16) !important;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+        }
+
+        /* 技能选择框内部容器与条目排版 */
+        [data-mention-menu] > div,
+        [role="listbox"][data-mention-menu] > div {
+          background: transparent !important;
+          background-color: transparent !important;
+          padding: 6px !important;
+        }
+
+        [data-mention-menu] [role="option"],
+        [role="listbox"][data-mention-menu] [role="option"],
+        [id^="typeahead-item-"] {
+          border-radius: 8px !important;
+          margin: 2px 0 !important;
+          transition: background-color 0.15s ease, transform 0.15s ease !important;
+          cursor: pointer !important;
+          overflow: hidden !important;
+        }
+
+        /* 条目内层通用底色重置为纯透明以承接外层磨砂 */
+        [data-mention-menu] [role="option"] > div,
+        [role="listbox"][data-mention-menu] [role="option"] > div,
+        [id^="typeahead-item-"] > div {
+          border-radius: 8px !important;
+          transition: background-color 0.15s ease, transform 0.15s ease !important;
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+
+        /* 悬停与选中项高亮胶囊底色 */
+        [data-mention-menu] [role="option"]:hover > div,
+        [data-mention-menu] [role="option"][aria-selected="true"] > div,
+        [id^="typeahead-item-"]:hover > div,
+        [id^="typeahead-item-"][aria-selected="true"] > div,
+        [data-mention-menu] .bg-secondary,
+        #typeahead-menu li:hover,
+        #typeahead-menu li.selected,
+        #typeahead-menu [role="option"]:hover,
+        #typeahead-menu [role="option"][aria-selected="true"] {
+          background-color: rgba(0, 0, 0, 0.08) !important;
+          background: rgba(0, 0, 0, 0.08) !important;
+          transform: translateX(2px) !important;
+        }
+
+        .theme-dark [data-mention-menu] [role="option"]:hover > div,
+        .dark [data-mention-menu] [role="option"]:hover > div,
+        .theme-dark [data-mention-menu] [role="option"][aria-selected="true"] > div,
+        .dark [data-mention-menu] [role="option"][aria-selected="true"] > div,
+        .theme-dark [id^="typeahead-item-"]:hover > div,
+        .dark [id^="typeahead-item-"]:hover > div,
+        .theme-dark [id^="typeahead-item-"][aria-selected="true"] > div,
+        .dark [id^="typeahead-item-"][aria-selected="true"] > div,
+        .theme-dark [data-mention-menu] .bg-secondary,
+        .dark [data-mention-menu] .bg-secondary,
+        .theme-dark #typeahead-menu li:hover,
+        .dark #typeahead-menu li:hover,
+        .theme-dark #typeahead-menu li.selected,
+        .dark #typeahead-menu li.selected,
+        .theme-dark #typeahead-menu [role="option"]:hover,
+        .dark #typeahead-menu [role="option"]:hover,
+        .theme-dark #typeahead-menu [role="option"][aria-selected="true"],
+        .dark #typeahead-menu [role="option"][aria-selected="true"] {
+          background-color: rgba(255, 255, 255, 0.16) !important;
+          background: rgba(255, 255, 255, 0.16) !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* 技能标题指令文字高亮强化（加粗、高对比度） */
+        [data-mention-menu] [data-testid="menu-option-label"],
+        [data-mention-menu] [data-testid="menu-option-label"] *,
+        #typeahead-menu li .text,
+        #typeahead-menu li [class*="font-semibold"] {
+          font-weight: 600 !important;
+          color: #0f172a !important;
+        }
+
+        .theme-dark [data-mention-menu] [data-testid="menu-option-label"],
+        .dark [data-mention-menu] [data-testid="menu-option-label"],
+        .theme-dark [data-mention-menu] [data-testid="menu-option-label"] *,
+        .dark [data-mention-menu] [data-testid="menu-option-label"] *,
+        .theme-dark #typeahead-menu li .text,
+        .dark #typeahead-menu li .text,
+        .theme-dark #typeahead-menu li [class*="font-semibold"],
+        .dark #typeahead-menu li [class*="font-semibold"] {
+          color: #ffffff !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+        }
+
+        /* 技能辅助描述文案（彻底拔除 opacity: 0.5 导致的看不清，确保清晰易读） */
+        [data-mention-menu] [data-testid="menu-option-description"],
+        [data-mention-menu] [data-testid="menu-option-description"] *,
+        #typeahead-menu li span[class*="text-muted"],
+        #typeahead-menu li [class*="text-secondary"] {
+          color: #475569 !important;
+          opacity: 1 !important;
+          font-size: 12px !important;
+        }
+
+        .theme-dark [data-mention-menu] [data-testid="menu-option-description"],
+        .dark [data-mention-menu] [data-testid="menu-option-description"],
+        .theme-dark [data-mention-menu] [data-testid="menu-option-description"] *,
+        .dark [data-mention-menu] [data-testid="menu-option-description"] *,
+        .theme-dark #typeahead-menu li span[class*="text-muted"],
+        .dark #typeahead-menu li span[class*="text-muted"],
+        .theme-dark #typeahead-menu li [class*="text-secondary"],
+        .dark #typeahead-menu li [class*="text-secondary"] {
+          color: #cbd5e1 !important;
+          opacity: 1 !important;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        /* 技能图标色彩适配 */
+        [data-mention-menu] [role="option"] svg,
+        [id^="typeahead-item-"] svg {
+          color: #64748b !important;
+          flex-shrink: 0 !important;
+        }
+
+        .theme-dark [data-mention-menu] [role="option"] svg,
+        .dark [data-mention-menu] [role="option"] svg,
+        .theme-dark [id^="typeahead-item-"] svg,
+        .dark [id^="typeahead-item-"] svg {
+          color: #94a3b8 !important;
         }
 
         /* ========================================================

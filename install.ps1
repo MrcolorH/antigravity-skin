@@ -1,4 +1,4 @@
-﻿# Antigravity Skin - Windows 一键安装脚本
+# Antigravity Skin - Windows 一键安装脚本
 $ErrorActionPreference = "Stop"
 
 Write-Host "==================================================" -ForegroundColor Cyan
@@ -63,7 +63,7 @@ try {
 
     # 白名单实体复制（装完后用户可以随意删除解压目录）
     $whitelistDirs = @("client", "sidecars", "assets", "scripts")
-    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh", "patch-loading.bat", "restore-loading.bat")
+    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "loadingOverlay.js", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh", "patch-loading.bat", "restore-loading.bat")
 
     foreach ($dir in $whitelistDirs) {
         $srcPath = Join-Path $sourceRoot $dir

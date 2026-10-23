@@ -365,15 +365,17 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     }
 
-    // 2. 开机动画校验：短视频形式无视频、场景形式无壁纸目录 -> 自动关闭开机动画开关
+    // 2. 开机动画校验：彻底弃用开机场景模式，统一强制归一化为视频
+    if (cfg.features.bootAnimationConfig && cfg.features.bootAnimationConfig.type === 'scene') {
+      cfg.features.bootAnimationConfig.type = 'video';
+      changed = true;
+    }
     if (cfg.features.bootAnimation === true) {
       const bCfg = cfg.features.bootAnimationConfig || {};
       const isVideo = bCfg.type === 'video';
-      const isScene = bCfg.type === 'scene';
       const missingVideo = isVideo && !(bCfg.videoPath || '').trim();
-      const missingScene = isScene && !(bCfg.wallpaperDir || '').trim() && !(bCfg.videoPath || '').trim();
-      if (missingVideo || missingScene) {
-        console.log('[Antigravity Skin] 关闭设置时校验：未配置开机动画素材，自动关闭开机引导动画开关');
+      if (missingVideo) {
+        console.log('[Antigravity Skin] 关闭设置时校验：未配置有效的开机短视频素材，自动关闭开机引导动画开关');
         cfg.features.bootAnimation = false;
         changed = true;
       }
@@ -525,7 +527,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -548,8 +550,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           </div>
         </div>
 
-        <!-- 视频路径与内置预设选择配置 -->
-        <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2 min-h-[96px] justify-center" id="agy-wrap-video-path" style="display: ${dw.enabled === true ? 'flex' : 'none'};">
+        <!-- 动态壁纸展开子区域 -->
+        <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2.5" id="agy-wrap-video-path" style="display: ${dw.enabled === true ? 'flex' : 'none'}; background: rgba(0,0,0,0.08); border-radius: 8px; margin: 4px 0 8px 0;">
           <!-- 素材库开关（动态壁纸维度） -->
           <div class="flex justify-between gap-4 items-center pb-1.5 border-b border-border/40" id="agy-wallpaper-lib-row">
             <div class="flex-1 flex flex-col gap-0.5">
@@ -610,16 +612,16 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               <button type="button" id="agy-btn-wallpaper-display" title="动态壁纸显示与渲染设置" class="shrink-0 text-xs px-2.5 py-1 rounded-md bg-secondary/40 hover:bg-secondary/70 border border-border text-foreground flex items-center gap-1.5 cursor-pointer transition-all"><span>⚙</span><span class="text-[11px] font-medium">显示与渲染设置</span></button>
             </div>
           </div>
-        </div>
 
-        <!-- 场景壁纸氛围音（仅含内嵌音频的场景壁纸可用） -->
-        <div class="py-2 px-3 w-full bg-transparent flex justify-between gap-4 items-center" id="agy-wrap-scene-audio" style="display:none;">
-          <div class="flex-1 flex flex-col gap-0.5">
-            <span class="text-xs font-medium">场景氛围音</span>
-            <span class="text-[11px] text-muted-foreground opacity-65">循环播放该场景壁纸内嵌的背景音乐（若存在）</span>
-          </div>
-          <div class="shrink-0">
-            ${createSwitchHtml('agy-opt-scene-audio', dw.audioEnabled === true)}
+          <!-- 场景壁纸氛围音（仅含内嵌音频的场景壁纸可用） -->
+          <div class="pt-1.5 border-t border-border/40 w-full bg-transparent flex justify-between gap-4 items-center" id="agy-wrap-scene-audio" style="display:none;">
+            <div class="flex-1 flex flex-col gap-0.5">
+              <span class="text-xs font-medium">场景氛围音</span>
+              <span class="text-[11px] text-muted-foreground opacity-65">循环播放该场景壁纸内嵌的背景音乐（若存在）</span>
+            </div>
+            <div class="shrink-0">
+              ${createSwitchHtml('agy-opt-scene-audio', dw.audioEnabled === true)}
+            </div>
           </div>
         </div>
 
@@ -665,7 +667,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
                   <span class="text-xs font-medium">使用 Wallpaper 素材库</span>
                   <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">开屏</span>
                 </div>
-                <span class="text-[11px] text-muted-foreground opacity-65">开启后隐藏下方原生载入入口，改从面板底部素材库选择（零拷贝）</span>
+                <span class="text-[11px] text-muted-foreground opacity-65">开启后从 Wallpaper 素材库选择视频类开屏（💡 这里真优化不动了，先只用视频当做开屏动画吧）</span>
               </div>
               <div class="shrink-0">
                 ${createSwitchHtml('agy-boot-lib', libFeat.bootEnabled === true)}
@@ -1247,9 +1249,11 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       };
     }
 
-    function openWallpaperLibraryModal() {
+    function openWallpaperLibraryModal(target = 'wallpaper') {
       if (window.__agyWallpaperLibrary && typeof window.__agyWallpaperLibrary.openModal === 'function') {
-        window.__agyWallpaperLibrary.openModal(buildLibraryCtx());
+        const ctx = buildLibraryCtx();
+        ctx.target = target;
+        window.__agyWallpaperLibrary.openModal(ctx);
       }
     }
 
@@ -1271,10 +1275,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     function bindIntegratedLibraryActions() {
       const btnWall = customOptions.querySelector('#agy-btn-open-wall-lib');
-      if (btnWall) btnWall.onclick = (e) => { e.stopPropagation(); openWallpaperLibraryModal(); };
+      if (btnWall) btnWall.onclick = (e) => { e.stopPropagation(); openWallpaperLibraryModal('wallpaper'); };
 
       const btnBoot = customOptions.querySelector('#agy-btn-open-boot-lib');
-      if (btnBoot) btnBoot.onclick = (e) => { e.stopPropagation(); openWallpaperLibraryModal(); };
+      if (btnBoot) btnBoot.onclick = (e) => { e.stopPropagation(); openWallpaperLibraryModal('boot'); };
     }
 
     // 双开关模式：壁纸 / 开屏各自独立，任一开启即展示悬浮素材库入口
@@ -1732,7 +1736,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               curOptWall.checked = true;
               syncSwitchUI(curOptWall);
               const curWrapV = customOptions.querySelector('#agy-wrap-video-path') || document.getElementById('agy-wrap-video-path');
-              
+              if (curWrapV) curWrapV.style.display = 'flex';
             }
             triggerSave();
             await syncWallpaperVideos(data.relPath);
@@ -2141,7 +2145,8 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       const currentCustomCodePath = config.features?.bootAnimationConfig?.customCodePath || (selectBootCode ? selectBootCode.value : 'assets/scripts/default-boot.js');
 
       if (typeof window.__triggerBootAnimation === 'function') {
-        window.__triggerBootAnimation(currentBootType, currentBootPath, currentCustomCodePath);
+        const currentBootDir = config.features?.bootAnimationConfig?.wallpaperDir || '';
+        window.__triggerBootAnimation(currentBootType, currentBootPath, currentCustomCodePath, currentBootDir, true);
       }
     };
 

@@ -145,13 +145,14 @@
     loading: false,
     loadedOnce: false,
     filter: 'all',
+    target: 'wallpaper', // 'wallpaper' 或 'boot'
     keyword: '',
     currentPage: 1,
     limit: 20,
     error: '',
     detectCandidates: [],
     detected: false,
-    excludedRatings: loadExcludedRatings(),
+    excludedRatings: getDefaultExcludedRatings(),
     toastTimer: null
   };
 
@@ -248,24 +249,16 @@
     return escapeHtml(str).replace(/'/g, '&#39;');
   }
 
-  // ---------------- 分级筛选状态（localStorage 持久化） ----------------
-  function loadExcludedRatings() {
-    try {
-      const raw = localStorage.getItem(RATING_STORAGE_KEY);
-      if (!raw) return new Set();
-      const parsed = JSON.parse(raw);
-      const list = Array.isArray(parsed?.excluded) ? parsed.excluded : [];
-      return new Set(list.filter(x => RATING_KEYS.includes(x)));
-    } catch (_) {
-      return new Set();
-    }
+  // ---------------- 分级筛选状态（默认只选择所有人，pg13和r18都默认不勾选） ----------------
+  function getDefaultExcludedRatings() {
+    // 集合中存放被排除的分级；未被排除的处于激活勾选状态
+    // 默认勾选所有人（everyone），默认排除（不勾选）PG-13（questionable）与 R-18（mature）
+    return new Set(['questionable', 'mature']);
   }
 
-  function saveExcludedRatings() {
-    try {
-      localStorage.setItem(RATING_STORAGE_KEY, JSON.stringify({ excluded: Array.from(state.excludedRatings) }));
-    } catch (_) {}
-  }
+  try {
+    localStorage.removeItem(RATING_STORAGE_KEY);
+  } catch (_) {}
 
   function ratingCounts() {
     const fromServer = state.stats?.byRating;
@@ -796,10 +789,15 @@
           <div id="agy-lib-status" class="text-[11px] text-muted-foreground opacity-80 leading-relaxed"></div>
 
           <div id="agy-lib-toolbar" class="flex items-center gap-1.5 flex-wrap" style="display:none;">
-            <button type="button" class="agy-lib-chip active" data-lib-filter="all">${L.filterAll}</button>
-            <button type="button" class="agy-lib-chip" data-lib-filter="video">${L.filterVideo}</button>
-            <button type="button" class="agy-lib-chip" data-lib-filter="web">${L.filterWeb}</button>
-            <button type="button" class="agy-lib-chip" data-lib-filter="scene">${L.filterScene}</button>
+            ${state.target === 'boot' ? `
+              <button type="button" class="agy-lib-chip active" data-lib-filter="video">🎬 视频类素材 (推荐)</button>
+              <span class="text-[11px] text-amber-500/90 font-medium ml-1">💡 这里真优化不动了，先只用视频当做开屏动画吧</span>
+            ` : `
+              <button type="button" class="agy-lib-chip active" data-lib-filter="all">${L.filterAll}</button>
+              <button type="button" class="agy-lib-chip" data-lib-filter="video">${L.filterVideo}</button>
+              <button type="button" class="agy-lib-chip" data-lib-filter="web">${L.filterWeb}</button>
+              <button type="button" class="agy-lib-chip" data-lib-filter="scene">${L.filterScene}</button>
+            `}
             <span class="text-[10px] text-muted-foreground opacity-60 ml-1">${L.ratingLabel}</span>
             <span id="agy-lib-ratings" class="flex items-center gap-1"></span>
             <input type="text" id="agy-lib-search" class="agy-lib-input ml-auto" style="width:128px;" placeholder="${L.searchPlaceholder}" spellcheck="false">
@@ -951,7 +949,6 @@
         const key = btn.getAttribute('data-lib-rating');
         if (state.excludedRatings.has(key)) state.excludedRatings.delete(key);
         else state.excludedRatings.add(key);
-        saveExcludedRatings();
         state.currentPage = 1;
         state.limit = PAGE_SIZE;
         renderRatings();
@@ -1181,7 +1178,12 @@
   // ---------------- 资产网格 ----------------
   function filteredList() {
     let list = state.list;
-    if (state.filter !== 'all') list = list.filter(w => w.type === state.filter);
+    // 关键策略：开屏素材库模式下，仅保留视频类素材，直接屏蔽场景与网页类素材！
+    if (state.target === 'boot') {
+      list = list.filter(w => w.type === 'video');
+    } else if (state.filter !== 'all') {
+      list = list.filter(w => w.type === state.filter);
+    }
     if (state.excludedRatings.size) {
       list = list.filter(w => !state.excludedRatings.has(w.rating));
     }
@@ -1262,7 +1264,9 @@
         }
         const btnBoot = actionsWrap.querySelector('[data-lib-apply="boot"]');
         if (btnBoot) {
-          btnBoot.style.display = bootOn ? 'inline-block' : 'none';
+          const w = state.list.find(item => normalizeKey(item.folderPath) === key);
+          const isVideo = w ? w.type === 'video' : false;
+          btnBoot.style.display = (bootOn && isVideo) ? 'inline-block' : 'none';
           btnBoot.disabled = isBoot;
           btnBoot.textContent = isBoot ? L.inUse : L.setBoot;
           if (isBoot) btnBoot.classList.add('is-in-use'); else btnBoot.classList.remove('is-in-use');
@@ -1453,10 +1457,12 @@
       if (isBoot) stateTags.push(`<span class="agy-lib-state-tag agy-lib-state-boot">${L.activeBoot}</span>`);
 
       const actionBtns = [];
-      if (wallOn) {
+      if (wallOn && state.target !== 'boot') {
         actionBtns.push(`<button type="button" class="agy-lib-btn agy-lib-btn-wall${isWall ? ' is-in-use' : ''}" data-lib-apply="wallpaper" ${isWall ? 'disabled' : ''}>${isWall ? L.inUse : L.setWallpaper}</button>`);
       }
-      if (bootOn) {
+      // 关键策略：开屏动画只支持视频类素材，非视频素材绝不提供“设为开屏”按钮！
+      const isVideo = w.type === 'video';
+      if (bootOn && isVideo) {
         actionBtns.push(`<button type="button" class="agy-lib-btn agy-lib-btn-boot${isBoot ? ' is-in-use' : ''}" data-lib-apply="boot" ${isBoot ? 'disabled' : ''}>${isBoot ? L.inUse : L.setBoot}</button>`);
       }
 
@@ -1521,19 +1527,27 @@
       ...buildWallpaperPayload(w)
     };
     saveCfg(cfg);
+    if (w.type === 'scene' && w.folderPath) {
+      fetch(`${apiBase()}/api/wallpaper-library/scene-poster?folder=${encodeURIComponent(w.folderPath)}`).catch(() => {});
+    }
     renderGrid();
     notify(t().applied);
   }
 
   function applyBoot(w) {
+    if (w.type !== 'video') {
+      notify('开屏动画目前仅支持视频类素材，这里真优化不动啦！');
+      return;
+    }
     const cfg = readCfg();
     if (!cfg.features) cfg.features = {};
-    const isVideo = w.type === 'video';
+    const normVidPath = w.entryFile ? `${w.folderPath}/${w.entryFile}`.replace(/\\/g, '/') : '';
+    const normDirPath = w.folderPath ? w.folderPath.replace(/\\/g, '/') : '';
     cfg.features.bootAnimationConfig = {
       ...(cfg.features.bootAnimationConfig || {}),
-      type: isVideo ? 'video' : 'scene',
-      videoPath: isVideo && w.entryFile ? `${w.folderPath}/${w.entryFile}` : '',
-      wallpaperDir: w.folderPath,
+      type: 'video',
+      videoPath: normVidPath,
+      wallpaperDir: normDirPath,
       previewFile: w.previewFile || '',
       wallpaperTitle: w.title || ''
     };
@@ -1562,6 +1576,8 @@
       ensureStyle();
       state.container = container;
       state.ctx = ctx || {};
+      state.excludedRatings = getDefaultExcludedRatings();
+      state.currentPage = 1;
       renderShell();
       if (isAnyEnabled()) {
         api.ensureLoaded();
@@ -1572,13 +1588,21 @@
     },
     openModal(ctx) {
       if (ctx) state.ctx = ctx;
+      state.target = (ctx && ctx.target === 'boot') ? 'boot' : 'wallpaper';
+      state.filter = (state.target === 'boot') ? 'video' : 'all';
       ensureStyle();
       if (!window.__agyModal) return;
+      // 每次打开素材库都重置分级筛选：默认只选择所有人，pg13和r18都默认不勾选
+      state.excludedRatings = getDefaultExcludedRatings();
+      state.currentPage = 1;
       const L = t();
+      const modalSubtitle = state.target === 'boot'
+        ? '💡 这里真优化不动了，先只用视频当做开屏动画吧（开屏仅支持视频类壁纸，秒开 0 延迟）'
+        : L.desc;
       window.__agyModal.open({
         id: 'agy-wallpaper-library-modal',
-        title: `${L.title} (ZERO-COPY)`,
-        subtitle: L.desc,
+        title: state.target === 'boot' ? `选择开屏动画视频素材 (ZERO-COPY)` : `${L.title} (ZERO-COPY)`,
+        subtitle: modalSubtitle,
         width: '920px',
         height: '84vh',
         render: (bodyEl, modalApi) => {
