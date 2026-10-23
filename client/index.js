@@ -292,7 +292,7 @@
     if (window.__agyMasterBootHandled) return true;
     if (sessionStorage.getItem('__agy_booted__')) return true;
     if (!activeCfg.features?.bootAnimation) return true;
-    if (window.__agyBootPlaying) return true;
+    // 关键修正：若开机 DOM 容器已在视口中则不重复创建；但 window.__agyBootPlaying 作为预留锁，绝不反向阻断初次启动
     if (document.getElementById('agy-video-boot-host') || document.getElementById('agy-custom-code-boot-host')) return true;
 
     try {

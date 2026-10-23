@@ -10,8 +10,8 @@
 
 | 指标维度 | 统计数据 | 占比与状态说明 |
 | :--- | :---: | :--- |
-| **已登记缺陷总数** | **16** 条 | 覆盖全部历史及近期测试缺陷 |
-| **已修复封版** | **16** 条 | 占比 **100.0%**（全部已完成实机验证与复盘归档） |
+| **已登记缺陷总数** | **17** 条 | 覆盖全部历史及近期测试缺陷 |
+| **已修复封版** | **17** 条 | 占比 **100.0%**（全部已完成实机验证与复盘归档） |
 | **待验证 (实机确认中)** | **0** 条 | 占比 **0.0%** |
 | **修复中 / 待修复** | **0** 条 | 暂无阻塞积压缺陷 |
 
@@ -39,12 +39,13 @@
 | [BUG-014](./BUG-014_scene_wallpaper_boot_and_switch_black_screen.md) | Wallpaper素材库集成 | 场景壁纸切换及开屏后黑屏早退，且多图层场景出现“空背景-黑屏-突现主角”穿帮 | P1 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-014_scene_wallpaper_boot_and_switch_black_screen.md) |
 | [BUG-015](./BUG-015_scene_wallpaper_dark_mode_black_screen.md) | Wallpaper素材库集成 | 场景素材动态壁纸在切换至深色模式后画面消失并呈现全黑底色，因CSS选择器特异度覆盖导致body实黑物理遮挡底层壁纸 | P1 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-015_scene_wallpaper_dark_mode_black_screen.md) |
 | [BUG-016](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md) | Wallpaper素材库集成 | 开屏引导动画与宿主主页加载冲突（双重动画、早泄穿帮与首帧无缝呈现闭环） | P1 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md) |
+| [BUG-017](./BUG-017_scene_boot_style_missing_and_session_loader_overflow.md) | Wallpaper素材库集成 | 场景壁纸模式冷启动核心样式缺失导致会话加载器错位、视口滚动条溢出与10秒死锁 | P0 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-017_scene_boot_style_missing_and_session_loader_overflow.md) |
 
 ---
 
 ## 三、按模块与需求快速检索
 
-### 1. Wallpaper 素材库集成（主规划需求：11 项）
+### 1. Wallpaper 素材库集成（主规划需求：12 项）
 - [BUG-001: Wallpaper 素材库弹窗无法一页全览，底部确认按钮溢出被遮挡](./BUG-001_wallpaper_modal_overflow.md) `[已修复]`
 - [BUG-003: 从开屏动画到首页完整加载动态背景出现黑闪与跳动](./BUG-003_boot_to_home_black_flash_and_jump.md) `[已修复]`
 - [BUG-005: Wallpaper素材库场景壁纸在开屏动画与动态背景中动效缺失或缩放异常](./BUG-005_scene_wallpaper_boot_missing_animation.md) `[已修复]`
@@ -58,6 +59,7 @@
 - [BUG-014: 场景壁纸切换及开屏后黑屏早退，且多图层场景出现“空背景-黑屏-突现主角”穿帮](./BUG-014_scene_wallpaper_boot_and_switch_black_screen.md) `[已修复]`
 - [BUG-015: 场景素材动态壁纸在切换至深色模式后画面消失并呈现全黑底色](./BUG-015_scene_wallpaper_dark_mode_black_screen.md) `[已修复]`
 - [BUG-016: 开屏引导动画与宿主主页加载冲突（双重动画、早泄穿帮与首帧无缝呈现闭环）](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md) `[已修复]`
+- [BUG-017: 场景壁纸模式冷启动核心样式缺失导致会话加载器错位、视口滚动条溢出与10秒死锁](./BUG-017_scene_boot_style_missing_and_session_loader_overflow.md) `[已修复]`
 
 ### 2. 【散】外观设置与主题适配（零散缺陷：3 项）
 - [BUG-002: 外观设置残留冗余横幅卡片，且热更新标题在深色主题下异常显示为黑色](./BUG-002_appearance_settings_redundant_banner_and_dark_title.md) `[已修复]`

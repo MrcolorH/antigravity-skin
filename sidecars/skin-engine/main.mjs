@@ -631,7 +631,7 @@ function getLibraryConfig() {
   return cfg.features?.externalWallpaperLibrary || { libraryPath: '', autoScan: true, mountedFolders: [] };
 }
 
-// 已授权的可读取根目录：库根目录 + 已挂载的单壁纸目录
+// 已授权的可读取根目录：库根目录 + 已挂载的单壁纸目录 + 当前动态壁纸目录（杜绝冷启动初期素材库未完成全盘扫描前 403）
 function getAuthorizedRoots() {
   const lib = getLibraryConfig();
   const roots = [];
@@ -639,6 +639,13 @@ function getAuthorizedRoots() {
   for (const p of (Array.isArray(lib.mountedFolders) ? lib.mountedFolders : [])) {
     if (p) roots.push(path.resolve(p));
   }
+  try {
+    const cfg = readConfig();
+    const currentWallpaperDir = cfg.features?.dynamicWallpaper?.wallpaperDir;
+    if (currentWallpaperDir) {
+      roots.push(path.resolve(currentWallpaperDir));
+    }
+  } catch (_) {}
   return roots;
 }
 
@@ -2023,6 +2030,17 @@ function buildClientBundle() {
   const indexMod = readClientModule('client/index.js');
 
   let bundleParts = [];
+
+  // WebWallGL 核心渲染引擎内联注入（0ms 秒开，彻底杜绝 macOS HTTPS 跨协议 Mixed Content 脚本拦截风险）
+  const webwallglPath = path.join(PLUGIN_ROOT, 'sidecars', 'skin-engine', 'vendor', 'webwallgl.js');
+  if (fs.existsSync(webwallglPath)) {
+    try {
+      const webwallglCode = fs.readFileSync(webwallglPath, 'utf8');
+      if (webwallglCode) bundleParts.push(webwallglCode);
+    } catch (e) {
+      console.warn('[Skin Engine] Failed to inline webwallgl.js:', e);
+    }
+  }
 
   // 0. 最先置顶：第 0 毫秒强力实施标题栏完全透明，彻底消除开机动画加载前后的白条闪烁
   bundleParts.push(`(() => {

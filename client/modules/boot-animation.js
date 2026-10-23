@@ -231,6 +231,14 @@
         border-color: rgba(52, 211, 153, 0.45);
         background: rgba(15, 23, 42, 0.9);
       }
+      .agy-boot-status-pill.pill-shake {
+        animation: agy-pill-shake 0.4s ease-in-out;
+      }
+      @keyframes agy-pill-shake {
+        0%, 100% { transform: translateX(0); }
+        20%, 60% { transform: translateX(-6px); }
+        40%, 80% { transform: translateX(6px); }
+      }
       @keyframes agy-spin {
         to { transform: rotate(360deg); }
       }
@@ -284,6 +292,17 @@
       }
     }
     return pill;
+  }
+
+  function checkIsSceneWallpaper() {
+    try {
+      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+      const dw = cfg.features?.dynamicWallpaper || {};
+      if (!dw.enabled) return false;
+      return dw.sourceType === 'scene' || (!!dw.wallpaperDir && dw.sourceType !== 'video' && dw.sourceType !== 'web');
+    } catch (_) {
+      return false;
+    }
   }
 
   function setupBootDismissScheduler(host, hintEl, dismissFn) {
@@ -343,13 +362,47 @@
     let cleaned = false;
     let video = null;
     let autoTimer = null;
+    let isHostReady = false;
+    let readyCheckTimer = null;
+    let pendingDismiss = false;
+    let videoErrorFailed = false;
+
+    // 权威防线：场景壁纸严格要求 WebGL 画布打上 live 标记且首帧稳定运行，或动态明确失败
+    function canSafelyDismissBoot() {
+      if (videoErrorFailed) return true; // 视频播放失败容灾：绝不让黑屏遮罩死锁视口
+      if (!checkIsSceneWallpaper()) {
+        return isHostReady;
+      }
+      const sceneCanvas = document.querySelector('#agy-dynamic-scene canvas.agy-scene-live');
+      const isSceneLive = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) || window.__agySceneDynamicFailed === true;
+      return isHostReady && isSceneLive;
+    }
+
+    function updateLoadingSceneHint() {
+      if (!hint || cleaned) return;
+      hint.className = 'agy-boot-status-pill status-loading';
+      if (hint.dataset.shaking) return;
+      const isScene = checkIsSceneWallpaper();
+      hint.innerHTML = `<div class="spinner"></div><span class="status-text">${
+        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : '正在载入主界面与动态壁纸...'
+      }</span>`;
+    }
 
     function closeVideoBoot() {
       if (cleaned) return;
+      if (!canSafelyDismissBoot()) {
+        pendingDismiss = true;
+        updateLoadingSceneHint();
+        return;
+      }
       cleaned = true;
       if (autoTimer) {
         clearTimeout(autoTimer);
         autoTimer = null;
+      }
+      if (readyCheckTimer) {
+        clearInterval(readyCheckTimer);
+        readyCheckTimer = null;
       }
       window.__agyBootPlaying = false;
       restoreTitleBarOverlay();
@@ -381,11 +434,8 @@
       }, 520);
     }
 
-    let isHostReady = false;
-    let readyCheckTimer = null;
-
     function shakePill() {
-      if (hint && !isHostReady) {
+      if (hint && !canSafelyDismissBoot()) {
         hint.classList.remove('pill-shake');
         void hint.offsetWidth;
         hint.classList.add('pill-shake');
@@ -393,10 +443,12 @@
         if (txt && !hint.dataset.shaking) {
           hint.dataset.shaking = '1';
           const oldHtml = txt.innerHTML;
-          txt.innerHTML = '正在载入主界面与动态壁纸...';
+          txt.innerHTML = checkIsSceneWallpaper()
+            ? '🎬 正在装配 4K 场景着色器与动态图层...'
+            : '正在载入主界面与动态壁纸...';
           setTimeout(() => {
             delete hint.dataset.shaking;
-            if (!isHostReady && txt) txt.innerHTML = oldHtml;
+            if (!canSafelyDismissBoot() && txt) txt.innerHTML = oldHtml;
           }, 1500);
         }
       }
@@ -406,10 +458,20 @@
       if (e) {
         try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
       }
-      if (isHostReady) {
+      if (canSafelyDismissBoot()) {
         closeVideoBoot();
       } else {
+        pendingDismiss = true;
         shakePill();
+      }
+    }
+
+    function onDismissScheduleTriggered() {
+      if (canSafelyDismissBoot()) {
+        closeVideoBoot();
+      } else {
+        pendingDismiss = true;
+        updateLoadingSceneHint();
       }
     }
 
@@ -438,26 +500,49 @@
     function markHostReady() {
       if (isHostReady) return;
       isHostReady = true;
-      if (readyCheckTimer) {
-        clearInterval(readyCheckTimer);
-        readyCheckTimer = null;
+      if (!canSafelyDismissBoot()) {
+        updateLoadingSceneHint();
+      } else {
+        hint.className = 'agy-boot-status-pill status-ready';
+        if (delaySec === 0) {
+          hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
+        } else {
+          hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+        }
       }
-      hint.className = 'agy-boot-status-pill status-ready';
-      if (isHostReady) {
-      autoTimer = setupBootDismissScheduler(host, hint, closeVideoBoot);
-    }
+      autoTimer = setupBootDismissScheduler(host, hint, onDismissScheduleTriggered);
     }
 
-    // 权威宿主就绪检测：确保首页 DOM 与动态壁纸（特别是场景壁纸首帧）完全落地后再放行
+    // 权威宿主就绪检测：确保首页 DOM 与动态壁纸（特别是场景壁纸活态帧）完全落地后再放行
     readyCheckTimer = setInterval(() => {
-      if (cleaned || isHostReady) {
+      if (cleaned) {
         if (readyCheckTimer) clearInterval(readyCheckTimer);
         return;
       }
-      if (typeof window.__agyIsHostTrulyReady === 'function' && window.__agyIsHostTrulyReady()) {
-        markHostReady();
+      if (!isHostReady) {
+        if (typeof window.__agyIsHostTrulyReady === 'function' && window.__agyIsHostTrulyReady()) {
+          markHostReady();
+        }
       }
-    }, 80);
+      if (isHostReady) {
+        if (canSafelyDismissBoot()) {
+          if (hint.className.includes('status-loading')) {
+            hint.className = 'agy-boot-status-pill status-ready';
+            if (delaySec === 0) {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
+            } else {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+            }
+          }
+          if (pendingDismiss) {
+            closeVideoBoot();
+          }
+        } else {
+          updateLoadingSceneHint();
+        }
+      }
+    }, 60);
+
     // 25秒极限兜底
     setTimeout(markHostReady, 25000);
 
@@ -471,9 +556,6 @@
         <div style="font-size:12px;opacity:0.5;margin-top:16px;">${delaySec === 0 ? '按 ESC 或点击画面退出' : `按 ESC 或点击任意位置跳过 (${delaySec}秒后自动进入)`}</div>
       `;
       host.appendChild(emptyBox);
-      if (isHostReady) {
-      autoTimer = setupBootDismissScheduler(host, hint, closeVideoBoot);
-    }
       return;
     }
 
@@ -499,11 +581,15 @@
     video.src = videoSrc;
     host.prepend(video);
 
-    if (isHostReady) {
-      autoTimer = setupBootDismissScheduler(host, hint, closeVideoBoot);
-    }
-
     video.addEventListener('ended', () => {
+      if (!canSafelyDismissBoot()) {
+        // 动态场景尚未就绪，视频绝不退出，立即无缝循环播放，死守全屏遮罩
+        try {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        } catch (_) {}
+        return;
+      }
       if (delaySec === 0) {
         try {
           video.currentTime = 0;
@@ -519,8 +605,17 @@
     // 零闪烁交叉淡入：结束前 450ms 提前在底层挂载主界面壁纸
     let preloadedWallpaper = false;
     video.addEventListener('timeupdate', () => {
-      if (preloadedWallpaper || cleaned || !video.duration || !isFinite(video.duration)) return;
-      if (delaySec > 0 && video.duration - video.currentTime <= 0.45) {
+      if (cleaned || !video.duration || !isFinite(video.duration)) return;
+      // 若快要播放完毕（剩 0.25s）但场景壁纸仍在装配，提前回滚重播，避免末尾黑屏
+      if (!canSafelyDismissBoot() && video.duration - video.currentTime <= 0.25) {
+        try {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        } catch (_) {}
+        return;
+      }
+      if (preloadedWallpaper) return;
+      if (delaySec > 0 && video.duration - video.currentTime <= 0.45 && canSafelyDismissBoot()) {
         preloadedWallpaper = true;
         if (typeof window.__agyResumeBootWallpaper === 'function') {
           try { window.__agyResumeBootWallpaper(); } catch (_) {}
@@ -529,14 +624,16 @@
     });
     video.addEventListener('error', (e) => {
       console.warn('[Boot Video] Video element error:', e, video.error);
-      setTimeout(closeVideoBoot, 1500);
+      videoErrorFailed = true;
+      setTimeout(closeVideoBoot, 300);
     });
     video.play().catch(err => {
       console.warn('[Boot Video] Playback failed or blocked, retrying muted:', err);
       video.muted = true;
       video.setAttribute('muted', '');
       video.play().catch(() => {
-        setTimeout(closeVideoBoot, 1500);
+        videoErrorFailed = true;
+        setTimeout(closeVideoBoot, 300);
       });
     });
   }
@@ -581,13 +678,42 @@
     let cleaned = false;
     let customCleanup = null;
     let autoTimer = null;
+    let isHostReady = false;
+    let readyCheckTimer = null;
+    let pendingDismiss = false;
+
+    function canSafelyDismissCustomBoot() {
+      if (!checkIsSceneWallpaper()) return isHostReady;
+      const sceneCanvas = document.querySelector('#agy-dynamic-scene canvas.agy-scene-live');
+      const isSceneLive = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) || window.__agySceneDynamicFailed === true;
+      return isHostReady && isSceneLive;
+    }
+
+    function updateCustomLoadingHint() {
+      if (!hint || cleaned) return;
+      hint.className = 'agy-boot-status-pill status-loading';
+      if (hint.dataset.shaking) return;
+      const isScene = checkIsSceneWallpaper();
+      hint.innerHTML = `<div class="spinner"></div><span class="status-text">${
+        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : '正在载入主界面与动态壁纸...'
+      }</span>`;
+    }
 
     function closeCustomBoot() {
       if (cleaned) return;
+      if (!canSafelyDismissCustomBoot()) {
+        pendingDismiss = true;
+        updateCustomLoadingHint();
+        return;
+      }
       cleaned = true;
       if (autoTimer) {
         clearTimeout(autoTimer);
         autoTimer = null;
+      }
+      if (readyCheckTimer) {
+        clearInterval(readyCheckTimer);
+        readyCheckTimer = null;
       }
       window.__agyBootPlaying = false;
       restoreTitleBarOverlay();
@@ -613,7 +739,59 @@
     }
 
     const hint = createBootStatusPill('agy-custom-boot-hint', closeCustomBoot);
+    hint.className = 'agy-boot-status-pill status-loading';
+    hint.innerHTML = '<div class="spinner"></div><span class="status-text">系统启动中...</span>';
     host.appendChild(hint);
+
+    function onCustomDismissScheduled() {
+      if (canSafelyDismissCustomBoot()) {
+        closeCustomBoot();
+      } else {
+        pendingDismiss = true;
+        updateCustomLoadingHint();
+      }
+    }
+
+    readyCheckTimer = setInterval(() => {
+      if (cleaned) {
+        if (readyCheckTimer) clearInterval(readyCheckTimer);
+        return;
+      }
+      if (!isHostReady) {
+        if (typeof window.__agyIsHostTrulyReady === 'function' && window.__agyIsHostTrulyReady()) {
+          isHostReady = true;
+          if (!canSafelyDismissCustomBoot()) {
+            updateCustomLoadingHint();
+          } else {
+            hint.className = 'agy-boot-status-pill status-ready';
+            if (delaySec === 0) {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
+            } else {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+            }
+          }
+          autoTimer = setupBootDismissScheduler(host, hint, onCustomDismissScheduled);
+        }
+      }
+      if (isHostReady) {
+        if (canSafelyDismissCustomBoot()) {
+          if (hint.className.includes('status-loading')) {
+            hint.className = 'agy-boot-status-pill status-ready';
+            if (delaySec === 0) {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
+            } else {
+              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+            }
+          }
+          if (pendingDismiss) {
+            closeCustomBoot();
+          }
+        } else {
+          updateCustomLoadingHint();
+        }
+      }
+    }, 60);
+    setTimeout(() => { isHostReady = true; }, 25000);
 
     function onKeyDown(e) {
       if (delaySec === 0) {

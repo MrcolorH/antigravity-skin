@@ -9,10 +9,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
 import crypto from 'node:crypto';
 
-const targetPluginDir = path.join(process.env.USERPROFILE, '.gemini', 'config', 'plugins', 'antigravity-skin');
+const targetPluginDir = path.join(process.env.USERPROFILE || os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin');
 
 // 1. 同步文件到已部署的插件目录
 const filesToSync = [
