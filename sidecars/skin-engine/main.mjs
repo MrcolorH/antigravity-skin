@@ -2060,6 +2060,7 @@ function buildClientBundle() {
 
   // 全局注入变量
   bundleParts.push(`window.__AG_SKIN_PORT__ = ${HTTP_PORT};`);
+  bundleParts.push(`window.__AG_SKIN_VERSION__ = ${JSON.stringify(getLocalPluginVersion())};`);
   bundleParts.push(`window.__AG_SKIN_CONFIG__ = ${JSON.stringify(config)};`);
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
