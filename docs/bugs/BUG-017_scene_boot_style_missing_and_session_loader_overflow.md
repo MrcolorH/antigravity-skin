@@ -85,3 +85,10 @@ if (!document.getElementById('agy-dynamic-wallpaper-style')) return false;
 - **归档状态**：`已封版归档`
 - **归档时间**：2026-10-23
 
+---
+
+## 快捷导航
+- [⬅ 返回缺陷追踪总清单](./BUG_TRACKING_LIST.md)
+- [⬅ 上一个缺陷: BUG-016 - 开屏引导动画与宿主主页加载冲突（双重动画、早泄穿帮与首帧无缝呈现闭环）](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md)
+- [➡ 下一个缺陷: BUG-018 - Windows客户端开屏动画退出进入首页出现450ms黑屏停滞一闪而过](./BUG-018_windows_boot_black_flicker_and_delay_stuck.md)
+
