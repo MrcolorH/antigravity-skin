@@ -10,8 +10,8 @@
 
 | 指标维度 | 统计数据 | 占比与状态说明 |
 | :--- | :---: | :--- |
-| **已登记缺陷总数** | **17** 条 | 覆盖全部历史及近期测试缺陷 |
-| **已修复封版** | **17** 条 | 占比 **100.0%**（全部已完成实机验证与复盘归档） |
+| **已登记缺陷总数** | **18** 条 | 覆盖全部历史及近期测试缺陷 |
+| **已修复封版** | **18** 条 | 占比 **100.0%**（全部已完成实机验证与复盘归档） |
 | **待验证 (实机确认中)** | **0** 条 | 占比 **0.0%** |
 | **修复中 / 待修复** | **0** 条 | 暂无阻塞积压缺陷 |
 
@@ -40,6 +40,7 @@
 | [BUG-015](./BUG-015_scene_wallpaper_dark_mode_black_screen.md) | Wallpaper素材库集成 | 场景素材动态壁纸在切换至深色模式后画面消失并呈现全黑底色，因CSS选择器特异度覆盖导致body实黑物理遮挡底层壁纸 | P1 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-015_scene_wallpaper_dark_mode_black_screen.md) |
 | [BUG-016](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md) | Wallpaper素材库集成 | 开屏引导动画与宿主主页加载冲突（双重动画、早泄穿帮与首帧无缝呈现闭环） | P1 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-016_boot_atomic_readiness_and_seamless_reveal.md) |
 | [BUG-017](./BUG-017_scene_boot_style_missing_and_session_loader_overflow.md) | Wallpaper素材库集成 | 场景壁纸模式冷启动核心样式缺失导致会话加载器错位、视口滚动条溢出与10秒死锁 | P0 | **已修复** | 2026-10-23 | 2026-10-23 | [查看详情](./BUG-017_scene_boot_style_missing_and_session_loader_overflow.md) |
+| [BUG-018](./BUG-018_windows_boot_black_flicker_and_delay_stuck.md) | Wallpaper素材库集成 | Windows客户端开屏动画退出进入首页出现450ms黑屏停滞一闪而过 | P1 | **已修复** | 2026-10-24 | 2026-10-24 | [查看详情](./BUG-018_windows_boot_black_flicker_and_delay_stuck.md) |
 
 ---
 
