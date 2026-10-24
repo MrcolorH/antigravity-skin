@@ -4391,3 +4391,93 @@ body:not(.dark):not(.theme-dark) .agy-btn-browse-inline:hover {
   background: #0284c7;
   color: #ffffff;
 }
+
+/* ==========================================================
+   子模块四：场景属性检查器面板（Inspector）与弹簧物理动效
+   ========================================================== */
+.agy-gear-icon {
+  display: inline-block;
+  transform-origin: center center;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agy-gear-icon.agy-gear-spin {
+  transform: rotate(90deg) !important;
+}
+
+.agy-inspector-drawer {
+  transition: max-height 380ms cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 260ms ease, margin 260ms ease;
+  will-change: max-height, opacity;
+  box-sizing: border-box;
+}
+.agy-inspector-drawer.is-opening {
+  display: block !important;
+  max-height: 480px !important;
+  opacity: 1 !important;
+  margin-top: 0.6rem !important;
+  margin-bottom: 0.4rem !important;
+}
+.agy-inspector-drawer.is-closing {
+  max-height: 0 !important;
+  opacity: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  pointer-events: none;
+  transition: max-height 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, margin 200ms ease !important;
+}
+
+/* 检查器控件列表区域：限制高度在 320px，防止占用空间过大；
+   隐藏内层视觉滚动条，保留鼠标滚轮/触摸板原生顺畅滚动，避免与外层弹窗形成双滚动条 */
+#agy-inspector-controls {
+  max-height: 320px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+#agy-inspector-controls::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.agy-inspector-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.375rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.agy-inspector-control-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+body:not(.dark):not(.theme-dark) .agy-inspector-control-row {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+body:not(.dark):not(.theme-dark) .agy-inspector-control-row:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.agy-inspector-color-preview {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  display: inline-block;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.agy-inspector-color-preview:hover {
+  transform: scale(1.1);
+}
+

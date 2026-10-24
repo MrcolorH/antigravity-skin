@@ -128,7 +128,8 @@ function buildDefaultConfig() {
         fps: 60,
         renderDpr: 1.0,
         sceneRenderer: 'dynamic',
-        sceneScripts: false
+        sceneScripts: true,
+        wallpaperUserProperties: {}
       },
       externalWallpaperLibrary: {
         wallpaperEnabled: false,
@@ -147,7 +148,15 @@ function normalizeConfig(raw) {
   if (!raw || typeof raw !== 'object') return base;
   const out = { ...base, ...raw };
   out.features = { ...base.features, ...(raw.features || {}) };
-  out.features.dynamicWallpaper = { ...base.features.dynamicWallpaper, ...(raw.features?.dynamicWallpaper || {}) };
+  out.features.dynamicWallpaper = {
+    ...base.features.dynamicWallpaper,
+    ...(raw.features?.dynamicWallpaper || {}),
+    sceneScripts: true, // 子模块四：SceneScript 脚本引擎全面默认受控激活
+    wallpaperUserProperties: {
+      ...(base.features.dynamicWallpaper.wallpaperUserProperties || {}),
+      ...(raw.features?.dynamicWallpaper?.wallpaperUserProperties || {})
+    }
+  };
   out.features.bootAnimationConfig = { ...base.features.bootAnimationConfig, ...(raw.features?.bootAnimationConfig || {}) };
   const lib = raw.features?.externalWallpaperLibrary || {};
   out.features.externalWallpaperLibrary = {
@@ -1696,6 +1705,42 @@ const server = http.createServer((req, res) => {
         sendJson(500, { ok: false, error: err.message });
       }
     });
+    return;
+  }
+
+  // 3.5 获取壁纸属性元数据（用于场景属性检查器 Inspector）
+  if (url.pathname === '/api/wallpaper-library/properties' && req.method === 'GET') {
+    try {
+      const folder = url.searchParams.get('folder') || '';
+      if (!folder) {
+        sendJson(400, { ok: false, error: '缺少 folder 参数' });
+        return;
+      }
+      const roots = getAuthorizedRoots();
+      const resolvedFolder = resolveFolderByHint(folder, roots);
+      if (!resolvedFolder || !fs.existsSync(resolvedFolder)) {
+        sendJson(404, { ok: false, error: '找不到指定的壁纸目录' });
+        return;
+      }
+      if (!isAuthorizedPath(resolvedFolder)) {
+        sendJson(403, { ok: false, error: '未授权访问该目录' });
+        return;
+      }
+      const result = parseWallpaperFolder(resolvedFolder);
+      if (!result.ok) {
+        sendJson(400, { ok: false, error: result.error || '解析壁纸失败' });
+        return;
+      }
+      sendJson(200, {
+        ok: true,
+        id: result.wallpaper?.id || path.basename(resolvedFolder),
+        properties: result.wallpaper?.properties || {},
+        hasProperties: !!result.wallpaper?.hasProperties
+      });
+    } catch (err) {
+      console.error('[Skin Engine] Failed to get properties:', err);
+      sendJson(500, { ok: false, error: err.message });
+    }
     return;
   }
 

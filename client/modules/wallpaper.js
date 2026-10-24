@@ -117,7 +117,9 @@ export function initWallpaper(options = {}) {
     fps = 60,
     renderDpr = 1.0,
     sceneRenderer = 'dynamic', // 'dynamic' 实时WebGL2 | 'static' 静态海报
-    sceneScripts = false  // SceneScript 沙箱非安全边界，同源宿主默认关（配置可开）
+    sceneScripts = true,       // 默认激活 Scene 脚本引擎，注入本地系统时钟与归一化日进度
+    wallpaperId = '',
+    wallpaperUserProperties = {}
   } = options;
 
   const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
@@ -819,6 +821,10 @@ export function initWallpaper(options = {}) {
       // 清理非当前保留的游离 canvas
       box.querySelectorAll('canvas:not(.agy-scene-retiring)').forEach(c => { try { c.remove(); } catch (e) {} });
 
+      // 读取当前壁纸个性化配置（优先按工坊 id，其次按目录名）
+      const wpId = wallpaperId || String(dir).split(/[\\/]/).filter(Boolean).pop() || '';
+      const initialProps = (wallpaperUserProperties && (wallpaperUserProperties[wpId] || wallpaperUserProperties[dir])) || {};
+
       // 传入容器 box，库在其内自建 WebGL canvas 并管理 backing store 与适配。
       // 注意：mount() 的 Promise 由首帧(onReady)落地，onReady 在 await 返回前触发，
       // 因此回调内不能引用尚未赋值的 inst——所有 canvas 样式一律放到 await 之后处理。
@@ -828,7 +834,8 @@ export function initWallpaper(options = {}) {
         fps: targetFps,
         renderDpr: targetDpr,
         autoQuality: true,
-        scripts: !!sceneScripts,
+        scripts: sceneScripts !== false,
+        properties: initialProps,
         volume: 0,
         fade: false,
         fadeDuration: 0,
@@ -1820,6 +1827,8 @@ export function initWallpaper(options = {}) {
       }
       if (payload.sceneRenderer !== undefined) sceneRenderer = normalizeSceneRenderer(payload.sceneRenderer);
       if (payload.sceneScripts !== undefined) sceneScripts = !!payload.sceneScripts;
+      if (payload.wallpaperId !== undefined) wallpaperId = payload.wallpaperId || '';
+      if (payload.wallpaperUserProperties !== undefined) wallpaperUserProperties = payload.wallpaperUserProperties || {};
       if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
         isWallpaperDeferred = false;
       }
@@ -1833,6 +1842,17 @@ export function initWallpaper(options = {}) {
         isWallpaperDeferred = false;
       }
       mountVideo();
+    },
+    // 阶段四：Live Tweak 即时热更接口——零延迟直通 GPU 与 SceneScript
+    setProperties: (props) => {
+      if (isDestroyed || !props) return;
+      if (sceneRendererInstance && typeof sceneRendererInstance.setProperties === 'function') {
+        try {
+          sceneRendererInstance.setProperties(props);
+        } catch (err) {
+          console.warn('[Scene Renderer] setProperties failed:', err);
+        }
+      }
     },
     updateStyle: (newCss) => {
       if (isDestroyed) return;

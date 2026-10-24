@@ -37,7 +37,8 @@
       "fps": 60,
       "renderDpr": 1.0,
       "sceneRenderer": "dynamic",
-      "sceneScripts": false
+      "sceneScripts": true,
+      "wallpaperUserProperties": {}
     },
     "externalWallpaperLibrary": {
       "wallpaperEnabled": false,

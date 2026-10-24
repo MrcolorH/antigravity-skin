@@ -162,6 +162,138 @@ function collectFiles(dir, maxDepth = 1, base = '', out = []) {
   return out;
 }
 
+const I18N_PROPERTY_LABELS = {
+  ui_browse_properties_scheme_color: '配色方案',
+  ui_editor_properties_color: '颜色',
+  ui_browse_properties_color: '颜色',
+  ui_browse_properties_clock: '时钟',
+  ui_editor_properties_clock: '时钟',
+  ui_browse_properties_time: '时间',
+  ui_browse_properties_date: '日期',
+  ui_browse_properties_speed: '播放速度',
+  ui_editor_properties_speed: '速度',
+  ui_browse_properties_scale: '缩放比例',
+  ui_editor_properties_scale: '缩放',
+  ui_browse_properties_alpha: '不透明度',
+  ui_editor_properties_alpha: '不透明度',
+  ui_browse_properties_blur: '模糊程度',
+  ui_editor_properties_blur: '模糊',
+  ui_browse_properties_volume: '音量',
+  ui_editor_properties_volume: '音量',
+  ui_browse_properties_audio: '音频响应',
+  ui_editor_properties_audio: '音频',
+  ui_browse_properties_brightness: '亮度',
+  ui_browse_properties_contrast: '对比度',
+  ui_browse_properties_saturation: '饱和度',
+  ui_browse_properties_fps: '帧率',
+  ui_browse_properties_font: '字体',
+  ui_browse_properties_text: '自定义文本',
+  ui_browse_properties_background: '背景',
+  ui_browse_properties_effect: '特效',
+  ui_editor_properties_effect: '特效',
+  ui_browse_properties_particles: '粒子特效',
+  ui_editor_properties_particles: '粒子',
+  ui_browse_properties_weather: '天气效果',
+  ui_browse_properties_mouse: '鼠标交互',
+  ui_browse_properties_parallax: '视差效果',
+  ui_browse_properties_bloom: '泛光',
+  ui_browse_properties_reflection: '倒影'
+};
+
+export function humanizePropertyText(key, text) {
+  const raw = String(text || key || '').trim();
+  if (!raw) return key;
+  const lower = raw.toLowerCase();
+  if (I18N_PROPERTY_LABELS[lower]) {
+    return I18N_PROPERTY_LABELS[lower];
+  }
+  if (raw.startsWith('ui_')) {
+    const stripped = raw.replace(/^ui_(browse|editor)_properties_|^ui_/, '');
+    return stripped.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return raw;
+}
+
+export function normalizeProperties(rawProps) {
+  if (!rawProps || typeof rawProps !== 'object') return null;
+  const normalized = {};
+  let defaultOrder = 0;
+
+  for (const [key, item] of Object.entries(rawProps)) {
+    if (!item || typeof item !== 'object') continue;
+    const rawType = String(item.type || '').toLowerCase();
+    const order = Number.isFinite(item.order) ? item.order : defaultOrder++;
+    const text = humanizePropertyText(key, item.text);
+
+    if (rawType === 'bool' || rawType === 'boolean') {
+      normalized[key] = {
+        order,
+        text,
+        type: 'bool',
+        value: Boolean(item.value)
+      };
+    } else if (rawType === 'slider' || rawType === 'range' || rawType === 'number') {
+      const min = Number.isFinite(Number(item.min)) ? Number(item.min) : 0;
+      const max = Number.isFinite(Number(item.max)) ? Number(item.max) : 100;
+      const step = Number.isFinite(Number(item.step)) && Number(item.step) > 0 ? Number(item.step) : 1;
+      const precision = Number.isFinite(Number(item.precision)) ? Number(item.precision) : (step < 1 ? 2 : 0);
+      let val = Number(item.value);
+      if (!Number.isFinite(val)) val = min;
+      normalized[key] = {
+        order,
+        text,
+        type: 'slider',
+        min,
+        max,
+        step,
+        precision,
+        value: val
+      };
+    } else if (rawType === 'color') {
+      let val = item.value;
+      if (typeof val !== 'string') {
+        if (Array.isArray(val)) val = val.join(' ');
+        else val = '1 1 1';
+      }
+      normalized[key] = {
+        order,
+        text,
+        type: 'color',
+        value: String(val).trim()
+      };
+    } else if (rawType === 'combo' || rawType === 'select') {
+      let options = [];
+      if (Array.isArray(item.options)) {
+        options = item.options.map(opt => {
+          if (typeof opt === 'object' && opt !== null) {
+            return {
+              label: humanizePropertyText(opt.value, opt.label || opt.text || opt.value),
+              value: opt.value !== undefined ? opt.value : opt.label
+            };
+          }
+          return { label: String(opt), value: opt };
+        });
+      }
+      normalized[key] = {
+        order,
+        text,
+        type: 'combo',
+        value: item.value !== undefined ? item.value : (options[0]?.value ?? ''),
+        options
+      };
+    } else if (rawType === 'text' || rawType === 'string') {
+      normalized[key] = {
+        order,
+        text,
+        type: 'text',
+        value: String(item.value !== undefined ? item.value : '')
+      };
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 /**
  * 解析单个壁纸目录。
  * 返回 { ok, wallpaper?, skipped?, reason?, error? }
@@ -265,6 +397,9 @@ export function parseWallpaperFolder(folderPath) {
   const totalSize = topFiles.reduce((sum, f) => sum + (f.size || 0), 0);
   const ratingInfo = normalizeRating(project?.contentrating);
 
+  const rawProps = project?.general?.properties || null;
+  const properties = rawProps ? normalizeProperties(rawProps) : null;
+
   const wallpaper = {
     id: folderName,
     folderPath: abs,
@@ -292,7 +427,9 @@ export function parseWallpaperFolder(folderPath) {
     virtual: !hasManifest,
     addedAt: dirStat.mtimeMs ? new Date(dirStat.mtimeMs).toISOString() : '',
     streamable: type === 'video' && !!entryFile,
-    scalable: type === 'scene'
+    scalable: type === 'scene',
+    properties,
+    hasProperties: !!(properties && Object.keys(properties).length > 0)
   };
 
   return { ok: true, wallpaper };

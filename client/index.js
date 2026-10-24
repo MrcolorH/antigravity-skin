@@ -75,7 +75,9 @@
       const fitPosition = dw.fitPosition || 'center';
       // 阶段七/八：场景动态渲染模式与精细控制（fps, renderDpr）
       const sceneRenderer = dw.sceneRenderer || 'dynamic';
-      const sceneScripts = dw.sceneScripts === true;
+      const sceneScripts = (sourceType === 'scene' || !!wallpaperDir) ? true : (dw.sceneScripts !== false);
+      const wallpaperId = dw.wallpaperId || '';
+      const wallpaperUserProperties = dw.wallpaperUserProperties || {};
       const fps = Number.isFinite(dw.fps) ? dw.fps : 60;
       const renderDpr = Number.isFinite(dw.renderDpr) ? dw.renderDpr : 1.0;
 
@@ -115,7 +117,9 @@
               fps,
               renderDpr,
               sceneRenderer,
-              sceneScripts
+              sceneScripts,
+              wallpaperId,
+              wallpaperUserProperties
             });
             window.__agyWallpaperInstance = wallpaperHandle;
             lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey };
@@ -154,7 +158,9 @@
                 fps,
                 renderDpr,
                 sceneRenderer,
-                sceneScripts
+                sceneScripts,
+                wallpaperId,
+                wallpaperUserProperties
               });
             } else if (typeof wallpaperHandle.setVideoEnabled === 'function') {
               wallpaperHandle.setVideoEnabled(mediaOn, videoUrl);

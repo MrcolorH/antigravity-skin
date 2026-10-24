@@ -527,7 +527,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -601,15 +601,44 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             </div>
           </div>
 
-          <!-- 素材库模式：展示当前壁纸、快捷浏览素材库入口与显示设置 -->
-          <div class="flex justify-between items-center gap-3" id="agy-wallpaper-active" style="display: none;">
-            <div class="flex flex-col gap-0.5 min-w-0">
-              <span class="text-xs font-medium opacity-85">当前动态壁纸</span>
-              <span id="agy-wallpaper-active-title" class="text-[11px] text-muted-foreground opacity-70 truncate">尚未从素材库选择</span>
+          <!-- 素材库模式：展示当前壁纸、快捷浏览素材库入口、场景属性检查器与显示设置 -->
+          <div class="flex flex-col gap-2 w-full" id="agy-wallpaper-active" style="display: none;">
+            <div class="flex justify-between items-center gap-3 w-full">
+              <div class="flex flex-col gap-0.5 min-w-0">
+                <span class="text-xs font-medium opacity-85">当前动态壁纸</span>
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span id="agy-wallpaper-active-title" class="text-[11px] text-muted-foreground opacity-70 truncate">尚未从素材库选择</span>
+                  <button type="button" id="agy-btn-scene-inspector-gear" title="场景属性检查器" class="text-xs text-muted-foreground hover:text-foreground opacity-75 hover:opacity-100 transition-all cursor-pointer p-0.5 rounded" style="display: none;">
+                    <span class="agy-gear-icon inline-block transition-transform duration-300">⚙️</span>
+                  </button>
+                </div>
+              </div>
+              <div class="shrink-0 flex items-center gap-1.5">
+                <button type="button" id="agy-btn-open-wall-lib" title="浏览 Wallpaper 素材库并选择壁纸" class="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/40 hover:bg-secondary/70 text-foreground cursor-pointer flex items-center gap-1.5 font-medium transition-all"><span>🖼</span><span class="text-[11px]">浏览素材库</span></button>
+                <button type="button" id="agy-btn-scene-inspector" title="场景壁纸属性检查器" class="shrink-0 text-xs px-2.5 py-1 rounded-md border border-border bg-secondary/40 hover:bg-secondary/70 text-foreground cursor-pointer flex items-center gap-1.5 font-medium transition-all" style="display: none;"><span class="agy-gear-icon inline-block transition-transform duration-300">⚙</span><span class="text-[11px]">场景属性</span></button>
+                <button type="button" id="agy-btn-wallpaper-display" title="动态壁纸显示与渲染设置" class="shrink-0 text-xs px-2.5 py-1 rounded-md bg-secondary/40 hover:bg-secondary/70 border border-border text-foreground flex items-center gap-1.5 cursor-pointer transition-all"><span>⚙</span><span class="text-[11px] font-medium">显示与渲染设置</span></button>
+              </div>
             </div>
-            <div class="shrink-0 flex items-center gap-1.5">
-              <button type="button" id="agy-btn-open-wall-lib" title="浏览 Wallpaper 素材库并选择壁纸" class="text-xs px-2 py-1 rounded-md border border-sky-500/40 text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 cursor-pointer flex items-center gap-1 font-medium transition-all"><span>🖼</span><span class="text-[11px]">浏览素材库</span></button>
-              <button type="button" id="agy-btn-wallpaper-display" title="动态壁纸显示与渲染设置" class="shrink-0 text-xs px-2.5 py-1 rounded-md bg-secondary/40 hover:bg-secondary/70 border border-border text-foreground flex items-center gap-1.5 cursor-pointer transition-all"><span>⚙</span><span class="text-[11px] font-medium">显示与渲染设置</span></button>
+
+            <!-- 阶段03：场景属性检查器抽屉（Inspector Drawer） -->
+            <div id="agy-scene-inspector-drawer" class="agy-inspector-drawer w-full rounded-lg border border-border/60 bg-slate-900/80 backdrop-blur-md shadow-lg overflow-hidden transition-all duration-300" style="display: none; max-height: 0; opacity: 0;">
+              <div class="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-secondary/30 text-xs">
+                <div class="flex items-center gap-2 font-medium text-foreground">
+                  <span class="text-muted-foreground">⚙️</span>
+                  <span>场景属性检查器 (Inspector)</span>
+                  <span id="agy-inspector-count-badge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary/60 text-muted-foreground font-mono">0 项参数</span>
+                </div>
+                <button type="button" id="agy-btn-close-inspector" class="text-muted-foreground hover:text-foreground text-xs px-1.5 py-0.5 rounded hover:bg-secondary/50 cursor-pointer transition-all">✕</button>
+              </div>
+              <div id="agy-inspector-controls" class="p-3 flex flex-col gap-2" style="max-height: 320px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none;">
+                <!-- 动态生成各控件 -->
+              </div>
+              <div class="flex items-center justify-between px-3 py-2 border-t border-border/40 bg-secondary/20 text-xs">
+                <button type="button" id="agy-btn-inspector-reset" class="px-2.5 py-1 rounded border border-border/60 hover:bg-secondary/50 text-muted-foreground hover:text-foreground text-[11px] cursor-pointer flex items-center gap-1.5 transition-all">
+                  <span>↺</span><span>恢复作者默认</span>
+                </button>
+                <span class="text-[10px] text-muted-foreground opacity-75">Live Tweak · 零延迟出帧</span>
+              </div>
             </div>
           </div>
 
@@ -769,16 +798,16 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           <div class="flex items-center justify-between pt-2 border-t border-border/40 mt-1" id="agy-wrap-win-patch" style="display: flex;">
             <div class="flex flex-col gap-0.5">
               <div class="flex items-center gap-1.5">
-                <span class="text-xs font-medium text-amber-400 flex items-center gap-1">
+                <span class="text-xs font-medium text-foreground flex items-center gap-1">
                   <span>🛠️ 开机动效引擎修复</span>
                 </span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">Win 专属</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-secondary/60 text-muted-foreground border border-border/60 font-mono">Win 专属</span>
               </div>
               <span class="text-[11px] text-muted-foreground opacity-75" id="agy-win-patch-tip">
                 客户端版本更新后开机动效失效？点击一键重新合入补丁（将自动重启客户端生效）
               </span>
             </div>
-            <button type="button" id="agy-btn-fix-boot-overlay" class="text-xs px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 cursor-pointer flex items-center gap-1 font-medium shrink-0">
+            <button type="button" id="agy-btn-fix-boot-overlay" class="text-xs px-2.5 py-1 rounded border border-border bg-secondary/40 hover:bg-secondary/70 text-foreground cursor-pointer flex items-center gap-1 font-medium shrink-0">
               <span>⚡ 一键修复</span>
             </button>
           </div>
@@ -1356,6 +1385,10 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           bootTitle.textContent = '尚未从素材库选择';
         }
       }
+
+      if (typeof window.__agySyncSceneInspector === 'function') {
+        window.__agySyncSceneInspector();
+      }
     }
 
     // 初始化外部 Wallpaper 素材库资产中心（零拷贝原地引用）
@@ -1664,6 +1697,350 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       };
     }
     syncSceneAudioUI();
+
+    // -------------------------------------------------------------------------
+    // 子模块四：场景属性检查器（Scene Inspector）与即时热更（Live Tweak）
+    // -------------------------------------------------------------------------
+    const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
+
+    function escapeAttr(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function rgbStrToHex(rgbStr) {
+      if (!rgbStr) return '#ffffff';
+      if (String(rgbStr).startsWith('#')) return String(rgbStr);
+      const parts = String(rgbStr).trim().split(/\s+/).map(Number);
+      if (parts.length >= 3) {
+        const r = Math.min(255, Math.max(0, Math.round(parts[0] <= 1.0 ? parts[0] * 255 : parts[0])));
+        const g = Math.min(255, Math.max(0, Math.round(parts[1] <= 1.0 ? parts[1] * 255 : parts[1])));
+        const b = Math.min(255, Math.max(0, Math.round(parts[2] <= 1.0 ? parts[2] * 255 : parts[2])));
+        return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+      }
+      return '#ffffff';
+    }
+
+    function hexToRgbStr(hex) {
+      const clean = String(hex).replace('#', '');
+      const r = (parseInt(clean.slice(0, 2), 16) / 255).toFixed(3);
+      const g = (parseInt(clean.slice(2, 4), 16) / 255).toFixed(3);
+      const b = (parseInt(clean.slice(4, 6), 16) / 255).toFixed(3);
+      return `${r} ${g} ${b}`;
+    }
+
+    let isDrawerOpen = false;
+    let currentPropertiesMeta = null;
+    let currentWpId = '';
+    let liveTweakRaf = null;
+    let liveTweakSaveTimer = null;
+
+    function getActiveDw() {
+      const activeCfg = (typeof getConfig === 'function' ? getConfig() : null) || config;
+      return activeCfg?.features?.dynamicWallpaper || {};
+    }
+
+    function dispatchLiveTweak(key, value) {
+      if (liveTweakRaf) cancelAnimationFrame(liveTweakRaf);
+      liveTweakRaf = requestAnimationFrame(() => {
+        try {
+          if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.setProperties === 'function') {
+            window.__agyWallpaperInstance.setProperties({ [key]: value });
+          } else if (window.__agySceneRenderer && typeof window.__agySceneRenderer.setProperties === 'function') {
+            window.__agySceneRenderer.setProperties({ [key]: value });
+          }
+        } catch (e) {
+          console.warn('[Scene Inspector] dispatchLiveTweak error:', e);
+        }
+      });
+    }
+
+    function scheduleSaveProperty(wpId, key, value) {
+      if (liveTweakSaveTimer) clearTimeout(liveTweakSaveTimer);
+      liveTweakSaveTimer = setTimeout(() => {
+        const activeCfg = (typeof getConfig === 'function' ? getConfig() : null) || config;
+        if (!activeCfg.features) activeCfg.features = {};
+        if (!activeCfg.features.dynamicWallpaper) activeCfg.features.dynamicWallpaper = {};
+        const dw = activeCfg.features.dynamicWallpaper;
+        if (!dw.wallpaperUserProperties) dw.wallpaperUserProperties = {};
+        if (!dw.wallpaperUserProperties[wpId]) dw.wallpaperUserProperties[wpId] = {};
+        dw.wallpaperUserProperties[wpId][key] = value;
+        triggerSave();
+      }, 300);
+    }
+
+    async function openDrawer() {
+      const drawer = document.getElementById('agy-scene-inspector-drawer');
+      const btnInspectorGear = document.getElementById('agy-btn-scene-inspector-gear');
+      const btnInspector = document.getElementById('agy-btn-scene-inspector');
+      if (!drawer) return;
+      isDrawerOpen = true;
+      drawer.style.display = 'block';
+      drawer.classList.remove('is-closing');
+      drawer.classList.add('is-opening');
+      btnInspectorGear?.querySelectorAll('.agy-gear-icon')?.forEach(el => el.classList.add('agy-gear-spin'));
+      btnInspector?.querySelectorAll('.agy-gear-icon')?.forEach(el => el.classList.add('agy-gear-spin'));
+      
+      if (!currentPropertiesMeta) {
+        await syncSceneInspectorUI(true);
+      } else {
+        renderInspectorControls();
+      }
+    }
+
+    function closeDrawer() {
+      const drawer = document.getElementById('agy-scene-inspector-drawer');
+      const btnInspectorGear = document.getElementById('agy-btn-scene-inspector-gear');
+      const btnInspector = document.getElementById('agy-btn-scene-inspector');
+      if (!drawer) return;
+      isDrawerOpen = false;
+      drawer.classList.remove('is-opening');
+      drawer.classList.add('is-closing');
+      btnInspectorGear?.querySelectorAll('.agy-gear-icon')?.forEach(el => el.classList.remove('agy-gear-spin'));
+      btnInspector?.querySelectorAll('.agy-gear-icon')?.forEach(el => el.classList.remove('agy-gear-spin'));
+      setTimeout(() => {
+        if (!isDrawerOpen && drawer) drawer.style.display = 'none';
+      }, 280);
+    }
+
+    function toggleDrawer() {
+      if (isDrawerOpen) closeDrawer();
+      else openDrawer();
+    }
+
+    function renderInspectorControls() {
+      const controlsContainer = document.getElementById('agy-inspector-controls');
+      const badgeCount = document.getElementById('agy-inspector-count-badge');
+      if (!controlsContainer) return;
+      controlsContainer.innerHTML = '';
+      if (!currentPropertiesMeta) {
+        controlsContainer.innerHTML = '<div class="text-[11px] text-muted-foreground opacity-60 text-center py-4">正在读取场景属性...</div>';
+        return;
+      }
+      const entries = Object.entries(currentPropertiesMeta);
+      if (badgeCount) badgeCount.textContent = `${entries.length} 项参数`;
+      if (entries.length === 0) {
+        controlsContainer.innerHTML = '<div class="text-[11px] text-muted-foreground opacity-60 text-center py-4">该场景壁纸暂无自定义参数</div>';
+        return;
+      }
+
+      const sorted = entries.sort((a, b) => (Number(a[1].order) || 0) - (Number(b[1].order) || 0));
+      const activeCfg = (typeof getConfig === 'function' ? getConfig() : null) || config;
+      const userProps = activeCfg.features?.dynamicWallpaper?.wallpaperUserProperties?.[currentWpId] || {};
+
+      for (const [key, meta] of sorted) {
+        const val = userProps[key] !== undefined ? userProps[key] : meta.value;
+        const row = document.createElement('div');
+        row.className = 'agy-inspector-control-row';
+
+        if (meta.type === 'bool') {
+          const isChecked = Boolean(val);
+          const switchId = `agy-prop-switch-${key}`;
+          row.innerHTML = `
+            <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+              <span class="text-xs font-medium truncate text-foreground" title="${escapeAttr(meta.text)}">${escapeAttr(meta.text)}</span>
+              <span class="text-[10px] text-muted-foreground opacity-60 font-mono">${escapeAttr(key)}</span>
+            </div>
+            <div class="shrink-0 flex items-center">
+              <label class="agy-switch-label" style="position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="${escapeAttr(switchId)}" class="agy-switch-input agy-control-input" data-key="${escapeAttr(key)}" ${isChecked ? 'checked' : ''} style="position: absolute; opacity: 0; width: 0; height: 0; margin: 0;">
+                <span class="agy-switch-track" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: ${isChecked ? '#007acc' : 'rgba(148, 163, 184, 0.35)'}; border: 1px solid ${isChecked ? '#007acc' : 'rgba(148, 163, 184, 0.5)'}; border-radius: 9999px; transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1); box-sizing: border-box;">
+                  <span class="agy-switch-thumb" style="position: absolute; top: 2px; left: ${isChecked ? '18px' : '2.5px'}; width: 16px; height: 16px; background-color: #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.35); transition: left 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);"></span>
+                </span>
+              </label>
+            </div>
+          `;
+          const input = row.querySelector('input');
+          const track = row.querySelector('.agy-switch-track');
+          const thumb = row.querySelector('.agy-switch-thumb');
+          input.onchange = () => {
+            const nextVal = input.checked;
+            if (track) {
+              track.style.backgroundColor = nextVal ? '#007acc' : 'rgba(148, 163, 184, 0.35)';
+              track.style.borderColor = nextVal ? '#007acc' : 'rgba(148, 163, 184, 0.5)';
+            }
+            if (thumb) {
+              thumb.style.left = nextVal ? '18px' : '2.5px';
+            }
+            dispatchLiveTweak(key, nextVal);
+            scheduleSaveProperty(currentWpId, key, nextVal);
+          };
+        } else if (meta.type === 'slider') {
+          const min = Number.isFinite(meta.min) ? meta.min : 0;
+          const max = Number.isFinite(meta.max) ? meta.max : 100;
+          const step = Number.isFinite(meta.step) ? meta.step : 1;
+          const prec = Number.isFinite(meta.precision) ? meta.precision : (step < 1 ? 2 : 0);
+          const curNum = Number.isFinite(Number(val)) ? Number(val) : min;
+
+          row.innerHTML = `
+            <div class="flex flex-col gap-1 w-full">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium truncate text-foreground" title="${escapeAttr(meta.text)}">${escapeAttr(meta.text)}</span>
+                <span class="font-mono text-foreground font-semibold text-[11px] agy-slider-val">${curNum.toFixed(prec)}</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] text-muted-foreground font-mono opacity-50">${min}</span>
+                <input type="range" class="w-full h-1.5 bg-secondary/60 rounded-lg appearance-none cursor-pointer accent-[#007acc] agy-control-input" data-key="${escapeAttr(key)}" min="${min}" max="${max}" step="${step}" value="${curNum}">
+                <span class="text-[10px] text-muted-foreground font-mono opacity-50">${max}</span>
+              </div>
+            </div>
+          `;
+          const range = row.querySelector('input[type="range"]');
+          const valLabel = row.querySelector('.agy-slider-val');
+          range.oninput = () => {
+            const nextVal = Number(range.value);
+            valLabel.textContent = nextVal.toFixed(prec);
+            dispatchLiveTweak(key, nextVal);
+            scheduleSaveProperty(currentWpId, key, nextVal);
+          };
+        } else if (meta.type === 'color') {
+          const hex = rgbStrToHex(val);
+          row.innerHTML = `
+            <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+              <span class="text-xs font-medium truncate text-foreground" title="${escapeAttr(meta.text)}">${escapeAttr(meta.text)}</span>
+              <span class="text-[10px] text-muted-foreground opacity-60 font-mono">${escapeAttr(key)}</span>
+            </div>
+            <div class="shrink-0 flex items-center gap-2">
+              <span class="text-[11px] font-mono text-muted-foreground opacity-80 agy-color-hex">${hex.toUpperCase()}</span>
+              <label class="relative cursor-pointer">
+                <span class="agy-inspector-color-preview" style="background-color: ${hex};"></span>
+                <input type="color" class="sr-only agy-control-input" data-key="${escapeAttr(key)}" value="${hex}">
+              </label>
+            </div>
+          `;
+          const colorInput = row.querySelector('input[type="color"]');
+          const previewBox = row.querySelector('.agy-inspector-color-preview');
+          const hexText = row.querySelector('.agy-color-hex');
+          const onColorChange = () => {
+            const nextHex = colorInput.value;
+            previewBox.style.backgroundColor = nextHex;
+            hexText.textContent = nextHex.toUpperCase();
+            const vecStr = hexToRgbStr(nextHex);
+            dispatchLiveTweak(key, vecStr);
+            scheduleSaveProperty(currentWpId, key, vecStr);
+          };
+          colorInput.oninput = onColorChange;
+          colorInput.onchange = onColorChange;
+        } else if (meta.type === 'combo') {
+          const opts = Array.isArray(meta.options) ? meta.options : [];
+          row.innerHTML = `
+            <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+              <span class="text-xs font-medium truncate text-foreground" title="${escapeAttr(meta.text)}">${escapeAttr(meta.text)}</span>
+              <span class="text-[10px] text-muted-foreground opacity-60 font-mono">${escapeAttr(key)}</span>
+            </div>
+            <div class="shrink-0 max-w-[50%]">
+              <select class="w-full text-xs px-2 py-1 rounded bg-secondary/50 border border-border/60 text-foreground focus:outline-none focus:border-[#007acc] agy-control-input" data-key="${escapeAttr(key)}">
+                ${opts.map(o => `<option value="${escapeAttr(o.value)}" ${String(o.value) === String(val) ? 'selected' : ''}>${escapeAttr(o.label || o.value)}</option>`).join('')}
+              </select>
+            </div>
+          `;
+          const select = row.querySelector('select');
+          select.onchange = () => {
+            const nextVal = select.value;
+            dispatchLiveTweak(key, nextVal);
+            scheduleSaveProperty(currentWpId, key, nextVal);
+          };
+        } else if (meta.type === 'text') {
+          const textVal = String(val ?? '');
+          row.innerHTML = `
+            <div class="flex flex-col gap-1 w-full">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-medium truncate text-foreground" title="${escapeAttr(meta.text)}">${escapeAttr(meta.text)}</span>
+                <span class="text-[10px] text-muted-foreground opacity-60 font-mono">${escapeAttr(key)}</span>
+              </div>
+              <input type="text" class="w-full text-xs px-2 py-1 rounded bg-secondary/40 border border-border/60 text-foreground focus:outline-none focus:border-[#007acc] agy-control-input" data-key="${escapeAttr(key)}" value="${escapeAttr(textVal)}" placeholder="请输入自定义文本...">
+            </div>
+          `;
+          const input = row.querySelector('input[type="text"]');
+          let textDebounce = null;
+          input.oninput = () => {
+            const nextVal = input.value;
+            if (textDebounce) clearTimeout(textDebounce);
+            textDebounce = setTimeout(() => {
+              dispatchLiveTweak(key, nextVal);
+              scheduleSaveProperty(currentWpId, key, nextVal);
+            }, 150);
+          };
+        }
+
+        controlsContainer.appendChild(row);
+      }
+    }
+
+    async function syncSceneInspectorUI(forceRender = false) {
+      const liveDw = getActiveDw();
+      const isScene = liveDw.enabled === true && (liveDw.sourceType === 'scene' || (!liveDw.sourceType && liveDw.wallpaperDir));
+      const btnInspectorGear = document.getElementById('agy-btn-scene-inspector-gear');
+      const btnInspector = document.getElementById('agy-btn-scene-inspector');
+      const btnResetInspector = document.getElementById('agy-btn-inspector-reset');
+      const btnCloseInspector = document.getElementById('agy-btn-close-inspector');
+
+      // 绑定静态操作按钮事件
+      if (btnInspectorGear) btnInspectorGear.onclick = toggleDrawer;
+      if (btnInspector) btnInspector.onclick = toggleDrawer;
+      if (btnCloseInspector) btnCloseInspector.onclick = closeDrawer;
+      if (btnResetInspector) {
+        btnResetInspector.onclick = () => {
+          if (!currentPropertiesMeta || !currentWpId) return;
+          const activeCfg = (typeof getConfig === 'function' ? getConfig() : null) || config;
+          if (activeCfg.features?.dynamicWallpaper?.wallpaperUserProperties?.[currentWpId]) {
+            delete activeCfg.features.dynamicWallpaper.wallpaperUserProperties[currentWpId];
+            triggerSave();
+          }
+          const defaultProps = {};
+          for (const [k, m] of Object.entries(currentPropertiesMeta)) {
+            defaultProps[k] = m.value;
+          }
+          if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.setProperties === 'function') {
+            window.__agyWallpaperInstance.setProperties(defaultProps);
+          } else if (window.__agySceneRenderer && typeof window.__agySceneRenderer.setProperties === 'function') {
+            window.__agySceneRenderer.setProperties(defaultProps);
+          }
+          renderInspectorControls();
+        };
+      }
+
+      if (!isScene || !liveDw.wallpaperDir) {
+        if (btnInspectorGear) btnInspectorGear.style.display = 'none';
+        if (btnInspector) btnInspector.style.display = 'none';
+        closeDrawer();
+        currentPropertiesMeta = null;
+        currentWpId = '';
+        return;
+      }
+
+      const wpId = liveDw.wallpaperId || String(liveDw.wallpaperDir).split(/[\\/]/).filter(Boolean).pop() || '';
+      currentWpId = wpId;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/wallpaper-library/properties?folder=${encodeURIComponent(liveDw.wallpaperDir)}`);
+        if (!res.ok) throw new Error('fetch properties failed status=' + res.status);
+        const data = await res.json();
+        if (data.ok && data.hasProperties && Object.keys(data.properties || {}).length > 0) {
+          currentPropertiesMeta = data.properties;
+          if (btnInspectorGear) btnInspectorGear.style.display = 'inline-flex';
+          if (btnInspector) btnInspector.style.display = 'inline-flex';
+          if (isDrawerOpen || forceRender) renderInspectorControls();
+        } else {
+          currentPropertiesMeta = null;
+          if (btnInspectorGear) btnInspectorGear.style.display = 'none';
+          if (btnInspector) btnInspector.style.display = 'none';
+          closeDrawer();
+        }
+      } catch (err) {
+        console.warn('[Scene Inspector] fetch properties error:', err);
+        currentPropertiesMeta = null;
+        if (btnInspectorGear) btnInspectorGear.style.display = 'none';
+        if (btnInspector) btnInspector.style.display = 'none';
+        closeDrawer();
+      }
+    }
+
+    window.__agySyncSceneInspector = syncSceneInspectorUI;
+    syncSceneInspectorUI();
 
     // A. 元素获取
     // 壁纸素材相关
