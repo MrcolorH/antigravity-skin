@@ -91,7 +91,9 @@
 - **实事求是的跨平台开机引导策略**：
   - **🍎 macOS 端（100% 纯净零改包）**：恪守苹果 Gatekeeper 严格代码签名机制，**绝对不解包或修改 `app.asar`**，完全由 Sidecar 守护进程通过 Chromium CDP 事件在毫秒级无感隐匿原生呼吸遮罩；
   - **🪟 Windows 端（深度防白闪补丁 + 随时一键还原）**：针对 Windows 下 Chromium 启动瞬间硬编码呼吸遮罩造成的闪白顽疾，安装脚本内置针对 `app.asar` 启动遮罩的轻量优化补丁（`patch-loading.bat`），实现极致的无白闪平滑溶出，并配套提供 `restore-loading.bat` 随时一键完整恢复官方原厂状态。
+  - **🛡️ 开机自愈守护（Windows）**：Antigravity 客户端**每次自动更新都会整体替换 `app.asar`**，注入其中的开机动效必然被覆盖。安装时会自动注册一个「登录延迟 10 秒」的隐藏自愈任务（用户启动文件夹 `Startup\AntigravitySkinSelfHeal.vbs`，无需管理员权限、无控制台闪窗）：检测到补丁标记丢失且客户端未运行 → 后台静默重打补丁；客户端正在运行 → 绝不强杀会话，标记为待恢复并顺延到下次登录。状态实时显示在「设置 - 外观 - 开机动效引擎修复」一行（✅ 已就绪 / ⚠️ 缺失），也可随时双击 `self-heal.bat` 手动自检。
 - **长连接持久巡检**：CDP 通道保持长效保活，页面重载、导航或热更新时自动无感补注皮肤，防止主题掉落。
+- **原生窗口按钮永不失联**：Windows WCO 底色一律使用不透明色并跟随壁纸明暗（透明底会导致 Windows 直接隐藏最小化/最大化/关闭按钮），开机动效期间用纯黑幕布无缝衔接。
 - **优雅退出**：客户端关闭时自动注销清理进程与端口，杜绝僵尸进程占用资源。
 
 ### 7. 客户端内一键在线热更新（跨平台：Windows & macOS）
@@ -152,7 +154,8 @@
 
 - **🪟 Windows 平台（支持深度 Asar 补丁与非侵入式双模式）**：
   - **全自动退出与重启**：运行 `install.bat` / `install.ps1` 会自动退出客户端，并在部署完成后自动重新拉起生效；
-  - **可选独立补丁与还原**：如需手动合入或还原官方原版，可随时双击 `patch-loading.bat` / `restore-loading.bat`。
+  - **可选独立补丁与还原**：如需手动合入或还原官方原版，可随时双击 `patch-loading.bat` / `restore-loading.bat`；
+  - **自愈与自检**：双击 `self-heal.bat` 可立即自检并按需重打补丁（客户端运行中会自动跳过，绝不打断会话），同时打印自愈守护的注册状态。
 
 ---
 
@@ -211,6 +214,7 @@ antigravity-skin/
 ├── uninstall.sh                # macOS / Linux 一键卸载脚本
 ├── patch-loading.bat           # Windows 前置开机动画防闪白溶出引擎升级脚本
 ├── restore-loading.bat         # Windows 一键安全恢复官方原厂开机状态脚本
+├── self-heal.bat               # Windows 开机动画补丁立即自检与自愈（附守护状态）
 ├── sidecars/
 │   └── skin-engine/
 │       ├── sidecar.json        # 官方 Sidecar 服务声明配置
@@ -232,6 +236,8 @@ antigravity-skin/
 │   ├── install.mjs             # 跨平台纯净白名单部署与 RPC 注册引擎
 │   ├── uninstall.mjs           # 跨平台安全卸载引擎
 │   ├── patch-boot-overlay.mjs  # 跨平台核心开机引擎与原生窗口锁黑补丁 (Win & macOS)
+│   ├── self-heal.mjs           # 开机自愈：检测 app.asar 补丁是否被客户端更新覆盖并按需静默重打
+│   ├── register-self-heal.mjs  # 注册/注销开机自愈守护（启动文件夹 VBS 隐藏执行，免管理员）
 │   ├── restore-boot-overlay.mjs# 跨平台官方 app.asar 自动还原脚本 (Win & macOS)
 │   └── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
 └── assets/

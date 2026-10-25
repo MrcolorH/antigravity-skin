@@ -381,7 +381,7 @@ try {
       }
     }
 
-    if (process.env.SKIP_KILL !== '1') {
+    if (process.env.SKIP_KILL !== '1' && process.env.SKIP_RELAUNCH !== '1') {
       await restartAntigravity();
 
       if (process.platform === 'win32') {
@@ -392,6 +392,8 @@ try {
         console.log('💡 补丁已全部就绪，本窗口将在 3 秒后自动关闭...');
         await new Promise(r => setTimeout(r, 3000));
       }
+    } else if (process.env.SKIP_RELAUNCH === '1') {
+      console.log('🩺 自愈模式完成：补丁已就绪，客户端保持关闭状态，下次启动即生效。');
     } else {
       console.log('⚡ 在线热注入完成：app.asar 已直接更新就绪，无需中断当前工作会话！');
     }

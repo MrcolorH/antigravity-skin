@@ -18,7 +18,15 @@ console.log('  正在卸载 Antigravity 主题与皮肤插件...');
 console.log('==================================================');
 
 if (fs.existsSync(targetPluginDir)) {
-  console.log('[1/2] 移除插件挂载目录...');
+  console.log('[1/3] 移除开机自愈守护...');
+  const unregisterScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
+  if (process.platform === 'win32' && fs.existsSync(unregisterScript)) {
+    try {
+      execSync(`"${process.execPath}" "${unregisterScript}" --unregister`, { stdio: 'inherit' });
+    } catch (_) {}
+  }
+
+  console.log('[2/3] 移除插件挂载目录...');
   try {
     const stat = fs.lstatSync(targetPluginDir);
     if (stat.isSymbolicLink()) {
@@ -33,7 +41,7 @@ if (fs.existsSync(targetPluginDir)) {
   }
 }
 
-console.log('[2/2] 注销插件配置...');
+console.log('[3/3] 注销插件配置...');
 
 async function disablePluginViaRpc() {
   const lsAddress = process.env.ANTIGRAVITY_LS_ADDRESS;

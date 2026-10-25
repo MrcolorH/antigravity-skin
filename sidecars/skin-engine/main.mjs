@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { spawn, execSync, execFile } from 'node:child_process';
 import {
@@ -41,6 +42,82 @@ const SCRIPTS_DIR = path.join(ASSETS_DIR, 'scripts');
 const VIDEOS_DIR = path.join(ASSETS_DIR, 'videos');
 const WALLPAPER_VIDEOS_DIR = path.join(VIDEOS_DIR, 'wallpaper');
 const BOOT_VIDEOS_DIR = path.join(VIDEOS_DIR, 'boot');
+
+// ---------------------------------------------------------------------------
+// 开机动画补丁（Windows）状态探针：供外观设置实时展示 + 引导一键修复
+// 背景：Antigravity 每次自动更新会替换 resources/app.asar，注入其中的开机动效会丢失
+// ---------------------------------------------------------------------------
+const BOOT_PATCH_MARKER = 'agy-video-boot-host';
+const SELF_HEAL_STATE_FILE = path.join(PLUGIN_ROOT, 'state', 'boot-patch.json');
+let __bootPatchCache = { at: 0, value: null };
+
+// 关键：Sidecar 运行在 Electron 宿主中，Electron 会劫持 fs，直接 read 一个 *.asar 文件
+// 会被当成「读取 asar 内某个成员」而抛 ENOENT。必须用 original-fs 拿到未劫持的原生 fs。
+const nodeRequire = createRequire(import.meta.url);
+let rawFs = null;
+try { rawFs = nodeRequire('original-fs'); } catch (_) { rawFs = fs; }
+
+function readFileRaw(filePath) {
+  try {
+    return rawFs.readFileSync(filePath);
+  } catch (_) {
+    return fs.readFileSync(filePath);
+  }
+}
+
+function locateAntigravityResources() {
+  const home = os.homedir();
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const candidates = [
+    path.join(localAppData, 'Programs', 'antigravity', 'resources'),
+    path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
+    path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources'),
+    path.join(programFiles, 'Antigravity', 'resources'),
+    path.join(programFilesX86, 'Antigravity', 'resources')
+  ];
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(path.join(dir, 'app.asar'))) return dir;
+    } catch (_) {}
+  }
+  return null;
+}
+
+function getBootPatchStatus(force = false) {
+  const now = Date.now();
+  if (!force && __bootPatchCache.value && now - __bootPatchCache.at < 5000) {
+    return __bootPatchCache.value;
+  }
+
+  let healState = null;
+  try { healState = JSON.parse(fs.readFileSync(SELF_HEAL_STATE_FILE, 'utf8')); } catch (_) {}
+
+  const resourcesDir = locateAntigravityResources();
+  let patched = false;
+  let asarPath = '';
+  if (resourcesDir) {
+    asarPath = path.join(resourcesDir, 'app.asar');
+    try {
+      patched = readFileRaw(asarPath).includes(BOOT_PATCH_MARKER);
+    } catch (_) {
+      patched = false;
+    }
+  }
+
+  const value = {
+    installed: !!resourcesDir,
+    patched,
+    asarPath,
+    hasBackup: !!resourcesDir && fs.existsSync(path.join(resourcesDir, 'app.asar.bak')),
+    pending: !!(healState && healState.pending),
+    deferredReason: (healState && healState.deferredReason) || '',
+    lastHealAt: (healState && healState.lastHealAt) || ''
+  };
+  __bootPatchCache = { at: now, value };
+  return value;
+}
 
 // 确保素材目录完备就绪
 for (const dir of [SCRIPTS_DIR, VIDEOS_DIR, WALLPAPER_VIDEOS_DIR, BOOT_VIDEOS_DIR]) {
@@ -851,6 +928,19 @@ const server = http.createServer((req, res) => {
       isMac: process.platform === 'darwin',
       isLinux: process.platform === 'linux'
     }));
+    return;
+  }
+
+  // API: Windows 开机动画补丁健康状态（外观设置实时展示 + 引导一键修复）
+  if (url.pathname === '/api/boot-patch/status' && req.method === 'GET') {
+    if (process.platform !== 'win32') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, isWindows: false, supported: false, installed: false, patched: false }));
+      return;
+    }
+    const status = getBootPatchStatus(url.searchParams.get('force') === '1');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, isWindows: true, supported: true, ...status }));
     return;
   }
 

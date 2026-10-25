@@ -63,7 +63,7 @@ try {
 
     # 白名单实体复制（装完后用户可以随意删除解压目录）
     $whitelistDirs = @("client", "sidecars", "assets", "scripts")
-    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "loadingOverlay.js", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh", "patch-loading.bat", "restore-loading.bat")
+    $whitelistFiles = @("plugin.json", "config.default.json", "package.json", "README.md", "loadingOverlay.js", "install.bat", "uninstall.bat", "install.ps1", "uninstall.ps1", "install.sh", "uninstall.sh", "patch-loading.bat", "restore-loading.bat", "self-heal.bat")
 
     foreach ($dir in $whitelistDirs) {
         $srcPath = Join-Path $sourceRoot $dir
@@ -110,11 +110,22 @@ try {
     if (Test-Path $patchScript) {
         if (Get-Command node -ErrorAction SilentlyContinue) {
             try {
-                Write-Host "[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除锁定)..." -ForegroundColor Green
+                Write-Host "[4/5] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除锁定)..." -ForegroundColor Green
                 node $patchScript
             } catch {
                 Write-Host "  ⚠️ 开机动画补丁执行出现异常，可随时双击 patch-loading.bat 重新合入。" -ForegroundColor Yellow
             }
+        }
+    }
+
+    # 5. 注册开机自愈守护（客户端更新覆盖 app.asar 后自动恢复补丁）
+    $registerScript = Join-Path $targetDir "scripts\register-self-heal.mjs"
+    if ((Test-Path $registerScript) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+        try {
+            Write-Host "[5/5] 正在注册开机自愈守护 (检测到补丁丢失时自动静默恢复)..." -ForegroundColor Green
+            node $registerScript
+        } catch {
+            Write-Host "  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。" -ForegroundColor Yellow
         }
     }
 
@@ -130,6 +141,7 @@ try {
     Write-Host " 🎬 Windows 开机动画专属提示：" -ForegroundColor Magenta
     Write-Host " 安装程序已自动为您关闭客户端并完成前置开机动画终极升级！" -ForegroundColor Magenta
     Write-Host " 如需重新打补丁，随时双击运行 patch-loading.bat；如需还原官方，可双击 restore-loading.bat。" -ForegroundColor DarkGray
+    Write-Host " 开机自愈守护已开启：客户端更新覆盖补丁后，下次登录 Windows 会自动静默恢复。" -ForegroundColor DarkGray
     Write-Host "--------------------------------------------------" -ForegroundColor DarkGray
     Write-Host " 请重新打开 Antigravity 客户端即可生效！" -ForegroundColor Cyan
     Write-Host "==================================================" -ForegroundColor Cyan

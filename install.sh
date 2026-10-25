@@ -77,7 +77,7 @@ mkdir -p "$TARGET_DIR"
 
 # 实体文件拷贝（杜绝软链接，确保用户解压后删除源文件依然完好）
 WHITELIST_DIRS=("client" "sidecars" "assets" "scripts")
-WHITELIST_FILES=("plugin.json" "config.default.json" "package.json" "README.md" "loadingOverlay.js" "install.bat" "uninstall.bat" "install.ps1" "uninstall.ps1" "install.sh" "uninstall.sh" "patch-loading.bat" "restore-loading.bat")
+WHITELIST_FILES=("plugin.json" "config.default.json" "package.json" "README.md" "loadingOverlay.js" "install.bat" "uninstall.bat" "install.ps1" "uninstall.ps1" "install.sh" "uninstall.sh" "patch-loading.bat" "restore-loading.bat" "self-heal.bat")
 
 for d in "${WHITELIST_DIRS[@]}"; do
     if [ -d "$SOURCE_ROOT/$d" ]; then
