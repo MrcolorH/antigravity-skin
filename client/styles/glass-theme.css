@@ -166,36 +166,70 @@
         }
 
         /* ========================================================
-           2.6 标题菜单项（反重力标题与菜单文字）：浅色纯黑高对比度，深色保持浅色
+           2.6 顶部标题菜单项（Antigravity / 文件 / 视图 / 窗口）
+           —— 字色必须跟随「壁纸顶部条带」明暗（html.agy-dark-topbar / agy-light-topbar），
+              而不是跟随原生主题。否则「浅色主题 + 深色壁纸」时黑字压黑底，顶部一个字都看不见。
+           —— 再叠一层极淡渐变蒙层兜底（不会破坏沉浸感），任何壁纸下都能读。
            ======================================================== */
+        [data-testid="title-menu-bar"] {
+          position: relative !important;
+        }
+
+        [data-testid="title-menu-bar"]::before {
+          content: "" !important;
+          position: absolute !important;
+          inset: 0 !important;
+          pointer-events: none !important;
+          z-index: 0 !important;
+          opacity: 0;
+          transition: opacity 0.35s ease !important;
+        }
+
+        html.agy-dark-topbar [data-testid="title-menu-bar"]::before {
+          background: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.12) 70%, rgba(0, 0, 0, 0)) !important;
+          opacity: 1;
+        }
+
+        html.agy-light-topbar [data-testid="title-menu-bar"]::before {
+          background: linear-gradient(to bottom, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.18) 70%, rgba(255, 255, 255, 0)) !important;
+          opacity: 1;
+        }
+
         [data-testid="title-menu-bar-item"] {
-          color: #000000 !important;
+          position: relative !important;
+          z-index: 1 !important;
           font-weight: 550 !important;
           font-size: 12.5px !important;
           border-radius: 6px !important;
-          transition: all 0.15s ease !important;
+          transition: color 0.15s ease, background-color 0.15s ease !important;
         }
 
-        [data-testid="title-menu-bar-item"]:hover {
-          background-color: rgba(255, 255, 255, 0.55) !important;
+        html.agy-dark-topbar [data-testid="title-menu-bar-item"] {
+          color: #f2f6fc !important;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75) !important;
+        }
+
+        html.agy-light-topbar [data-testid="title-menu-bar-item"] {
+          color: #0e131b !important;
+          text-shadow: 0 1px 2px rgba(255, 255, 255, 0.75) !important;
+        }
+
+        html.agy-dark-topbar [data-testid="title-menu-bar-item"]:hover {
+          background-color: rgba(255, 255, 255, 0.16) !important;
+          backdrop-filter: blur(12px) !important;
+          -webkit-backdrop-filter: blur(12px) !important;
+          color: #ffffff !important;
+          font-weight: 600 !important;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+        }
+
+        html.agy-light-topbar [data-testid="title-menu-bar-item"]:hover {
+          background-color: rgba(255, 255, 255, 0.60) !important;
           backdrop-filter: blur(12px) !important;
           -webkit-backdrop-filter: blur(12px) !important;
           color: #000000 !important;
           font-weight: 600 !important;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
-        }
-
-        .theme-dark [data-testid="title-menu-bar-item"],
-        .dark [data-testid="title-menu-bar-item"] {
-          color: #cbd5e1 !important;
-          font-weight: 500 !important;
-        }
-
-        .theme-dark [data-testid="title-menu-bar-item"]:hover,
-        .dark [data-testid="title-menu-bar-item"]:hover {
-          background-color: rgba(255, 255, 255, 0.14) !important;
-          color: #ffffff !important;
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
         }
 
         /* ========================================================
@@ -4481,3 +4515,282 @@ body:not(.dark):not(.theme-dark) .agy-inspector-control-row:hover {
   transform: scale(1.1);
 }
 
+
+/* ==========================================================================
+   15. 会话区「高透明 + 高字反差」自适应层  (override layer · 置于最后保证生效)
+   --------------------------------------------------------------------------
+   核心矛盾：面板越透明，字就越糊在壁纸上。
+     深色壁纸 + 深色字 = 看不清（原来的问题）
+     深色壁纸 + 浅色字 = 极清晰
+     浅色壁纸 + 深色字 = 极清晰
+   所以配色必须跟着壁纸明暗走，而不能跟着原生主题走。
+
+   实现：
+     · client/index.js 会把壁纸封面缩略采样成 32x32，算平均相对亮度，
+       在 <html> 上打标记：`agy-dark-wallpaper` / `agy-light-wallpaper`
+     · 本层据此切换两套数值：
+         深色壁纸 → 深色玻璃 + 白字 + 深色文字阴影
+         浅色壁纸 → 浅色玻璃 + 深字 + 浅色文字阴影
+     · 面板底噪用 backdrop-filter 的 brightness()/saturate() 稳定明暗，
+       因此 alpha 可以压得很低（很透）而字依然锐利。
+
+   调参入口：只改下面 :root 的数字，改完客户端 Ctrl+R 生效。
+   ========================================================================== */
+
+:root {
+  /* —— 透明度：0 = 完全看穿，1 = 完全不透 —— */
+  --agy-input-a:   0.22;   /* 底部输入框 */
+  --agy-bubble-a1: 0.28;   /* 用户提问气泡 · 渐变起色 */
+  --agy-bubble-a2: 0.15;   /* 用户提问气泡 · 渐变止色 */
+  --agy-agent-a:   0.15;   /* AI 回复卡片 */
+
+  /* —— 面板下方壁纸的提亮(浅壁纸)/压暗(深壁纸) —— */
+  --agy-lift-on-dark:  0.62;
+  --agy-lift-on-light: 1.35;
+
+  /* —— 背景模糊半径：越大字越清楚，越小壁纸细节越清晰 —— */
+  --agy-blur-input:  26px;
+  --agy-blur-bubble: 24px;
+  --agy-blur-agent:  28px;
+
+  /* —— 文字反差 —— */
+  --agy-text-on-dark:  #ffffff;   /* 深色壁纸上的文字 */
+  --agy-text-on-light: #060a14;   /* 浅色壁纸上的文字 */
+  --agy-text-weight:   500;       /* 字重（480~600 之间可微调，过高会显脏） */
+}
+
+/* ==========================================================================
+   15.1 底部输入框
+   ========================================================================== */
+div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]) {
+  background-color: rgba(255, 255, 255, var(--agy-input-a)) !important;
+  backdrop-filter: blur(var(--agy-blur-input)) saturate(165%) brightness(var(--agy-lift-on-light)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-input)) saturate(165%) brightness(var(--agy-lift-on-light)) !important;
+  border-color: rgba(255, 255, 255, 0.42) !important;
+}
+html.agy-dark-wallpaper div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+html.agy-dark-wallpaper div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+html.agy-dark-wallpaper div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+html.agy-dark-wallpaper div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
+.dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
+.theme-dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea) {
+  background-color: rgba(10, 14, 24, var(--agy-input-a)) !important;
+  backdrop-filter: blur(var(--agy-blur-input)) saturate(165%) brightness(var(--agy-lift-on-dark)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-input)) saturate(165%) brightness(var(--agy-lift-on-dark)) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* ==========================================================================
+   15.2 用户提问气泡
+   ========================================================================== */
+.user-bubble-card,
+[data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+[class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+[class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border {
+  background: linear-gradient(135deg,
+      rgba(255, 255, 255, var(--agy-bubble-a1)) 0%,
+      rgba(240, 246, 255, var(--agy-bubble-a2)) 100%) !important;
+  backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(var(--agy-lift-on-light)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(var(--agy-lift-on-light)) !important;
+  border-color: rgba(255, 255, 255, 0.45) !important;
+}
+html.agy-dark-wallpaper .user-bubble-card,
+html.agy-dark-wallpaper [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-dark-wallpaper [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-dark-wallpaper [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border,
+.dark .user-bubble-card,
+.theme-dark .user-bubble-card,
+.dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border,
+.theme-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border {
+  background: linear-gradient(135deg,
+      rgba(38, 46, 70, var(--agy-bubble-a1)) 0%,
+      rgba(16, 21, 34, var(--agy-bubble-a2)) 100%) !important;
+  backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(var(--agy-lift-on-dark)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(var(--agy-lift-on-dark)) !important;
+  border-color: rgba(165, 180, 252, 0.24) !important;
+}
+
+/* ==========================================================================
+   15.3 AI 回复卡片
+   ========================================================================== */
+div[role="article"][aria-label="Agent response"],
+div[aria-label="Agent response"] {
+  background-color: rgba(255, 255, 255, var(--agy-agent-a)) !important;
+  backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(var(--agy-lift-on-light)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(var(--agy-lift-on-light)) !important;
+  border-color: rgba(255, 255, 255, 0.34) !important;
+}
+html.agy-dark-wallpaper div[role="article"][aria-label="Agent response"],
+html.agy-dark-wallpaper div[aria-label="Agent response"],
+.dark div[role="article"][aria-label="Agent response"],
+.dark div[aria-label="Agent response"],
+.theme-dark div[role="article"][aria-label="Agent response"],
+.theme-dark div[aria-label="Agent response"] {
+  background-color: rgba(11, 16, 27, var(--agy-agent-a)) !important;
+  backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(var(--agy-lift-on-dark)) !important;
+  -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(var(--agy-lift-on-dark)) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ==========================================================================
+   15.4 文字反差（深色壁纸 → 白字 + 深色描边；浅色壁纸 → 深字 + 浅色描边）
+   ========================================================================== */
+.user-bubble-text,
+[data-testid="user-input-step"] [data-quotable="true"],
+[class*="user-input-step"] [data-quotable="true"],
+[data-testid="user-input-step"] [class*="whitespace-pre-wrap"],
+[class*="user-input-step"] [class*="whitespace-pre-wrap"] {
+  color: var(--agy-text-on-light) !important;
+  font-weight: var(--agy-text-weight) !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.70), 0 0 2px rgba(255, 255, 255, 0.55) !important;
+}
+html.agy-dark-wallpaper .user-bubble-text,
+html.agy-dark-wallpaper [data-testid="user-input-step"] [data-quotable="true"],
+html.agy-dark-wallpaper [class*="user-input-step"] [data-quotable="true"],
+html.agy-dark-wallpaper [data-testid="user-input-step"] [class*="whitespace-pre-wrap"],
+html.agy-dark-wallpaper [class*="user-input-step"] [class*="whitespace-pre-wrap"],
+.dark .user-bubble-text,
+.theme-dark .user-bubble-text,
+.dark [class*="user-input-step"] [data-quotable="true"],
+.theme-dark [class*="user-input-step"] [data-quotable="true"] {
+  color: var(--agy-text-on-dark) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.90), 0 0 12px rgba(0, 0, 0, 0.60) !important;
+}
+
+div[aria-label="Agent response"],
+div[aria-label="Agent response"] .leading-relaxed {
+  color: var(--agy-text-on-light) !important;
+  font-weight: var(--agy-text-weight) !important;
+  line-height: 1.68 !important;
+}
+div[aria-label="Agent response"] .leading-relaxed {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.65), 0 0 2px rgba(255, 255, 255, 0.50) !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"],
+html.agy-dark-wallpaper div[aria-label="Agent response"] .leading-relaxed,
+.dark div[aria-label="Agent response"],
+.dark div[aria-label="Agent response"] .leading-relaxed,
+.theme-dark div[aria-label="Agent response"],
+.theme-dark div[aria-label="Agent response"] .leading-relaxed {
+  color: var(--agy-text-on-dark) !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"] .leading-relaxed,
+.dark div[aria-label="Agent response"] .leading-relaxed,
+.theme-dark div[aria-label="Agent response"] .leading-relaxed {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* 次级/弱化文字：透明度从 0.75 提到 0.92，避免高透明面板下彻底看不清 */
+div[aria-label="Agent response"] [class*="text-muted-foreground"],
+div[aria-label="Agent response"] [class*="opacity-"] {
+  opacity: 1 !important;
+}
+
+/* 输入框内正文（真正在打字的区域） */
+div[class*="bg-card-border"] [contenteditable="true"],
+div[class*="bg-card-border"] textarea,
+div[class*="rounded-2xl"] [contenteditable="true"],
+div[class*="rounded-2xl"] textarea {
+  color: var(--agy-text-on-light) !important;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.55) !important;
+}
+html.agy-dark-wallpaper div[class*="bg-card-border"] [contenteditable="true"],
+html.agy-dark-wallpaper div[class*="bg-card-border"] textarea,
+html.agy-dark-wallpaper div[class*="rounded-2xl"] [contenteditable="true"],
+html.agy-dark-wallpaper div[class*="rounded-2xl"] textarea,
+.dark div[class*="bg-card-border"] [contenteditable="true"],
+.theme-dark div[class*="bg-card-border"] [contenteditable="true"] {
+  color: var(--agy-text-on-dark) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.70) !important;
+}
+
+/* ==========================================================================
+   15.5 代码区：面板变透后单独给一层稳定底噪，代码绝不糊在壁纸上
+   ========================================================================== */
+div[aria-label="Agent response"] pre {
+  background-color: rgba(252, 253, 255, 0.90) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 10px !important;
+  text-shadow: none !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"] pre,
+.dark div[aria-label="Agent response"] pre,
+.theme-dark div[aria-label="Agent response"] pre {
+  background-color: rgba(6, 9, 16, 0.62) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+/* 纯文本（非语法高亮 span）的代码底色兜底，保证不会出现白字白底 */
+div[aria-label="Agent response"] pre,
+div[aria-label="Agent response"] pre code {
+  color: #0b1220 !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"] pre,
+html.agy-dark-wallpaper div[aria-label="Agent response"] pre code,
+.dark div[aria-label="Agent response"] pre,
+.dark div[aria-label="Agent response"] pre code {
+  color: #e8eefc !important;
+}
+/* 语法高亮 token 保留自身配色（元素自身的 color 声明优先于继承，无需处理） */
+
+/* 行内代码胶囊 */
+div[aria-label="Agent response"] p code:not(pre code),
+div[aria-label="Agent response"] li code:not(pre code) {
+  background-color: rgba(250, 251, 255, 0.92) !important;
+  border: 1px solid rgba(0, 0, 0, 0.10) !important;
+  color: #0b1220 !important;
+  text-shadow: none !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"] p code:not(pre code),
+html.agy-dark-wallpaper div[aria-label="Agent response"] li code:not(pre code),
+.dark div[aria-label="Agent response"] p code:not(pre code),
+.dark div[aria-label="Agent response"] li code:not(pre code) {
+  background-color: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #eaf2ff !important;
+}
+
+/* 链接：高透明的深色玻璃上，浅色主题的深蓝链接会看不清 */
+html.agy-dark-wallpaper div[aria-label="Agent response"] a,
+.dark div[aria-label="Agent response"] a,
+.theme-dark div[aria-label="Agent response"] a {
+  color: #93c5fd !important;
+  text-decoration-color: rgba(147, 197, 253, 0.5) !important;
+}
+
+/* 表格分隔线 */
+div[aria-label="Agent response"] table th,
+div[aria-label="Agent response"] table td {
+  border-color: rgba(0, 0, 0, 0.10) !important;
+}
+html.agy-dark-wallpaper div[aria-label="Agent response"] table th,
+html.agy-dark-wallpaper div[aria-label="Agent response"] table td,
+.dark div[aria-label="Agent response"] table th,
+.dark div[aria-label="Agent response"] table td {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* ==========================================================================
+   17. 透明面文字对比度守护（Contrast Guard）
+   --------------------------------------------------------------------------
+   背景：面板越透，原生浅色主题的深色字就会直接压在深色壁纸上——顶部菜单、
+         侧边栏标题、空状态、图标按钮等大量页面元素会「黑字压黑底」完全看不清。
+
+   机制：client/index.js 逐个文本/图标元素算出最近的不透明背景，做 WCAG 对比度
+         校验，低于 3:1 才给元素打上 data-agy-cg="light|dark"，由下面两条规则上色。
+         用「属性选择器」而不是 inline style：React 重渲染会冲掉 inline 样式，
+         但不会动我们自定义的 data-* 属性，所以不会被覆盖。
+
+   调参入口：改这里的两个色值即可（需与 index.js 里的 CG_LIGHT / CG_DARK 保持一致）。
+   ========================================================================== */
+[data-agy-cg][data-agy-cg="light"] {
+  color: #f4f7fb !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-agy-cg][data-agy-cg="dark"] {
+  color: #0b0f14 !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.55) !important;
+}
