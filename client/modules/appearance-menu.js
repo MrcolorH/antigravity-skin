@@ -2595,6 +2595,32 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       };
     }
 
+    // 实时展示开机动画补丁健康状态：客户端更新覆盖 app.asar 后立刻可见并引导修复
+    if (isWin && tipWinPatch) {
+      fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-patch/status`)
+        .then(res => res.json())
+        .then(info => {
+          if (!info || !info.ok || !info.supported) return;
+          if (!info.installed) {
+            tipWinPatch.textContent = '未检测到 Antigravity 安装目录，无法核对开机动效补丁状态。';
+            return;
+          }
+          if (info.patched) {
+            tipWinPatch.textContent = '✅ 补丁已就绪 · 开机自愈守护已开启（客户端更新后下次登录自动恢复）';
+            tipWinPatch.className = 'text-[11px] text-emerald-500 font-medium';
+          } else {
+            tipWinPatch.textContent = info.pending
+              ? '⚠️ 客户端更新已覆盖补丁，当前为官方原版开机动效，将在下次登录自动恢复；也可点击右侧立即修复'
+              : '⚠️ 开机动画补丁缺失，当前为官方原版开机动效，点击右侧一键修复';
+            tipWinPatch.className = 'text-[11px] text-amber-400 font-medium';
+            if (btnFixBoot) {
+              btnFixBoot.className = btnFixBoot.className.replace('bg-secondary/40', 'bg-amber-500/20 border-amber-500/40');
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     // ==========================================
     // 插件在线热更新事件绑定与自愈巡检 (Cross-Platform)
     // ==========================================

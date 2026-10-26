@@ -109,9 +109,10 @@
 
   function setBootTitleBarOverlay() {
     if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+      // 开机幕布为纯黑：按钮区跟纯黑（不透明），既不破画面也不会被系统隐藏
       window.electronNative.setTitleBarOverlay({
-        color: 'rgba(0, 0, 0, 0)',
-        symbolColor: '#f8fafc',
+        color: '#000000',
+        symbolColor: '#e8eef7',
         height: 35
       }).catch(() => {});
     }

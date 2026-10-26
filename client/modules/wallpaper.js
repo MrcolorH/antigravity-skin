@@ -3,7 +3,30 @@
  */
 
 
-// 0. 同步并持久锁定 Windows 原生窗口控制按钮（WCO）强制完全透明与图标色
+// 0. 同步并持久锁定 Windows 原生窗口控制按钮（WCO）配色
+//
+// 踩坑记录（BUG-021）：以前为追求「沉浸式」把 WCO 底色设成 rgba(0,0,0,0)，
+// Windows 遇到完全透明的标题栏遮罩会直接把最小化/最大化/关闭三个按钮整体隐藏
+// （实测 navigator.windowControlsOverlay.visible === false，用户彻底无法最小化/关闭）。
+// 结论：WCO 底色必须是不透明色，只能「跟着壁纸顶部明暗换深浅」，不能「变透明」。
+function agyTitleBarTone() {
+  const html = document.documentElement;
+  const top = html ? parseFloat(html.dataset.agyTopLum || '') : NaN;
+  const all = html ? parseFloat(html.dataset.agyWallpaperLum || '') : NaN;
+  const lum = isNaN(top) ? all : top;
+
+  const nativeDark = (document.body && (
+    document.body.classList.contains('dark') ||
+    document.body.classList.contains('theme-dark')
+  )) || (html && html.classList.contains('dark'));
+
+  // 阈值与壁纸明暗判定保持一致；顶部条带更黑时优先按顶部算
+  const isDark = isNaN(lum) ? nativeDark : lum < 0.32;
+  return isDark
+    ? { color: '#0b0f19', symbolColor: '#e8eef7' }
+    : { color: '#f4f6fa', symbolColor: '#1c2430' };
+}
+
 function syncTitleBarOverlay(force = false) {
   if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
     const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
@@ -29,27 +52,23 @@ function syncTitleBarOverlay(force = false) {
       return;
     }
 
-    // 核心规范：在自定义皮肤与动效增强开启时，右上角 win 栏三个按钮必须始终保持强制完全透明！
+    // 核心规范：开机动效期间与大屏幕壁纸一律保持「不透明」底色，
+    // 深浅跟随壁纸顶部明暗（绝不能再使用透明色，否则原生窗口按钮会被系统隐藏）
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
                           !!document.getElementById('agy-scene-boot-host') ||
                           (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
 
-    // 无论开机动画还是主界面视频壁纸/毛玻璃，底色始终强制纯透明
-    const color = 'rgba(0, 0, 0, 0)';
+    // 开机阶段幕布为纯黑，按钮区跟着纯黑最无缝；开机结束后跟随壁纸顶部明暗
+    const tone = isBootPlaying
+      ? { color: '#000000', symbolColor: '#e8eef7' }
+      : agyTitleBarTone();
 
-    let symbolColor = '#f8fafc';
-    if (!isBootPlaying) {
-      const isDark = (document.body && (
-        document.body.classList.contains('dark') ||
-        document.body.classList.contains('theme-dark')
-      )) || (document.documentElement && document.documentElement.classList.contains('dark'));
-      // 主界面非开机时：根据深浅色自适应图标颜色，浅色主题使用纯黑色图标保证在浅色天空/亮色壁纸下清晰可辨
-      symbolColor = isDark ? '#f8fafc' : '#000000';
-    }
+    const color = tone.color;
+    const symbolColor = tone.symbolColor;
 
-    const cacheKey = `custom_trans__${color}__${symbolColor}`;
+    const cacheKey = `tone__${color}__${symbolColor}`;
     // 关键修复：在 force 强制模式或开机动画播放中，绝不被缓存阻断！彻底压制宿主在 0~8 秒内异步覆盖的白色背景！
     if (!force && !isBootPlaying && window.__agyLastTitleBarKey === cacheKey) return;
     window.__agyLastTitleBarKey = cacheKey;

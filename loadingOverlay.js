@@ -295,17 +295,54 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       }
     } catch (_) {}
 
-    // 主窗口原生底色设为黑色，标题栏透明
+    // 主窗口原生底色设为黑色；标题栏(WCO)遮罩必须使用「不透明色」！
+    // 踩坑记录：color 传透明色 '#00000000' 会让 Windows 直接隐藏最小化/最大化/关闭按钮
+    // （navigator.windowControlsOverlay.visible 变为 false），故改为不透明纯黑 + 浅色符号，
+    // 与纯黑幕布无缝衔接；开机结束后再跟随壁纸顶部明暗恢复舒适配色。
+    const TITLEBAR_H = 30;
+    const applyTitleBarOverlay = (isDark) => {
+      try {
+        if (!win || win.isDestroyed()) return;
+        if (typeof win.setTitleBarOverlay !== 'function') return;
+        win.setTitleBarOverlay({
+          color: isDark ? '#0b0f19' : '#f4f6fa',
+          symbolColor: isDark ? '#e8eef7' : '#1c2430',
+          height: TITLEBAR_H
+        });
+      } catch (_) {}
+    };
+
+    let lastTitleBarDark = true;
+    const syncTitleBarTone = (force) => {
+      try {
+        if (!win || win.isDestroyed() || !win.webContents) return;
+        win.webContents.executeJavaScript(`(() => {
+          const el = document.documentElement;
+          const top = parseFloat(el.dataset.agyTopLum || '');
+          const all = parseFloat(el.dataset.agyWallpaperLum || '');
+          const v = isNaN(top) ? all : top;
+          if (!isNaN(v)) return v;
+          return el.classList.contains('agy-dark-wallpaper') ? 0.04 : 0.96;
+        })()`).then((lum) => {
+          const isDark = typeof lum === 'number' ? lum < 0.32 : true;
+          if (!force && isDark === lastTitleBarDark) return;
+          lastTitleBarDark = isDark;
+          applyTitleBarOverlay(isDark);
+        }).catch(() => {});
+      } catch (_) {}
+    };
+
     try {
       win.setBackgroundColor('#000000');
-      if (typeof win.setTitleBarOverlay === 'function') {
-        win.setTitleBarOverlay({
-          color: '#00000000',
-          symbolColor: '#f8fafc',
-          height: 30
-        });
-      }
+      applyTitleBarOverlay(true);
     } catch (_) {}
+
+    // 壁纸切换 / 窗口重新聚焦时自动跟随顶部壁纸明暗，保证按钮始终清晰可见
+    if (!win.__agyTitleBarToneHooked) {
+      win.__agyTitleBarToneHooked = true;
+      try { win.on('focus', () => syncTitleBarTone(false)); } catch (_) {}
+      try { win.on('restore', () => syncTitleBarTone(false)); } catch (_) {}
+    }
 
     // 从源头杜绝前端渲染进程重复播放开机动画
     if (isBootEnabled && win.webContents) {
@@ -380,6 +417,12 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
         win.off("resize", updateBounds);
         view.webContents.removeListener("before-input-event", onBeforeInput);
         win.webContents.removeListener("before-input-event", onBeforeInput);
+      } catch (_) {}
+      // 幕布移除后：把原生窗口按钮的配色交还给壁纸（深壁纸→深色底+浅符号）
+      try {
+        syncTitleBarTone(true);
+        setTimeout(() => syncTitleBarTone(false), 1200);
+        setTimeout(() => syncTitleBarTone(false), 4000);
       } catch (_) {}
       try {
         view.webContents.close();

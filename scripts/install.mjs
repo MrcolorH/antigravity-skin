@@ -108,8 +108,9 @@ for (const obs of obsoleteDirs) {
 const WHITELIST_DIRS = ['client', 'sidecars', 'assets', 'scripts'];
 const WHITELIST_FILES = [
   'plugin.json', 'config.default.json', 'package.json', 'README.md',
+  'loadingOverlay.js', 'provisionSplash.js',
   'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh',
-  'patch-loading.bat', 'restore-loading.bat'
+  'patch-loading.bat', 'restore-loading.bat', 'self-heal.bat'
 ];
 
 function copyDirSafe(src, dest) {
@@ -307,6 +308,17 @@ if (process.platform === 'win32') {
     } catch (e) {
       console.log('  ⚠️ 开机动画补丁执行出现异常:', e.message);
       console.log('     👉 您可随时在外观设置中点击「一键修复」或双击 patch-loading.bat 重新合入！');
+    }
+  }
+
+  // 5. 注册开机自愈守护：客户端更新覆盖 app.asar 后，下次登录 Windows 自动静默重打补丁
+  const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
+  if (fs.existsSync(registerScript)) {
+    try {
+      console.log('\n[5/5] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
+      execSync(`"${process.execPath}" "${registerScript}"`, { stdio: 'inherit' });
+    } catch (e) {
+      console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
     }
   }
 }

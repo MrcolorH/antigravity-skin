@@ -26,7 +26,7 @@ const WHITELIST_DIRS = ['client', 'sidecars', 'assets', 'scripts'];
 const WHITELIST_FILES = [
   'plugin.json', 'config.default.json', 'package.json', 'README.md',
   'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh',
-  'patch-loading.bat', 'restore-loading.bat', 'loadingOverlay.js', 'provisionSplash.js'
+  'patch-loading.bat', 'restore-loading.bat', 'loadingOverlay.js', 'provisionSplash.js', 'self-heal.bat'
 ];
 
 for (const dir of WHITELIST_DIRS) {
