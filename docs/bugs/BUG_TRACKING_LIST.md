@@ -10,10 +10,10 @@
 
 | 指标维度 | 统计数据 | 占比与状态说明 |
 | :--- | :---: | :--- |
-| **已登记缺陷总数** | **21** 条 | 覆盖全部历史及近期测试缺陷 |
-| **已修复封版** | **21** 条 | 占比 **100.0%**（全部已完成实机验证与复盘归档） |
+| **已登记缺陷总数** | **23** 条 | 覆盖全部历史及近期测试缺陷 |
+| **已修复封版** | **23** 条 | 占比 **100.0%**（全量已完成实机验证与复盘归档） |
 | **待验证 (实机确认中)** | **0** 条 | 占比 **0.0%** |
-| **修复中 / 待修复** | **0** 条 | 暂无阻塞积压缺陷 |
+| **修复中 / 待修复** | **0** 条 | 占比 **0.0%** |
 
 ---
 
@@ -44,6 +44,8 @@
 | [BUG-019](./BUG-019_macos_boot_black_white_flicker_and_delay.md) | Wallpaper素材库集成 | macOS客户端启动时闪烁黑屏白屏再延迟进入开屏动画（官方遮罩自毁白闪与CDP底板置黑接力修复） | P1 | **已修复** | 2026-10-24 | 2026-10-24 | [查看详情](./BUG-019_macos_boot_black_white_flicker_and_delay.md) |
 | [BUG-020](./BUG-020_boot_patch_lost_after_update_and_reboot.md) | Wallpaper素材库集成 | 重启电脑后皮肤与开机动效整体变回官方原样（安装白名单漏项未落盘 + 客户端更新覆盖 app.asar 无自愈机制） | P0 | **已修复** | 2026-10-25 | 2026-10-25 | [查看详情](./BUG-020_boot_patch_lost_after_update_and_reboot.md) |
 | [BUG-021](./BUG-021_top_bar_unreadable_and_wco_buttons_hidden.md) | Wallpaper素材库集成 | 顶部文字黑压黑几乎不可读，且原生最小化/最大化/关闭按钮整体消失（WCO 底色被设为全透明 + 字色只看原生主题） | P0 | **已修复** | 2026-10-25 | 2026-10-25 | [查看详情](./BUG-021_top_bar_unreadable_and_wco_buttons_hidden.md) |
+| [BUG-022](./BUG-022_wco_opaque_patch_breaks_immersion.md) | 开机自愈守护与对比度守护 | 右上角原生窗口按钮 (WCO) 底色被强设为不透明纯色导致矩形色块突兀，破坏毛玻璃与壁纸沉浸感 | P1 | **已修复** | 2026-10-26 | 2026-10-26 | [查看详情](./BUG-022_wco_opaque_patch_breaks_immersion.md) |
+| [BUG-023](./BUG-023_native_theme_switch_out_of_sync.md) | 开机自愈守护与对比度守护 | 缺乏深浅色主题切换实时联动，且明亮主题加白背景下顶部操作栏与右上角 WCO 严重隐形看不清 | P1 | **已修复** | 2026-10-26 | 2026-10-26 | [查看详情](./BUG-023_native_theme_switch_out_of_sync.md) |
 
 ---
 
@@ -73,6 +75,10 @@
 - [BUG-002: 外观设置残留冗余横幅卡片，且热更新标题在深色主题下异常显示为黑色](./BUG-002_appearance_settings_redundant_banner_and_dark_title.md) `[已修复]`
 - [BUG-004: 输入框快捷指令斜杠菜单完全透明，导致文字与背景严重混杂无法辨识](./BUG-004_slash_command_menu_transparent.md) `[已修复]`
 - [BUG-007: 快捷指令毛玻璃材质调整与设置页面样式耦合，导致浅色主题下设置页面毛玻璃效果异常](./BUG-007_slash_menu_blur_decouple_appearance.md) `[已修复]`
+
+### 3. 开机自愈守护与对比度守护（主规划需求：2 项）
+- [BUG-022: 右上角原生窗口按钮 (WCO) 底色被强设为不透明纯色导致矩形色块突兀，破坏毛玻璃与壁纸沉浸感](./BUG-022_wco_opaque_patch_breaks_immersion.md) `[已修复]`
+- [BUG-023: 缺乏深浅色主题切换实时联动，且明亮主题加白背景下顶部操作栏与右上角 WCO 严重隐形看不清](./BUG-023_native_theme_switch_out_of_sync.md) `[已修复]`
 
 ---
 

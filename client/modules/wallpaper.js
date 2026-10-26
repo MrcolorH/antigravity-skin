@@ -5,26 +5,36 @@
 
 // 0. 同步并持久锁定 Windows 原生窗口控制按钮（WCO）配色
 //
-// 踩坑记录（BUG-021）：以前为追求「沉浸式」把 WCO 底色设成 rgba(0,0,0,0)，
-// Windows 遇到完全透明的标题栏遮罩会直接把最小化/最大化/关闭三个按钮整体隐藏
-// （实测 navigator.windowControlsOverlay.visible === false，用户彻底无法最小化/关闭）。
-// 结论：WCO 底色必须是不透明色，只能「跟着壁纸顶部明暗换深浅」，不能「变透明」。
+// 规范（BUG-022）：
+// 底色强制保持纯透明 'rgba(0, 0, 0, 0)'，与底层壁纸和毛玻璃完美融合，绝不出现矩形实心贴纸色块。
+// 图标本身线条颜色自适应：深色壁纸顶部使用明亮浅色符号（#e8eef7），浅色壁纸顶部使用高对比度深色符号（#1c2430）。
 function agyTitleBarTone() {
   const html = document.documentElement;
+  const hasMeasure = html && html.dataset.agyHasMeasure === 'true';
   const top = html ? parseFloat(html.dataset.agyTopLum || '') : NaN;
   const all = html ? parseFloat(html.dataset.agyWallpaperLum || '') : NaN;
   const lum = isNaN(top) ? all : top;
 
-  const nativeDark = (document.body && (
-    document.body.classList.contains('dark') ||
-    document.body.classList.contains('theme-dark')
-  )) || (html && html.classList.contains('dark'));
+  const nativeDark = typeof window !== 'undefined' && typeof window.__agyNativeThemeIsDark === 'function'
+    ? window.__agyNativeThemeIsDark()
+    : ((document.body && (
+        document.body.classList.contains('dark') ||
+        document.body.classList.contains('theme-dark')
+      )) || (html && html.classList.contains('dark')));
 
-  // 阈值与壁纸明暗判定保持一致；顶部条带更黑时优先按顶部算
-  const isDark = isNaN(lum) ? nativeDark : lum < 0.32;
+  // 严格区分两类场景：
+  // 1. 无测量数据（纯色/无壁纸/视频未采样等）：严格遵循原生深浅色，浅色模式强制输出深黑符号色，杜绝白字压白底隐形
+  // 2. 有测量数据（壁纸真实采样完成）：顶部偏黑时（lum < 0.28）用浅白 #e8eef7；顶部偏亮时用高对比度深黑 #1c2430
+  let isDark;
+  if (hasMeasure && !isNaN(lum)) {
+    isDark = lum < 0.28;
+  } else {
+    isDark = !!nativeDark;
+  }
+
   return isDark
-    ? { color: '#0b0f19', symbolColor: '#e8eef7' }
-    : { color: '#f4f6fa', symbolColor: '#1c2430' };
+    ? { color: 'rgba(0, 0, 0, 0)', symbolColor: '#e8eef7' }
+    : { color: 'rgba(0, 0, 0, 0)', symbolColor: '#1c2430' };
 }
 
 function syncTitleBarOverlay(force = false) {
@@ -52,17 +62,16 @@ function syncTitleBarOverlay(force = false) {
       return;
     }
 
-    // 核心规范：开机动效期间与大屏幕壁纸一律保持「不透明」底色，
-    // 深浅跟随壁纸顶部明暗（绝不能再使用透明色，否则原生窗口按钮会被系统隐藏）
+    // 核心规范：开机动效期间与大屏幕壁纸一律保持纯透明底色，
+    // 图标线条颜色跟随壁纸顶部明暗动态切换（绝不使用实心色块遮挡壁纸）
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
-                          !!document.getElementById('agy-scene-boot-host') ||
-                          (cfg.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__'));
+                          !!document.getElementById('agy-scene-boot-host');
 
-    // 开机阶段幕布为纯黑，按钮区跟着纯黑最无缝；开机结束后跟随壁纸顶部明暗
+    // 开机阶段幕布为纯黑，按钮区纯透明自然透过黑幕；开机结束后跟随壁纸顶部明暗自适应图标色
     const tone = isBootPlaying
-      ? { color: '#000000', symbolColor: '#e8eef7' }
+      ? { color: 'rgba(0, 0, 0, 0)', symbolColor: '#e8eef7' }
       : agyTitleBarTone();
 
     const color = tone.color;
@@ -94,13 +103,26 @@ if (typeof window !== 'undefined') {
     if (document.visibilityState === 'visible') syncTitleBarOverlay(true);
   });
 
-  // 监听 body 和 html class 变动（深浅色切换），即刻同步
+  // 监听 body 和 html 的 class 与 style 变动（宿主切换深浅色主题、更新 --sidebar 变量），多梯队强力同步
   if (typeof MutationObserver !== 'undefined') {
+    const triggerThemeSync = () => {
+      syncTitleBarOverlay(true);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          syncTitleBarOverlay(true);
+          requestAnimationFrame(() => syncTitleBarOverlay(true));
+        });
+      }
+      setTimeout(() => syncTitleBarOverlay(true), 40);
+      setTimeout(() => syncTitleBarOverlay(true), 120);
+      setTimeout(() => syncTitleBarOverlay(true), 280);
+    };
+
     const themeObs = new MutationObserver(() => {
-      syncTitleBarOverlay();
+      triggerThemeSync();
     });
     const observeEl = (el) => {
-      if (el) themeObs.observe(el, { attributes: true, attributeFilter: ['class'] });
+      if (el) themeObs.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
     };
     observeEl(document.body);
     observeEl(document.documentElement);
@@ -108,6 +130,18 @@ if (typeof window !== 'undefined') {
       document.addEventListener('DOMContentLoaded', () => {
         observeEl(document.body);
       }, { once: true });
+    }
+
+    // 监听系统级深浅色媒体查询变化
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      try {
+        const mql = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mql.addEventListener) {
+          mql.addEventListener('change', triggerThemeSync);
+        } else if (mql.addListener) {
+          mql.addListener(triggerThemeSync);
+        }
+      } catch (_) {}
     }
   }
 }

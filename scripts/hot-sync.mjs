@@ -84,7 +84,10 @@ if (fs.existsSync(brainDir)) {
   }
 }
 
-// 3. 热更新注入 wallpaper.js
+// 3. 热更新注入 wallpaper.js 与 index.js 逻辑
+const indexPath = path.resolve('client', 'index.js');
+const indexContent = fs.readFileSync(indexPath, 'utf8');
+
 await send('Runtime.evaluate', {
   expression: `(() => {
     window.__AGY_PRELOADED_LONG_SESSIONS__ = ${JSON.stringify(longSessionIds)};
@@ -100,15 +103,25 @@ await send('Runtime.evaluate', {
     if (typeof window.__agyInitWallpaper === 'function') {
       window.__agyWallpaperInstance = window.__agyInitWallpaper();
     }
+    // 注入新版 index.js
+    try {
+      eval(${JSON.stringify(indexContent)});
+    } catch (e) {
+      console.warn('Index eval error:', e);
+    }
+    if (typeof window.__agySyncThemeAdaptation === 'function') {
+      window.__agySyncThemeAdaptation(true);
+    }
     return true;
   })()`
 });
-console.log('✅ Wallpaper module successfully updated in runtime.');
+console.log('✅ Wallpaper and Index modules successfully updated in runtime.');
 
 // 4. 同步拷贝到已安装插件目录
 const targetPluginDir = path.join(process.env.USERPROFILE, '.gemini', 'config', 'plugins', 'antigravity-skin');
 const targetPluginCss = path.join(targetPluginDir, 'client', 'styles', 'glass-theme.css');
 const targetPluginJs = path.join(targetPluginDir, 'client', 'modules', 'wallpaper.js');
+const targetPluginIndex = path.join(targetPluginDir, 'client', 'index.js');
 
 if (fs.existsSync(path.dirname(targetPluginCss))) {
   fs.writeFileSync(targetPluginCss, cssContent, 'utf8');
@@ -117,6 +130,10 @@ if (fs.existsSync(path.dirname(targetPluginCss))) {
 if (fs.existsSync(path.dirname(targetPluginJs))) {
   fs.writeFileSync(targetPluginJs, jsContent, 'utf8');
   console.log('✅ Synced wallpaper.js to installed plugin directory.');
+}
+if (fs.existsSync(targetPluginIndex)) {
+  fs.writeFileSync(targetPluginIndex, indexContent, 'utf8');
+  console.log('✅ Synced index.js to installed plugin directory.');
 }
 
 ws.close();
