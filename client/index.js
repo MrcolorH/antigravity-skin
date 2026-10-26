@@ -62,7 +62,16 @@
   // ==========================================================================
   let luminanceProbeSeq = 0;
 
+  function syncNativeThemeClass() {
+    const html = document.documentElement;
+    if (!html || !html.classList) return;
+    const isDark = nativeThemeIsDark();
+    html.classList.toggle('agy-native-dark', !!isDark);
+    html.classList.toggle('agy-native-light', !isDark);
+  }
+
   function applyLuminanceClass(isDark) {
+    syncNativeThemeClass();
     const html = document.documentElement;
     if (!html || !html.classList) return;
     html.classList.toggle('agy-dark-wallpaper', !!isDark);
@@ -76,25 +85,45 @@
   function applyTopbarTone(topLum, hasMeasure) {
     const html = document.documentElement;
     if (!html || !html.classList) return;
-    const isDark = typeof topLum === 'number' ? topLum < 0.22 : nativeThemeIsDark();
+    const isDark = typeof topLum === 'number' ? topLum < 0.28 : nativeThemeIsDark();
     html.classList.toggle('agy-dark-topbar', !!isDark);
     html.classList.toggle('agy-light-topbar', !isDark);
     if (hasMeasure) {
-      try { html.dataset.agyTopLum = topLum.toFixed(3); } catch (_) {}
+      try {
+        html.dataset.agyHasMeasure = 'true';
+        html.dataset.agyTopLum = topLum.toFixed(3);
+      } catch (_) {}
     } else {
-      try { delete html.dataset.agyTopLum; } catch (_) {}
+      try {
+        html.dataset.agyHasMeasure = 'false';
+        delete html.dataset.agyTopLum;
+      } catch (_) {}
       try {
         html.dataset.agyTopLum = (nativeThemeIsDark() ? '0.030' : '0.940');
       } catch (_) {}
     }
-    scheduleContrastGuard(260);
+    scheduleContrastGuard(120);
   }
 
   function nativeThemeIsDark() {
     const b = document.body;
-    if (!b || !b.classList) return false;
-    return b.classList.contains('dark') || b.classList.contains('theme-dark');
+    const html = document.documentElement;
+    if (b && b.classList) {
+      if (b.classList.contains('dark') || b.classList.contains('theme-dark') || b.classList.contains('vscode-dark')) return true;
+      if (b.classList.contains('light') || b.classList.contains('theme-light') || b.classList.contains('vscode-light')) return false;
+    }
+    if (html && html.classList) {
+      if (html.classList.contains('dark') || html.classList.contains('theme-dark') || html.classList.contains('vscode-dark')) return true;
+      if (html.classList.contains('light') || html.classList.contains('theme-light') || html.classList.contains('vscode-light')) return false;
+    }
+    try {
+      if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return true;
+      }
+    } catch (_) {}
+    return false;
   }
+  window.__agyNativeThemeIsDark = nativeThemeIsDark;
 
   // ==========================================================================
   // 透明面上「文字对比度守护」（Contrast Guard）
@@ -108,7 +137,7 @@
   const CG_ATTR = 'data-agy-cg';
   const CG_LIGHT = '#f4f7fb';
   const CG_DARK = '#0b0f14';
-  const CG_MIN_CONTRAST = 3.0;
+  const CG_MIN_CONTRAST = 4.5; // 严格遵循 WCAG 2.1 AA 级对比度标准 (4.5:1)
   const CG_MAX_FLIPS = 900;
   let cgTimer = null;
   let cgObserver = null;
@@ -176,6 +205,9 @@
       node = node.parentElement;
     }
     const html = document.documentElement;
+    const isLightWallpaper = html.classList.contains('agy-light-wallpaper') || html.classList.contains('agy-native-light');
+    const isDarkWallpaper = html.classList.contains('agy-dark-wallpaper') || html.classList.contains('agy-native-dark');
+
     let profile = [];
     try {
       profile = (html.dataset.agyLumProfile || '')
@@ -188,26 +220,37 @@
       if (vh > 0) {
         const frac = Math.min(0.999, Math.max(0, (rect.top + rect.height / 2) / vh));
         const idx = Math.min(profile.length - 1, Math.floor(frac * profile.length));
-        return { lum: profile[idx] };
+        let lum = profile[idx];
+        // 脏数据纠偏：浅底或原生浅色下，绝不允许 profile 误给出 < 0.28 的暗底结果
+        if (isLightWallpaper && lum < 0.28) lum = 0.96;
+        if (isDarkWallpaper && lum >= 0.28) lum = 0.04;
+        return { lum };
       }
     }
     const globalLum = parseFloat(html.dataset.agyWallpaperLum || '');
-    if (!isNaN(globalLum)) return { lum: globalLum };
-    return { lum: html.classList.contains('agy-dark-wallpaper') ? 0.04 : 0.96 };
+    if (!isNaN(globalLum)) {
+      let lum = globalLum;
+      if (isLightWallpaper && lum < 0.28) lum = 0.96;
+      if (isDarkWallpaper && lum >= 0.28) lum = 0.04;
+      return { lum };
+    }
+    return { lum: isDarkWallpaper ? 0.04 : 0.96 };
   }
 
   function cgRevert(el) {
-    // 注意：不能只靠 data-* 属性判断（React 重渲染可能重建节点/丢失属性），
-    // 用 __agyCgApplied 标记双保险，避免「属性没了但 inline 色还留着」的脏状态
-    if (!el.hasAttribute(CG_ATTR) && !el.__agyCgApplied) return;
-    el.removeAttribute(CG_ATTR);
-    const orig = el.__agyCgOrigColor;
-    if (orig) {
-      el.style.setProperty('color', orig);
-    } else {
-      el.style.removeProperty('color');
+    if (!el) return;
+    if (el.hasAttribute(CG_ATTR)) {
+      el.removeAttribute(CG_ATTR);
     }
-    el.style.removeProperty('text-shadow');
+    if (el.style) {
+      const orig = el.__agyCgOrigColor;
+      if (orig) {
+        el.style.setProperty('color', orig);
+      } else {
+        el.style.removeProperty('color');
+      }
+      el.style.removeProperty('text-shadow');
+    }
     el.__agyCgOrigColor = null;
     el.__agyCgOrigFg = null;
     el.__agyCgApplied = false;
@@ -242,7 +285,7 @@
         }
       }
       if (!hasText && !hasIcon) {
-        if (el.hasAttribute(CG_ATTR)) cgRevert(el);
+        if (el.hasAttribute(CG_ATTR) || el.__agyCgApplied) cgRevert(el);
         continue;
       }
       if (el.closest('#agy-dynamic-iframe,#agy-wallpaper-backdrop,#agy-video-boot-host,#agy-custom-code-boot-host,#agy-scene-boot-host,[data-agy-no-cg]')) continue;
@@ -258,11 +301,37 @@
       const bd = cgBackdrop(el, backdropCache, rect);
       if (!bd) { cgRevert(el); continue; }
 
-      // 关键：始终用「元素本来的字色」判定，绝不能用我们改完之后的颜色回算，
-      // 否则「翻完→颜色变浅→对比度看着够了→再翻回去」会无限抖动。
       const baseFg = el.__agyCgOrigFg || fg;
       const fgLum = cgRelLum(baseFg.r, baseFg.g, baseFg.b);
-      if (cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) { cgRevert(el); continue; }
+
+      // ======================================================================
+      // 单向安全护栏机制（Safety Guard Rail）：
+      // 1. 在浅色底（bd.lum >= 0.35）上：
+      //    - 若原字色本来就是深色（fgLum < 0.40），天然清晰可读，严禁翻成白字！
+      //    - 只有当原字色也是浅色（fgLum >= 0.40，即浅字压白底）且对比度不达标时，才翻转为高反差深墨黑；
+      // 2. 在深色底（bd.lum < 0.35）上：
+      //    - 若原字色本来就是浅色（fgLum >= 0.35），天然清晰可读，严禁翻成深黑字！
+      //    - 只有当原字色也是深黑（fgLum < 0.35，即黑字压黑底）且对比度不达标时，才翻转为明亮浅白；
+      // ======================================================================
+      if (bd.lum >= 0.35) {
+        if (fgLum < 0.40) {
+          cgRevert(el);
+          continue;
+        }
+        if (cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
+          cgRevert(el);
+          continue;
+        }
+      } else {
+        if (fgLum >= 0.35) {
+          cgRevert(el);
+          continue;
+        }
+        if (cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
+          cgRevert(el);
+          continue;
+        }
+      }
 
       const tone = bd.lum < 0.35 ? 'light' : 'dark';
       const targetRgb = tone === 'light' ? 'rgb(244, 247, 251)' : 'rgb(11, 15, 20)';
@@ -308,15 +377,77 @@
     } catch (_) {}
   }
 
+  function resetContrastGuard() {
+    try {
+      const candidates = document.querySelectorAll(`[${CG_ATTR}]`);
+      for (const el of candidates) {
+        cgRevert(el);
+      }
+      if (document.body) {
+        const applied = document.body.querySelectorAll('*');
+        for (const el of applied) {
+          if (el.__agyCgApplied || el.hasAttribute(CG_ATTR)) {
+            cgRevert(el);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  window.__agyResetContrastGuard = resetContrastGuard;
+
+  function syncThemeAdaptation(forceDetect = false) {
+    try {
+      syncNativeThemeClass();
+      const isDark = nativeThemeIsDark();
+      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || currentConfig || {};
+      const f = cfg.features || {};
+      const dw = f.dynamicWallpaper || {};
+      const isVideoOn = dw.enabled === true;
+      const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+      const hasSource = sourceType === 'video' ? !!dw.videoPath : !!dw.wallpaperDir;
+      const mediaOn = (f.themeStyles !== false) && isVideoOn && hasSource;
+
+      if (!mediaOn || forceDetect) {
+        applyLuminanceClass(isDark);
+        applyTopbarTone(null, false);
+      } else {
+        const html = document.documentElement;
+        const top = html ? parseFloat(html.dataset.agyTopLum || '') : NaN;
+        if (!isNaN(top) && html.dataset.agyHasMeasure === 'true') {
+          applyTopbarTone(top, true);
+        } else {
+          applyTopbarTone(null, false);
+        }
+      }
+
+      resetContrastGuard();
+      scheduleContrastGuard(60);
+
+      if (typeof window.__agySyncTitleBar === 'function') {
+        try { window.__agySyncTitleBar(true); } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('[Antigravity Skin] Error in syncThemeAdaptation:', e);
+    }
+  }
+  window.__agySyncThemeAdaptation = syncThemeAdaptation;
+
   // 调试入口：控制台执行 window.__agyContrastGuard() 可立即重算
   try { window.__agyContrastGuard = () => { runContrastGuard(); return 'done'; }; } catch (_) {}
 
   function detectWallpaperLuminance(dw, mediaOn) {
     try {
       if (!mediaOn) {
-        // 无壁纸（纯毛玻璃）时，直接跟随原生主题
-        applyLuminanceClass(nativeThemeIsDark());
+        // 无壁纸（纯毛玻璃/纯色背景）时，直接严格遵从原生主题
+        const isDark = nativeThemeIsDark();
+        applyLuminanceClass(isDark);
         applyTopbarTone(null, false);
+        const fallbackLum = isDark ? '0.040' : '0.960';
+        try {
+          document.documentElement.dataset.agyWallpaperLum = fallbackLum;
+          document.documentElement.dataset.agyLumProfile = new Array(8).fill(fallbackLum).join(',');
+        } catch (_) {}
+        resetContrastGuard();
         return;
       }
 
@@ -325,8 +456,15 @@
 
       // 视频壁纸通常没有封面图，退回原生主题判断
       if (!folder || !preview) {
-        applyLuminanceClass(nativeThemeIsDark());
+        const isDark = nativeThemeIsDark();
+        applyLuminanceClass(isDark);
         applyTopbarTone(null, false);
+        const fallbackLum = isDark ? '0.040' : '0.960';
+        try {
+          document.documentElement.dataset.agyWallpaperLum = fallbackLum;
+          document.documentElement.dataset.agyLumProfile = new Array(8).fill(fallbackLum).join(',');
+        } catch (_) {}
+        resetContrastGuard();
         return;
       }
 
@@ -372,10 +510,10 @@
             stripSum[si] += l;
             stripCnt[si]++;
           }
-          const lum = count ? sum / count : 0;
+          const lum = count ? sum / count : (nativeThemeIsDark() ? 0.04 : 0.96);
           const topLum = topCount ? topSum / topCount : lum;
-          // 阈值 0.22 ≈ 中灰 (RGB 127) 的相对亮度。低于它就走「深色玻璃 + 白字」
-          applyLuminanceClass(lum < 0.22);
+          // 阈值 0.28 稳健判定：深色走「深色玻璃 + 白字」，浅色走「浅色玻璃 + 深字」
+          applyLuminanceClass(lum < 0.28);
           applyTopbarTone(topLum, true);
           try {
             document.documentElement.dataset.agyWallpaperLum = lum.toFixed(3);
@@ -385,14 +523,28 @@
           } catch (_) {}
         } catch (_) {
           // 画布被污染等异常：退回原生主题
-          applyLuminanceClass(nativeThemeIsDark());
+          const isDark = nativeThemeIsDark();
+          applyLuminanceClass(isDark);
           applyTopbarTone(null, false);
+          const fallbackLum = isDark ? '0.040' : '0.960';
+          try {
+            document.documentElement.dataset.agyWallpaperLum = fallbackLum;
+            document.documentElement.dataset.agyLumProfile = new Array(8).fill(fallbackLum).join(',');
+          } catch (_) {}
+          resetContrastGuard();
         }
       };
       img.onerror = () => {
         if (seq === luminanceProbeSeq) {
-          applyLuminanceClass(nativeThemeIsDark());
+          const isDark = nativeThemeIsDark();
+          applyLuminanceClass(isDark);
           applyTopbarTone(null, false);
+          const fallbackLum = isDark ? '0.040' : '0.960';
+          try {
+            document.documentElement.dataset.agyWallpaperLum = fallbackLum;
+            document.documentElement.dataset.agyLumProfile = new Array(8).fill(fallbackLum).join(',');
+          } catch (_) {}
+          resetContrastGuard();
         }
       };
       img.src = url;
@@ -442,8 +594,8 @@
       // 阶段五：铺满策略单独成键——它只影响几何，绝不该触发解码管道重建
       const fitKey = [fit, fitPosition].join('|');
 
-      // 壁纸明暗自适应：仅在素材本身变化时重新采样（避免每次 applyFeatures 都拉图）
-      const lumKey = [mediaOn, sourceType, wallpaperDir, previewFile, videoPath].join('|');
+      // 壁纸明暗自适应：素材本身变化或原生主题切换时重新采样/刷新状态
+      const lumKey = [mediaOn, sourceType, wallpaperDir, previewFile, videoPath, nativeThemeIsDark() ? 'dark' : 'light'].join('|');
       if (lastWallpaperState.lumKey !== lumKey) {
         detectWallpaperLuminance(dw, mediaOn);
         lastWallpaperState.lumKey = lumKey;
@@ -692,6 +844,7 @@
 
   if (window.__AG_SKIN_ATTACHED__) {
     console.log('[Antigravity Skin] Re-checking skin active state & DOM attachments...');
+    syncNativeThemeClass();
     window.__agyApplyFeatures = applyFeatures;
     try {
       applyFeatures(window.__AG_SKIN_CONFIG__ || currentConfig);
@@ -751,10 +904,49 @@
   window.__AG_SKIN_ATTACHED__ = true;
 
   console.log('[Antigravity Skin] Initializing custom theme and skin...');
+  syncNativeThemeClass();
 
   // 2.5 启动第零防线：第一时间强力同步标题栏完全透明
   if (typeof window.__agySyncTitleBar === 'function') {
     try { window.__agySyncTitleBar(true); } catch(e) {}
+  }
+
+  // 启动原生主题变动即时监听与联动（深浅色切换、对比度守护即时自愈）
+  if (typeof MutationObserver !== 'undefined' && !window.__agyThemeObserverHooked) {
+    window.__agyThemeObserverHooked = true;
+    let themeDebounceTimer = null;
+    const handleNativeThemeChange = () => {
+      clearTimeout(themeDebounceTimer);
+      themeDebounceTimer = setTimeout(() => {
+        if (typeof syncThemeAdaptation === 'function') {
+          syncThemeAdaptation();
+        } else {
+          if (typeof window.__agySyncTitleBar === 'function') {
+            try { window.__agySyncTitleBar(true); } catch(e) {}
+          }
+          scheduleContrastGuard(80);
+        }
+      }, 35);
+    };
+    const rootObs = new MutationObserver(() => {
+      handleNativeThemeChange();
+    });
+    const attachObs = () => {
+      if (document.body) rootObs.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+      if (document.documentElement) rootObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+    };
+    attachObs();
+    if (!document.body) {
+      document.addEventListener('DOMContentLoaded', attachObs, { once: true });
+    }
+    try {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mql.addEventListener) {
+        mql.addEventListener('change', handleNativeThemeChange);
+      } else if (mql.addListener) {
+        mql.addListener(handleNativeThemeChange);
+      }
+    } catch (_) {}
   }
 
   // 3. 开机引导动画优先检测与极速呈现（若开启且本 Session 未播放过）

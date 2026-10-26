@@ -26,6 +26,29 @@ function getPluginConfig() {
   return null;
 }
 
+// 全局防御：拦截 BrowserWindow.prototype.setTitleBarOverlay
+// 彻底阻断任何时序（包括宿主主题切换、原生夜间模式等）强行注入实色底块
+try {
+  const BW = electron_1.BrowserWindow;
+  if (BW && BW.prototype && typeof BW.prototype.setTitleBarOverlay === 'function' && !BW.__agyWcoProtoHooked) {
+    BW.__agyWcoProtoHooked = true;
+    const rawProtoSetTitleBarOverlay = BW.prototype.setTitleBarOverlay;
+    BW.prototype.setTitleBarOverlay = function(options) {
+      try {
+        const cfg = getPluginConfig();
+        const isCustomThemeEnabled = cfg?.features?.themeStyles !== false;
+        if (isCustomThemeEnabled && options && typeof options === 'object') {
+          // 强制所有 setTitleBarOverlay 底色保持纯透明，彻底杜绝切换深浅色时的实色闪烁！
+          options = Object.assign({}, options, {
+            color: 'rgba(0, 0, 0, 0)'
+          });
+        }
+      } catch (_) {}
+      return rawProtoSetTitleBarOverlay.call(this, options);
+    };
+  }
+} catch (_) {}
+
 /**
  * 解析视频或脚本路径（支持绝对路径与相对插件根目录路径）
  */
@@ -295,17 +318,34 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       }
     } catch (_) {}
 
-    // 主窗口原生底色设为黑色；标题栏(WCO)遮罩必须使用「不透明色」！
-    // 踩坑记录：color 传透明色 '#00000000' 会让 Windows 直接隐藏最小化/最大化/关闭按钮
-    // （navigator.windowControlsOverlay.visible 变为 false），故改为不透明纯黑 + 浅色符号，
-    // 与纯黑幕布无缝衔接；开机结束后再跟随壁纸顶部明暗恢复舒适配色。
+    // 主窗口原生底色设为黑色；标题栏(WCO)遮罩保持纯透明！
+    // 规范（BUG-022）：color 设为 'rgba(0, 0, 0, 0)' 与底层壁纸和毛玻璃完美融合，
+    // symbolColor 跟随壁纸顶部明暗自适应（深色顶部 #e8eef7，浅色顶部 #1c2430）。
+    // 实例级防御：拦截 win.setTitleBarOverlay
+    if (typeof win.setTitleBarOverlay === 'function' && !win.__agyWcoWinHooked) {
+      win.__agyWcoWinHooked = true;
+      const rawWinSetTitleBarOverlay = win.setTitleBarOverlay.bind(win);
+      win.setTitleBarOverlay = function(options) {
+        try {
+          const cfg = getPluginConfig();
+          const isCustomThemeEnabled = cfg?.features?.themeStyles !== false;
+          if (isCustomThemeEnabled && options && typeof options === 'object') {
+            options = Object.assign({}, options, {
+              color: 'rgba(0, 0, 0, 0)'
+            });
+          }
+        } catch (_) {}
+        return rawWinSetTitleBarOverlay(options);
+      };
+    }
+
     const TITLEBAR_H = 30;
     const applyTitleBarOverlay = (isDark) => {
       try {
         if (!win || win.isDestroyed()) return;
         if (typeof win.setTitleBarOverlay !== 'function') return;
         win.setTitleBarOverlay({
-          color: isDark ? '#0b0f19' : '#f4f6fa',
+          color: 'rgba(0, 0, 0, 0)',
           symbolColor: isDark ? '#e8eef7' : '#1c2430',
           height: TITLEBAR_H
         });
