@@ -10,9 +10,9 @@
   if (typeof window === 'undefined') return;
   window.__antigravityBootInstalled = true;
 
-  // 极速冷启动优先级保障：若主进程已接管开机引导或本会话已播放过，彻底杜绝重复播放
+  // 极速冷启动优先级保障：若主进程已接管开机引导或本会话已播放过，彻底杜绝重复播放 (BUG-024)
   try {
-    if (window.__agyMasterBootHandled || sessionStorage.getItem('__agy_booted__')) {
+    if (window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__')) {
       sessionStorage.setItem('__agy_booted__', 'true');
       window.__agyBootPlaying = false;
     } else {
@@ -351,7 +351,7 @@
 
   function startVideoBoot(videoSrc, isManualPreview = false) {
     if (!isManualPreview) {
-      if (window.__agyMasterBootHandled || sessionStorage.getItem('__agy_booted__')) {
+      if (window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__')) {
         console.log('[Boot Animation] Suppressed duplicate video boot (handled by master).');
         return;
       }
@@ -889,7 +889,7 @@
 
   window.__triggerBootAnimation = function(customType, customPath, customCodePath, customDir, isManualPreview = false) {
     if (!isManualPreview) {
-      if (window.__agyMasterBootHandled || sessionStorage.getItem('__agy_booted__')) {
+      if (window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__')) {
         console.log('[Boot Animation] Suppressed duplicate __triggerBootAnimation (handled by master).');
         return;
       }

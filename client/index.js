@@ -800,8 +800,8 @@
 
   // 核心时序防护：仅在已播放或用户已在工作区产生实质输入时跳过开机动画
   function shouldAbandonBootAnimation(activeCfg) {
-    // 1. 若主进程已接管开机引导（Windows 补丁），绝不二次触发
-    if (window.__agyMasterBootHandled) return true;
+    // 1. 若主进程已接管开机引导（Windows 补丁），绝不二次触发 (BUG-024)
+    if (window.__agyMasterBootHandled || window.__agyHostOverlayActive) return true;
     if (sessionStorage.getItem('__agy_booted__')) return true;
     if (!activeCfg.features?.bootAnimation) return true;
     // 关键修正：若开机 DOM 容器已在视口中则不重复创建；但 window.__agyBootPlaying 作为预留锁，绝不反向阻断初次启动

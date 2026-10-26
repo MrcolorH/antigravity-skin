@@ -2301,6 +2301,20 @@ function buildClientBundle() {
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
 
+  // Windows 开机动画补丁第 0 毫秒确定性互斥防线 (BUG-024)：
+  // 若 Windows 宿主已注入 loadingOverlay.js 补丁，宿主层原生 WebContentsView 拥有绝对优先接管权。
+  // 在文档初始化的第 0 毫秒同步立下 __agyMasterBootHandled 铁锁，从源头彻底杜绝前端 DOM 容器在冷启动下并行偷跑导致闪屏穿帮！
+  const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
+  if (isWindowsPatched && config?.enabled && config?.features?.bootAnimation) {
+    bundleParts.push(`(() => {
+      try {
+        window.__agyMasterBootHandled = true;
+        sessionStorage.setItem('__agy_booted__', 'true');
+        window.__agyBootPlaying = false;
+      } catch (_) {}
+    })();`);
+  }
+
   // 0.5 弹窗基座与独立参数设置弹窗（优先载入就绪）
   if (agyModalMod) bundleParts.push(agyModalMod);
   if (mediaDisplayModalMod) bundleParts.push(mediaDisplayModalMod);

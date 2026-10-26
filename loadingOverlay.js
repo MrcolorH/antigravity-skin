@@ -384,13 +384,14 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       try { win.on('restore', () => syncTitleBarTone(false)); } catch (_) {}
     }
 
-    // 从源头杜绝前端渲染进程重复播放开机动画
+    // 从源头杜绝前端渲染进程重复播放开机动画 (BUG-024)
     if (isBootEnabled && win.webContents) {
       const suppressRendererBoot = () => {
         try {
           win.webContents.executeJavaScript(`
             window.__agyMasterBootHandled = true;
-            sessionStorage.setItem('__agy_booted__', 'true');
+            window.__agyHostOverlayActive = true;
+            try { sessionStorage.setItem('__agy_booted__', 'true'); } catch (_) {}
             window.__agyBootPlaying = false;
           `).catch(() => {});
         } catch (_) {}
@@ -436,37 +437,62 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
     const doRemove = () => {
       if (removed) return;
       removed = true;
-      try {
-        win.contentView.removeChildView(view);
-      } catch (_) {}
-      try {
-        win.webContents.executeJavaScript(`(() => {
-          window.__agyMasterBootHandled = true;
-          sessionStorage.setItem('__agy_booted__', 'true');
-          window.__agyBootPlaying = false;
-          const h1 = document.getElementById('agy-video-boot-host');
-          if (h1) h1.remove();
-          const h2 = document.getElementById('agy-custom-code-boot-host');
-          if (h2) h2.remove();
-          if (typeof window.__agyResumeBootWallpaper === 'function') {
-            try { window.__agyResumeBootWallpaper(); } catch(_) {}
+
+      const cleanupNativeView = () => {
+        try {
+          if (win && !win.isDestroyed()) {
+            win.contentView.removeChildView(view);
           }
-        })()`).catch(() => {});
-      } catch (_) {}
+        } catch (_) {}
+        // 幕布移除后：把原生窗口按钮的配色交还给壁纸（深壁纸→深色底+浅符号）
+        try {
+          syncTitleBarTone(true);
+          setTimeout(() => syncTitleBarTone(false), 1200);
+          setTimeout(() => syncTitleBarTone(false), 4000);
+        } catch (_) {}
+        try {
+          view.webContents.close();
+        } catch (_) {}
+      };
+
       try {
         win.off("resize", updateBounds);
         view.webContents.removeListener("before-input-event", onBeforeInput);
         win.webContents.removeListener("before-input-event", onBeforeInput);
       } catch (_) {}
-      // 幕布移除后：把原生窗口按钮的配色交还给壁纸（深壁纸→深色底+浅符号）
+
+      // 核心时序原子化闭环 (BUG-024)：
+      // 绝对不能先拔掉顶层遮罩再异步清底层 DOM！
+      // 先向渲染进程下发清除指令，保证任何潜在的前端开屏容器已被切除，再安全移走顶层原生视图，彻底消除黑闪与穿帮！
       try {
-        syncTitleBarTone(true);
-        setTimeout(() => syncTitleBarTone(false), 1200);
-        setTimeout(() => syncTitleBarTone(false), 4000);
+        if (win && !win.isDestroyed() && win.webContents) {
+          let cleanedUp = false;
+          const safeCleanup = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            cleanupNativeView();
+          };
+
+          win.webContents.executeJavaScript(`(() => {
+            window.__agyMasterBootHandled = true;
+            try { sessionStorage.setItem('__agy_booted__', 'true'); } catch(_) {}
+            window.__agyBootPlaying = false;
+            const h1 = document.getElementById('agy-video-boot-host');
+            if (h1) h1.remove();
+            const h2 = document.getElementById('agy-custom-code-boot-host');
+            if (h2) h2.remove();
+            if (typeof window.__agyResumeBootWallpaper === 'function') {
+              try { window.__agyResumeBootWallpaper(); } catch(_) {}
+            }
+          })()`).then(safeCleanup).catch(safeCleanup);
+
+          // 35ms 极限防死锁保底：即使 IPC 阻塞也不阻断主窗口呈现
+          setTimeout(safeCleanup, 35);
+          return;
+        }
       } catch (_) {}
-      try {
-        view.webContents.close();
-      } catch (_) {}
+
+      cleanupNativeView();
     };
 
     const onBeforeInput = (event, input) => {
