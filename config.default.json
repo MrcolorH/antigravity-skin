@@ -38,7 +38,13 @@
       "renderDpr": 1.0,
       "sceneRenderer": "dynamic",
       "sceneScripts": true,
-      "wallpaperUserProperties": {}
+      "wallpaperUserProperties": {},
+      "wallpaperInteraction": {
+        "enabled": true,
+        "modifierKey": "alt",
+        "showHud": true,
+        "enableWheel": true
+      }
     },
     "externalWallpaperLibrary": {
       "wallpaperEnabled": false,

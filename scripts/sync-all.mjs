@@ -58,19 +58,28 @@ console.log('🎉 所有插件核心文件已同步到系统插件目录！');
 
 // 2. 尝试通过 CDP 自动触发宿主热重载
 try {
-  const req = http.get('http://127.0.0.1:13257/json', (res) => {
+  let cdpPort = 13257;
+  const devToolsFile = path.join(process.env.APPDATA || '', 'Antigravity', 'DevToolsActivePort');
+  if (fs.existsSync(devToolsFile)) {
+    try {
+      const p = parseInt(fs.readFileSync(devToolsFile, 'utf8').split(/\r?\n/)[0].trim(), 10);
+      if (Number.isFinite(p) && p > 0) cdpPort = p;
+    } catch (_) {}
+  }
+
+  const req = http.get(`http://127.0.0.1:${cdpPort}/json`, (res) => {
     let data = '';
     res.on('data', chunk => data += chunk);
     res.on('end', () => {
       try {
         const targets = JSON.parse(data);
         const page = targets.find(t => t.type === 'page' && !t.url.includes('devtools://'));
-        if (page && page.webSocketDebuggerUrl) {
+        if (page && page.webSocketDebuggerUrl && typeof globalThis.WebSocket === 'function') {
           const ws = new globalThis.WebSocket(page.webSocketDebuggerUrl);
           ws.addEventListener('open', () => {
             ws.send(JSON.stringify({ id: 1, method: 'Page.reload', params: {} }));
             setTimeout(() => { try { ws.close(); } catch (_) {} }, 200);
-            console.log('🔄 已通过 CDP 自动触发 Antigravity 主窗口热重载！');
+            console.log(`🔄 已通过 CDP (${cdpPort}) 自动触发 Antigravity 主窗口热重载！`);
           }, { once: true });
         }
       } catch (_) {}

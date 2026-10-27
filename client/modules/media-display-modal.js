@@ -170,6 +170,56 @@
         gap: 8px;
         margin-right: auto;
       }
+      .agy-control-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 0;
+      }
+      .agy-toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 38px;
+        height: 22px;
+        flex-shrink: 0;
+      }
+      .agy-toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .agy-toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(255, 255, 255, 0.16);
+        transition: .2s ease;
+        border-radius: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      body:not(.dark):not(.theme-dark) .agy-toggle-slider {
+        background-color: rgba(0, 0, 0, 0.14);
+        border-color: rgba(0, 0, 0, 0.1);
+      }
+      .agy-toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 2px;
+        bottom: 2px;
+        background-color: #ffffff;
+        transition: .2s cubic-bezier(0.16, 1, 0.3, 1);
+        border-radius: 50%;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      }
+      .agy-toggle-switch input:checked + .agy-toggle-slider {
+        background-color: #38bdf8;
+        border-color: #38bdf8;
+      }
+      .agy-toggle-switch input:checked + .agy-toggle-slider:before {
+        transform: translateX(16px);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -215,6 +265,11 @@
         let currentFps = Number.isFinite(dw.fps) ? dw.fps : 60;
         let currentRenderDpr = Number.isFinite(dw.renderDpr) ? dw.renderDpr : 1.0;
         let currentSceneRenderer = dw.sceneRenderer === 'static' ? 'static' : 'dynamic';
+        const wi = dw.wallpaperInteraction || {};
+        let currentInteractionEnabled = wi.enabled !== false;
+        let currentInteractionKey = wi.modifierKey || 'alt';
+        let currentInteractionHud = wi.showHud !== false;
+        let currentInteractionWheel = wi.enableWheel !== false;
 
         function applyLive() {
           // 热更新 CSS 滤镜
@@ -232,6 +287,16 @@
               window.__agySceneRenderer.setRenderDpr(currentRenderDpr * (window.devicePixelRatio || 1));
             } catch (_) {}
           }
+          // 热更新按键交互与穿透网桥
+          const nextInteraction = {
+            enabled: currentInteractionEnabled,
+            modifierKey: currentInteractionKey,
+            showHud: currentInteractionHud,
+            enableWheel: currentInteractionWheel
+          };
+          if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.updateInteraction === 'function') {
+            window.__agyWallpaperInstance.updateInteraction(nextInteraction);
+          }
           // 更新临时对象并落盘保存
           dw.fit = currentFit;
           dw.fitPosition = currentPos;
@@ -240,6 +305,7 @@
           dw.fps = currentFps;
           dw.renderDpr = currentRenderDpr;
           dw.sceneRenderer = currentSceneRenderer;
+          dw.wallpaperInteraction = nextInteraction;
           cfg.features.dynamicWallpaper = dw;
           triggerSave(ctx, cfg);
         }
@@ -333,6 +399,54 @@
             <div class="agy-helper-text">独立精细控制壁纸功耗与画质；与开屏设置完全隔离。修改后画面即时热应用。</div>
           </div>
 
+          <!-- 指针与按键交互 -->
+          <div class="agy-modal-section">
+            <div class="agy-section-title">🖱️ 指针与按键交互 (Pointer & Key Interaction)</div>
+            <div class="agy-control-row" style="margin-bottom: 8px;">
+              <div>
+                <div style="font-size: 12.5px; font-weight: 500;">启用按键穿透交互</div>
+                <div class="agy-helper-text" style="margin-top: 2px;">按住修饰键时鼠标事件穿透至壁纸（支持点击切换人物、拖拽机关）</div>
+              </div>
+              <label class="agy-toggle-switch">
+                <input type="checkbox" id="agy-w-interact-enabled" ${currentInteractionEnabled ? 'checked' : ''}>
+                <span class="agy-toggle-slider"></span>
+              </label>
+            </div>
+            
+            <div class="agy-grid-2" style="margin-top: 10px;">
+              <div class="agy-control-group">
+                <label class="agy-control-label">触发修饰键</label>
+                <select class="agy-control-select" id="agy-w-interact-key">
+                  <option value="alt">Alt 键 (推荐，默认)</option>
+                  <option value="shift">Shift 键</option>
+                  <option value="ctrl">Ctrl 键</option>
+                  <option value="meta">Meta / Win / Cmd 键</option>
+                </select>
+              </div>
+              <div class="agy-control-group">
+                <label class="agy-control-label">滚轮切页与缩放</label>
+                <div class="agy-control-row" style="padding: 2px 0;">
+                  <span style="font-size: 12px; opacity: 0.85;">穿透时响应鼠标滚轮</span>
+                  <label class="agy-toggle-switch">
+                    <input type="checkbox" id="agy-w-interact-wheel" ${currentInteractionWheel ? 'checked' : ''}>
+                    <span class="agy-toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="agy-control-row" style="margin-top: 10px;">
+              <div>
+                <div style="font-size: 12px; font-weight: 500;">显示交互状态 HUD</div>
+                <div class="agy-helper-text" style="margin-top: 2px;">按住修饰键时在屏幕右上角显示毛玻璃交互提示药丸</div>
+              </div>
+              <label class="agy-toggle-switch">
+                <input type="checkbox" id="agy-w-interact-hud" ${currentInteractionHud ? 'checked' : ''}>
+                <span class="agy-toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
           <!-- 底部操作栏 -->
           <div class="agy-modal-footer">
             <div class="agy-modal-footer-left">
@@ -397,6 +511,34 @@
           });
         });
 
+        // 绑定指针与按键交互控制项
+        const interactEnabledInput = bodyEl.querySelector('#agy-w-interact-enabled');
+        const interactKeySelect = bodyEl.querySelector('#agy-w-interact-key');
+        const interactHudInput = bodyEl.querySelector('#agy-w-interact-hud');
+        const interactWheelInput = bodyEl.querySelector('#agy-w-interact-wheel');
+
+        interactKeySelect.value = currentInteractionKey;
+
+        interactEnabledInput.addEventListener('change', (e) => {
+          currentInteractionEnabled = !!e.target.checked;
+          applyLive();
+        });
+
+        interactKeySelect.addEventListener('change', (e) => {
+          currentInteractionKey = e.target.value;
+          applyLive();
+        });
+
+        interactHudInput.addEventListener('change', (e) => {
+          currentInteractionHud = !!e.target.checked;
+          applyLive();
+        });
+
+        interactWheelInput.addEventListener('change', (e) => {
+          currentInteractionWheel = !!e.target.checked;
+          applyLive();
+        });
+
         // 恢复默认
         bodyEl.querySelector('#agy-w-reset').addEventListener('click', () => {
           currentFit = 'cover';
@@ -406,6 +548,10 @@
           currentFps = 60;
           currentRenderDpr = 1.0;
           currentSceneRenderer = 'dynamic';
+          currentInteractionEnabled = true;
+          currentInteractionKey = 'alt';
+          currentInteractionHud = true;
+          currentInteractionWheel = true;
 
           fitSelect.value = currentFit;
           posSelect.value = currentPos;
@@ -415,6 +561,10 @@
           contrastVal.textContent = currentContrast.toFixed(2);
           fpsSelect.value = '60';
           dprSelect.value = '1.0';
+          interactEnabledInput.checked = true;
+          interactKeySelect.value = 'alt';
+          interactHudInput.checked = true;
+          interactWheelInput.checked = true;
 
           pipelineGroup.querySelectorAll('.agy-segmented-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.val === 'dynamic');

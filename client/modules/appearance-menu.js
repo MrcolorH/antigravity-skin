@@ -441,6 +441,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       libRawForMigrate.bootEnabled = true;
     }
     const dw = f.dynamicWallpaper || {};
+    const dwInteract = dw.wallpaperInteraction || {};
     const bootCfg = f.bootAnimationConfig || { type: 'video', customCodePath: '', videoPath: '' };
     const libFeat = f.externalWallpaperLibrary || {};
     const currentLang = f.language || (window.__agyI18n ? window.__agyI18n.getLanguage() : 'zh-CN');
@@ -527,7 +528,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -650,6 +651,26 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             </div>
             <div class="shrink-0">
               ${createSwitchHtml('agy-opt-scene-audio', dw.audioEnabled === true)}
+            </div>
+          </div>
+
+          <!-- 按键交互穿透行（子模块五） -->
+          <div class="pt-1.5 border-t border-border/40 w-full bg-transparent flex justify-between gap-4 items-center" id="agy-wrap-wallpaper-interact">
+            <div class="flex-1 flex flex-col gap-0.5">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs font-medium">壁纸按键穿透与交互 (Hold-to-Interact)</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">交互</span>
+              </div>
+              <span class="text-[11px] text-muted-foreground opacity-65">按住设定修饰键可鼠标穿透到壁纸（点击切换人物/机关、拖拽视差），松开恢复日常输入</span>
+            </div>
+            <div class="shrink-0 flex items-center gap-2">
+              <select id="agy-select-interact-key" class="text-xs px-2 py-0.5 rounded border border-border bg-secondary/30 text-foreground outline-none cursor-pointer" title="触发穿透的修饰键">
+                <option value="alt" ${dwInteract.modifierKey === 'alt' || !dwInteract.modifierKey ? 'selected' : ''}>Alt 键 (推荐)</option>
+                <option value="shift" ${dwInteract.modifierKey === 'shift' ? 'selected' : ''}>Shift 键</option>
+                <option value="ctrl" ${dwInteract.modifierKey === 'ctrl' ? 'selected' : ''}>Ctrl 键</option>
+                <option value="meta" ${dwInteract.modifierKey === 'meta' ? 'selected' : ''}>Meta / Win 键</option>
+              </select>
+              ${createSwitchHtml('agy-opt-wallpaper-interact', dwInteract.enabled !== false)}
             </div>
           </div>
         </div>
@@ -1484,6 +1505,18 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         if (wrapV.style.display !== d) wrapV.style.display = d;
       }
 
+      // 同步壁纸交互穿透开关及修饰键状态
+      const optInteract = customOptions.querySelector('#agy-opt-wallpaper-interact');
+      const selInteractKey = customOptions.querySelector('#agy-select-interact-key');
+      const liveInteract = dw.wallpaperInteraction || {};
+      if (optInteract && optInteract.checked !== (liveInteract.enabled !== false)) {
+        optInteract.checked = (liveInteract.enabled !== false);
+        syncSwitchUI(optInteract);
+      }
+      if (selInteractKey && selInteractKey.value !== (liveInteract.modifierKey || 'alt')) {
+        selInteractKey.value = liveInteract.modifierKey || 'alt';
+      }
+
       // 同步开机动画开关及展开区域状态
       const optB = customOptions.querySelector('#agy-opt-boot');
       const wrapB = customOptions.querySelector('#agy-wrap-boot-config');
@@ -1697,6 +1730,36 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       };
     }
     syncSceneAudioUI();
+
+    // 子模块五：壁纸按键交互穿透（Hold-to-Interact）控制项绑定
+    const optWallpaperInteract = customOptions.querySelector('#agy-opt-wallpaper-interact');
+    const selectInteractKey = customOptions.querySelector('#agy-select-interact-key');
+
+    if (selectInteractKey) {
+      selectInteractKey.value = (config.features?.dynamicWallpaper?.wallpaperInteraction?.modifierKey) || 'alt';
+      selectInteractKey.onchange = () => {
+        if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+        if (!config.features.dynamicWallpaper.wallpaperInteraction) config.features.dynamicWallpaper.wallpaperInteraction = {};
+        config.features.dynamicWallpaper.wallpaperInteraction.modifierKey = selectInteractKey.value;
+        if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.updateInteraction === 'function') {
+          window.__agyWallpaperInstance.updateInteraction(config.features.dynamicWallpaper.wallpaperInteraction);
+        }
+        triggerSave();
+      };
+    }
+
+    if (optWallpaperInteract) {
+      optWallpaperInteract.onchange = () => {
+        syncSwitchUI(optWallpaperInteract);
+        if (!config.features.dynamicWallpaper) config.features.dynamicWallpaper = {};
+        if (!config.features.dynamicWallpaper.wallpaperInteraction) config.features.dynamicWallpaper.wallpaperInteraction = {};
+        config.features.dynamicWallpaper.wallpaperInteraction.enabled = optWallpaperInteract.checked;
+        if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.updateInteraction === 'function') {
+          window.__agyWallpaperInstance.updateInteraction(config.features.dynamicWallpaper.wallpaperInteraction);
+        }
+        triggerSave();
+      };
+    }
 
     // -------------------------------------------------------------------------
     // 子模块四：场景属性检查器（Scene Inspector）与即时热更（Live Tweak）

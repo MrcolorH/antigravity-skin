@@ -172,10 +172,26 @@ export function initWallpaper(options = {}) {
     sceneRenderer = 'dynamic', // 'dynamic' 实时WebGL2 | 'static' 静态海报
     sceneScripts = true,       // 默认激活 Scene 脚本引擎，注入本地系统时钟与归一化日进度
     wallpaperId = '',
-    wallpaperUserProperties = {}
+    wallpaperUserProperties = {},
+    wallpaperInteraction = {}
   } = options;
 
+  let interactionConfig = {
+    enabled: true,
+    modifierKey: 'alt',
+    showHud: true,
+    enableWheel: true,
+    ...(typeof wallpaperInteraction === 'object' && wallpaperInteraction ? wallpaperInteraction : {})
+  };
+
   const API_BASE = `http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}`;
+
+  // 场景渲染实例单例句柄提前声明（供事件网桥安全闭包访问，无 TDZ 风险）
+  let sceneRendererInstance = null;
+  let sceneRendererDir = '';
+  let sceneRendererMounting = false;
+  let sceneRendererModule = null; // 全局包加载缓存（window.WebWallGL）
+  let sceneRendererLoadSeq = 0;   // 换壁纸竞态守卫
 
   // 1. 设置滤镜变量（安全容错防早期 null）
   function applyFilterVars() {
@@ -243,6 +259,409 @@ export function initWallpaper(options = {}) {
   // 2.5 挂载时即刻同步一次
   ensureBackdrop();
   syncTitleBarOverlay();
+
+  // ==========================================================
+  // 子模块五（阶段一）：按键交互穿透状态机（Hold-to-Interact Engine）
+  // ==========================================================
+  let isPierceActive = false;
+  let lastFocusedElement = null;
+
+  function ensurePierceStyle() {
+    if (isDestroyed) return;
+    let s = document.getElementById('agy-wallpaper-pierce-style');
+    if (!s) {
+      s = document.createElement('style');
+      s.id = 'agy-wallpaper-pierce-style';
+      const container = document.head || document.documentElement || document.body;
+      if (container) container.appendChild(s);
+    }
+    if (s) {
+      s.textContent = `
+        /* 穿透模式激活时 */
+        html.agy-wallpaper-pierce-active {
+          cursor: crosshair !important;
+        }
+        /* 宿主主工作区所有顶层节点穿透，禁用指针事件与选区，不遮挡点击 */
+        html.agy-wallpaper-pierce-active body > *:not(#agy-dynamic-scene):not(#agy-dynamic-iframe):not(#agy-interact-hud):not(.monaco-modal-dialog):not(#agy-modal-host) {
+          pointer-events: none !important;
+          user-select: none !important;
+        }
+        html.agy-wallpaper-pierce-active .monaco-workbench {
+          pointer-events: none !important;
+        }
+        /* 动态壁纸容器与其内部的 Canvas、iframe 接收所有指针与点击事件并临时提升层级 */
+        html.agy-wallpaper-pierce-active #agy-dynamic-scene,
+        html.agy-wallpaper-pierce-active #agy-dynamic-scene canvas,
+        html.agy-wallpaper-pierce-active #agy-dynamic-iframe {
+          pointer-events: auto !important;
+          z-index: 99998 !important;
+        }
+      `;
+    }
+  }
+
+  function isTargetModifierKey(e, keyName) {
+    const k = String(keyName || 'alt').toLowerCase();
+    if (k === 'alt') return e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight';
+    if (k === 'shift') return e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight';
+    if (k === 'ctrl' || k === 'control') return e.key === 'Control' || e.code === 'ControlLeft' || e.code === 'ControlRight';
+    if (k === 'meta' || k === 'cmd' || k === 'command') return e.key === 'Meta' || e.code === 'MetaLeft' || e.code === 'MetaRight';
+    return false;
+  }
+
+  // ==========================================================
+  // 子模块五（阶段三）：交互状态反馈 HUD (Interaction HUD)
+  // ==========================================================
+  let hudFadeTimer = null;
+
+  function ensureHudElement() {
+    if (isDestroyed) return null;
+    let hud = document.getElementById('agy-interact-hud');
+    if (!hud) {
+      hud = document.createElement('div');
+      hud.id = 'agy-interact-hud';
+      hud.innerHTML = `
+        <span class="agy-hud-dot"></span>
+        <span class="agy-hud-icon">⚡</span>
+        <span class="agy-hud-title">壁纸交互中</span>
+        <span class="agy-hud-badge" id="agy-hud-badge">ALT</span>
+        <span class="agy-hud-tip">松开恢复</span>
+      `;
+      const container = document.body || document.documentElement;
+      if (container) {
+        container.appendChild(hud);
+      }
+    }
+    return hud;
+  }
+
+  function ensureHudStyle() {
+    if (isDestroyed) return;
+    let s = document.getElementById('agy-interact-hud-style');
+    if (!s) {
+      s = document.createElement('style');
+      s.id = 'agy-interact-hud-style';
+      const container = document.head || document.documentElement || document.body;
+      if (container) container.appendChild(s);
+    }
+    if (s) {
+      s.textContent = `
+        #agy-interact-hud {
+          position: fixed;
+          top: 18px;
+          right: 24px;
+          z-index: 999999;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px 6px 12px;
+          background: rgba(15, 23, 42, 0.85);
+          backdrop-filter: blur(20px) saturate(180%);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 9999px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.2);
+          color: #f8fafc;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          font-size: 12px;
+          font-weight: 500;
+          letter-spacing: 0.02em;
+          pointer-events: none;
+          user-select: none;
+          opacity: 0;
+          transform: translateY(-8px) scale(0.96);
+          transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #agy-interact-hud.active {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        #agy-interact-hud .agy-hud-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #38bdf8;
+          box-shadow: 0 0 8px #38bdf8, 0 0 14px rgba(56, 189, 248, 0.6);
+          animation: agy-hud-pulse 1.6s ease-in-out infinite;
+        }
+        #agy-interact-hud .agy-hud-icon {
+          font-size: 13px;
+          filter: drop-shadow(0 0 4px #fbbf24);
+        }
+        #agy-interact-hud .agy-hud-title {
+          font-weight: 600;
+          color: #ffffff;
+        }
+        #agy-interact-hud .agy-hud-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1px 6px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 10.5px;
+          font-weight: 700;
+          line-height: 1.2;
+          border-radius: 4px;
+          background: rgba(56, 189, 248, 0.22);
+          border: 1px solid rgba(56, 189, 248, 0.45);
+          color: #7dd3fc;
+          text-transform: uppercase;
+        }
+        #agy-interact-hud .agy-hud-tip {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.65);
+          margin-left: 2px;
+        }
+        @keyframes agy-hud-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.55; transform: scale(0.85); }
+        }
+      `;
+    }
+  }
+
+  function updateHudState(active) {
+    if (isDestroyed) return;
+    if (hudFadeTimer) {
+      clearTimeout(hudFadeTimer);
+      hudFadeTimer = null;
+    }
+    if (!interactionConfig.showHud || !interactionConfig.enabled) {
+      const existingHud = document.getElementById('agy-interact-hud');
+      if (existingHud) {
+        existingHud.classList.remove('active');
+      }
+      return;
+    }
+    ensureHudStyle();
+    const hud = ensureHudElement();
+    if (!hud) return;
+    const badge = hud.querySelector('#agy-hud-badge');
+    if (badge) {
+      badge.textContent = String(interactionConfig.modifierKey || 'ALT').toUpperCase();
+    }
+    if (active) {
+      hud.classList.add('active');
+    } else {
+      hud.classList.remove('active');
+    }
+  }
+
+  function enterPierce() {
+    if (isPierceActive || isDestroyed || !interactionConfig.enabled) return;
+    isPierceActive = true;
+    lastFocusedElement = document.activeElement;
+    ensurePierceStyle();
+    if (document.documentElement) {
+      document.documentElement.classList.add('agy-wallpaper-pierce-active');
+    }
+    if (typeof updateHudState === 'function') {
+      updateHudState(true);
+    }
+  }
+
+  function exitPierce() {
+    if (!isPierceActive) return;
+    isPierceActive = false;
+    if (document.documentElement) {
+      document.documentElement.classList.remove('agy-wallpaper-pierce-active');
+    }
+    if (typeof updateHudState === 'function') {
+      updateHudState(false);
+    }
+    // 通知底层渲染器光标离开
+    if (sceneRendererInstance && typeof sceneRendererInstance.pointerLeave === 'function') {
+      try { sceneRendererInstance.pointerLeave(); } catch (_) {}
+    }
+    const iframe = document.getElementById('agy-dynamic-iframe');
+    if (iframe && iframe.contentWindow) {
+      try { iframe.contentWindow.postMessage({ __we: 1, op: 'pointerLeave' }, '*'); } catch (_) {}
+    }
+    // 焦点抢救保护机制 (Focus Recovery)
+    try {
+      window.focus();
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+        lastFocusedElement.focus();
+      }
+    } catch (_) {}
+  }
+
+  function onKeyDown(e) {
+    if (isDestroyed || !interactionConfig.enabled) return;
+    if (isTargetModifierKey(e, interactionConfig.modifierKey)) {
+      // 避免 Windows 下 Alt 单击激活窗口菜单栏
+      if ((interactionConfig.modifierKey || 'alt').toLowerCase() === 'alt') {
+        try { e.preventDefault(); } catch (_) {}
+      }
+      if (!isPierceActive) {
+        enterPierce();
+      }
+      return;
+    }
+    // 若在穿透态中按下了其他键（快捷键或输入打字），立即退出穿透
+    if (isPierceActive) {
+      exitPierce();
+    }
+  }
+
+  function onKeyUp(e) {
+    if (isDestroyed || !interactionConfig.enabled) return;
+    if (isTargetModifierKey(e, interactionConfig.modifierKey)) {
+      if (isPierceActive) {
+        exitPierce();
+      }
+    }
+  }
+
+  function onWindowBlur() {
+    if (isPierceActive) {
+      exitPierce();
+    }
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden && isPierceActive) {
+      exitPierce();
+    }
+  }
+
+  // ==========================================================
+  // 子模块五（阶段二）：WebWallGL & Iframe 双轨事件网桥
+  // ==========================================================
+  let lastPointerRaf = null;
+
+  function getActiveSceneCanvas() {
+    if (sceneRendererInstance && sceneRendererInstance.canvas instanceof HTMLCanvasElement) {
+      return sceneRendererInstance.canvas;
+    }
+    const box = document.getElementById('agy-dynamic-scene');
+    if (box) {
+      return box.querySelector('canvas.agy-scene-live') || box.querySelector('canvas');
+    }
+    return null;
+  }
+
+  function getEventMods(e) {
+    return (e.ctrlKey ? 1 : 0) | (e.shiftKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+  }
+
+  function forwardPointerToScene(e, forceButtons) {
+    if (!sceneRendererInstance || typeof sceneRendererInstance.pushPointer !== 'function') return;
+    const canvas = getActiveSceneCanvas();
+    const rect = canvas ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const w = rect.width > 0 ? rect.width : window.innerWidth;
+    const h = rect.height > 0 ? rect.height : window.innerHeight;
+    const u = Math.min(Math.max((e.clientX - rect.left) / w, 0), 1);
+    const v = Math.min(Math.max((e.clientY - rect.top) / h, 0), 1);
+    const buttons = typeof forceButtons === 'number' ? forceButtons : (typeof e.buttons === 'number' ? e.buttons : (e.type === 'pointerup' ? 0 : 1));
+    const mods = getEventMods(e);
+    try {
+      sceneRendererInstance.pushPointer(u, v, buttons, mods);
+    } catch (_) {}
+  }
+
+  function forwardPointerToWeb(e, forceButtons) {
+    const iframe = document.getElementById('agy-dynamic-iframe');
+    if (!iframe || !iframe.contentWindow) return;
+    const buttons = typeof forceButtons === 'number' ? forceButtons : (typeof e.buttons === 'number' ? e.buttons : (e.type === 'pointerup' ? 0 : 1));
+    const mods = getEventMods(e);
+    try {
+      iframe.contentWindow.postMessage({
+        __we: 1,
+        op: 'pointer',
+        x: e.clientX,
+        y: e.clientY,
+        b: buttons,
+        m: mods
+      }, '*');
+    } catch (_) {}
+  }
+
+  function onGlobalPointerMove(e) {
+    if (isDestroyed) return;
+    const mode = currentMode();
+    if (isPierceActive) {
+      // 激活穿透态：实时无延迟传递光标与拖拽按键
+      if (mode === 'scene') {
+        forwardPointerToScene(e);
+      } else if (mode === 'web') {
+        forwardPointerToWeb(e);
+      }
+    } else {
+      // 未激活态：仅做被动视差节流跟踪（buttons 强制为 0，驱动背景眼睛/视角微随动，零打扰日常编码）
+      if (mode === 'scene' && sceneRendererInstance) {
+        if (!lastPointerRaf) {
+          lastPointerRaf = requestAnimationFrame(() => {
+            lastPointerRaf = null;
+            if (!isPierceActive && !isDestroyed) {
+              forwardPointerToScene(e, 0);
+            }
+          });
+        }
+      }
+    }
+  }
+
+  function onGlobalPointerDown(e) {
+    if (isDestroyed || !isPierceActive) return;
+    const mode = currentMode();
+    if (mode === 'scene') {
+      forwardPointerToScene(e, e.buttons || 1);
+    } else if (mode === 'web') {
+      forwardPointerToWeb(e, e.buttons || 1);
+    }
+  }
+
+  function onGlobalPointerUp(e) {
+    if (isDestroyed || !isPierceActive) return;
+    const mode = currentMode();
+    if (mode === 'scene') {
+      forwardPointerToScene(e, 0);
+    } else if (mode === 'web') {
+      forwardPointerToWeb(e, 0);
+    }
+  }
+
+  function onGlobalWheel(e) {
+    if (isDestroyed || !isPierceActive || interactionConfig.enableWheel === false) return;
+    // 穿透模式下阻断宿主自身滚动条滚动，避免写代码或滚壁纸冲突
+    try { e.preventDefault(); } catch (_) {}
+    const mode = currentMode();
+    const mods = getEventMods(e);
+    if (mode === 'scene') {
+      if (sceneRendererInstance && typeof sceneRendererInstance.pushWheel === 'function') {
+        try {
+          sceneRendererInstance.pushWheel(e.deltaX, e.deltaY, e.deltaMode, mods);
+        } catch (_) {}
+      }
+    } else if (mode === 'web') {
+      const iframe = document.getElementById('agy-dynamic-iframe');
+      if (iframe && iframe.contentWindow) {
+        try {
+          iframe.contentWindow.postMessage({
+            __we: 1,
+            op: 'wheel',
+            x: e.clientX,
+            y: e.clientY,
+            dx: e.deltaX,
+            dy: e.deltaY,
+            mode: e.deltaMode,
+            mods
+          }, '*');
+        } catch (_) {}
+      }
+    }
+  }
+
+  ensurePierceStyle();
+  window.addEventListener('keydown', onKeyDown, { capture: true });
+  window.addEventListener('keyup', onKeyUp, { capture: true });
+  window.addEventListener('blur', onWindowBlur);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('pointermove', onGlobalPointerMove, { passive: true });
+  window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true });
+  window.addEventListener('pointerup', onGlobalPointerUp, { capture: true });
+  window.addEventListener('wheel', onGlobalWheel, { capture: true, passive: false });
 
   // 3. 动态壁纸推迟加载状态与超时安全兜底
   let isWallpaperDeferred = false;
@@ -734,11 +1153,7 @@ export function initWallpaper(options = {}) {
   //   onReady 后淡入并隐藏海报；mount 失败则海报继续兜底（永不黑屏）
   // - 实例句柄全局单例：同一时间只允许一个 WebGL 上下文
   // ==========================================================
-  let sceneRendererInstance = null;
-  let sceneRendererDir = '';
-  let sceneRendererMounting = false;
-  let sceneRendererModule = null; // 全局包加载缓存（window.WebWallGL）
-  let sceneRendererLoadSeq = 0;   // 换壁纸竞态守卫
+  // 注：sceneRendererInstance / sceneRendererDir / sceneRendererLoadSeq 已在作用域顶层声明
 
   function normalizeSceneRenderer(v) {
     return v === 'static' ? 'static' : 'dynamic';
@@ -1637,7 +2052,8 @@ export function initWallpaper(options = {}) {
     // 关键优化：pointerdown / mousedown / click 统一超前感知触发！
     // 用户手指按下鼠标第一微秒立即调起 loading，绝不在松开 click 后才卡顿响应！
     function handleSessionTrigger(e) {
-      const row = e.target.closest && (
+      if (!e || !e.target || typeof e.target.closest !== 'function') return;
+      const row = (
         e.target.closest('[data-testid="conversation-row-sidebar"]') ||
         e.target.closest('[role="navigation"] a[href*="/c/"]') ||
         e.target.closest('a[href^="/c/"]')
@@ -1882,6 +2298,15 @@ export function initWallpaper(options = {}) {
       if (payload.sceneScripts !== undefined) sceneScripts = !!payload.sceneScripts;
       if (payload.wallpaperId !== undefined) wallpaperId = payload.wallpaperId || '';
       if (payload.wallpaperUserProperties !== undefined) wallpaperUserProperties = payload.wallpaperUserProperties || {};
+      if (payload.wallpaperInteraction !== undefined) {
+        interactionConfig = {
+          ...interactionConfig,
+          ...payload.wallpaperInteraction
+        };
+        if (!interactionConfig.enabled && isPierceActive) {
+          exitPierce();
+        }
+      }
       if (isWallpaperDeferred && !shouldDeferWallpaperForBoot()) {
         isWallpaperDeferred = false;
       }
@@ -1919,8 +2344,43 @@ export function initWallpaper(options = {}) {
       }
       if (s) s.textContent = newCss;
     },
+    // 子模块五：按键穿透与交互配置更新
+    updateInteraction: (newConfig) => {
+      if (isDestroyed || !newConfig) return;
+      interactionConfig = {
+        ...interactionConfig,
+        ...newConfig
+      };
+      if (!interactionConfig.enabled && isPierceActive) {
+        exitPierce();
+      }
+      if (typeof updateHudState === 'function') {
+        updateHudState(isPierceActive);
+      }
+    },
+    isPiercing: () => isPierceActive,
     destroy: () => {
       isDestroyed = true;
+      // 子模块五：按键穿透状态机与双轨网桥清理
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      window.removeEventListener('keyup', onKeyUp, { capture: true });
+      window.removeEventListener('blur', onWindowBlur);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pointermove', onGlobalPointerMove);
+      window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true });
+      window.removeEventListener('pointerup', onGlobalPointerUp, { capture: true });
+      window.removeEventListener('wheel', onGlobalWheel, { capture: true });
+      if (lastPointerRaf) {
+        cancelAnimationFrame(lastPointerRaf);
+        lastPointerRaf = null;
+      }
+      exitPierce();
+      const ps = document.getElementById('agy-wallpaper-pierce-style');
+      if (ps) ps.remove();
+      const hud = document.getElementById('agy-interact-hud');
+      if (hud) hud.remove();
+      const hudStyle = document.getElementById('agy-interact-hud-style');
+      if (hudStyle) hudStyle.remove();
       if (paginationEngine) {
         try { paginationEngine.destroy(); } catch (e) {}
       }

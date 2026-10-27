@@ -576,6 +576,7 @@
       const sceneScripts = (sourceType === 'scene' || !!wallpaperDir) ? true : (dw.sceneScripts !== false);
       const wallpaperId = dw.wallpaperId || '';
       const wallpaperUserProperties = dw.wallpaperUserProperties || {};
+      const wallpaperInteraction = dw.wallpaperInteraction || {};
       const fps = Number.isFinite(dw.fps) ? dw.fps : 60;
       const renderDpr = Number.isFinite(dw.renderDpr) ? dw.renderDpr : 1.0;
 
@@ -624,7 +625,8 @@
               sceneRenderer,
               sceneScripts,
               wallpaperId,
-              wallpaperUserProperties
+              wallpaperUserProperties,
+              wallpaperInteraction
             });
             window.__agyWallpaperInstance = wallpaperHandle;
             lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey };
@@ -665,7 +667,8 @@
                 sceneRenderer,
                 sceneScripts,
                 wallpaperId,
-                wallpaperUserProperties
+                wallpaperUserProperties,
+                wallpaperInteraction
               });
             } else if (typeof wallpaperHandle.setVideoEnabled === 'function') {
               wallpaperHandle.setVideoEnabled(mediaOn, videoUrl);
@@ -687,6 +690,9 @@
                 wallpaperHandle.setVideoEnabled(true, videoUrl);
               }
             }
+          }
+          if (typeof wallpaperHandle.updateInteraction === 'function') {
+            wallpaperHandle.updateInteraction(wallpaperInteraction);
           }
         }
       } catch (err) {
