@@ -805,9 +805,14 @@ export function initWallpaper(options = {}) {
       #agy-dynamic-scene canvas.agy-scene-canvas.agy-scene-live { opacity: 1; z-index: 3; }
       #agy-dynamic-scene canvas.agy-scene-canvas.agy-scene-retiring { opacity: 1; z-index: 2; }
       html, html.dark, html.theme-dark, html[class*="dark"],
-      body, body.dark, body.theme-dark, body[class*="dark"], body[class*="theme-"] {
+      body, body.dark, body.theme-dark, body[class*="dark"], body[class*="theme-"],
+      .agy-shell, .agy-sheet, [class*="agy-shell"], [class*="agy-sheet"],
+      body[data-agy-theme] .agy-shell, body[data-agy-theme] .agy-sheet,
+      body[data-agy-home-glow] .agy-sheet:has(.agy-home),
+      .agy-home, body[data-agy-theme] .agy-home {
         background: transparent !important;
         background-color: transparent !important;
+        background-image: none !important;
       }
     `;
     const host = document.head || document.documentElement;

@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
 
-const portFile = path.join(process.env.APPDATA, 'Antigravity', 'DevToolsActivePort');
+const portFile = process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'Antigravity', 'DevToolsActivePort')
+  : path.join(os.homedir(), 'Library', 'Application Support', 'Antigravity', 'DevToolsActivePort');
 const port = parseInt(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0].trim(), 10);
 
 const list = await new Promise((resolve, reject) => {
@@ -65,7 +68,7 @@ await send('Runtime.evaluate', {
   })()`
 });
 // 2.5 扫描本地长会话并注入预载清单
-const brainDir = path.join(process.env.USERPROFILE, '.gemini', 'antigravity', 'brain');
+const brainDir = path.join(process.env.USERPROFILE || os.homedir(), '.gemini', 'antigravity', 'brain');
 const longSessionIds = [];
 if (fs.existsSync(brainDir)) {
   const dirs = fs.readdirSync(brainDir, { withFileTypes: true });
@@ -118,7 +121,7 @@ await send('Runtime.evaluate', {
 console.log('✅ Wallpaper and Index modules successfully updated in runtime.');
 
 // 4. 同步拷贝到已安装插件目录
-const targetPluginDir = path.join(process.env.USERPROFILE, '.gemini', 'config', 'plugins', 'antigravity-skin');
+const targetPluginDir = path.join(process.env.USERPROFILE || os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin');
 const targetPluginCss = path.join(targetPluginDir, 'client', 'styles', 'glass-theme.css');
 const targetPluginJs = path.join(targetPluginDir, 'client', 'modules', 'wallpaper.js');
 const targetPluginIndex = path.join(targetPluginDir, 'client', 'index.js');

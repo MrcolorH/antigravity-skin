@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import http from 'node:http';
 
-const portFile = path.join(process.env.APPDATA, 'Antigravity', 'DevToolsActivePort');
+const portFile = process.env.APPDATA
+  ? path.join(process.env.APPDATA, 'Antigravity', 'DevToolsActivePort')
+  : path.join(os.homedir(), 'Library', 'Application Support', 'Antigravity', 'DevToolsActivePort');
 const port = parseInt(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0].trim(), 10);
 
 const list = await new Promise((resolve, reject) => {
