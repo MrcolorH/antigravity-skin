@@ -1357,15 +1357,16 @@
            规范来源：floating_user_bubble_spec.md v1.2.0
            ======================================================== */
         /* ========================================================
-           4.5 Chromium 原生视口懒加载引擎 (Viewport Virtual Lazy Rendering)
-           彻底解决长上下文会话全量 DOM 挂载卡顿，视口外元素跳过排版、微光着色与重排
+           4.5 视口渲染防线：严禁对对话卡片使用 content-visibility: auto！
+           原因：长消息卡片滑入/滑出滚动视口边缘时，content-visibility 与 contain-intrinsic-size
+           会在可见与占位之间高频震荡（Layout Thrashing Loop），导致底部输入框接缝处持续疯狂闪烁。
            ======================================================== */
         [data-testid="user-input-step"],
         div[class*="group/user-input-step"],
         div[role="article"][aria-label="Agent response"],
         div[aria-label="Agent response"] {
-          content-visibility: auto !important;
-          contain-intrinsic-size: auto 120px !important;
+          content-visibility: visible !important;
+          contain-intrinsic-size: none !important;
         }
 
         /* 用户提问气泡卡片主体（微冷浅蓝渐变 + 微光亚克力材质 + 20px 大圆角，0 离屏模糊开销） */
@@ -2098,8 +2099,6 @@
           border: 1px solid rgba(255, 255, 255, 0.55) !important;
           border-radius: 20px !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
-          transform: translateZ(0) !important;
-          will-change: transform !important;
         }
         .theme-dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
         .theme-dark div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
@@ -2112,22 +2111,13 @@
           background-color: rgba(18, 22, 34, 0.55) !important;
           border: 1px solid rgba(255, 255, 255, 0.14) !important;
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35) !important;
-          transform: translateZ(0) !important;
-          will-change: transform !important;
         }
 
-        /* 消除对话流中代码块经过输入框上边缘时的 GPU 复合层模糊采样重绘死循环（闪烁根治） */
+        /* 消除对话流中代码块的过度重排（自包含渲染边界） */
         .relative.whitespace-pre-wrap,
         [class*="whitespace-pre-wrap"],
         div:has(> pre) {
-          contain: paint !important;
-          transform: translateZ(0) !important;
-        }
-
-        /* 回到底部悬浮按钮硬件加速隔离，防止与裁切线重叠抖动 */
-        .agy-scroll-bottom {
-          transform: translateZ(0) translateX(-50%) !important;
-          will-change: transform, opacity !important;
+          contain: layout paint !important;
         }
 
         /* 拔除输入框内部与排队卡片内部所有的默认 bg-card 死白底色与杂色边框（排除交互按钮、自动完成浮层与设置弹窗） */
