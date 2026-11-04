@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --experimental-websocket sidecars/skin-engine/main.mjs",
+    "test": "node tests/test-scenescript-properties.mjs && node tests/test-wallpaper-interaction.mjs",
     "sync": "node --experimental-websocket scripts/sync-all.mjs",
     "hot-sync": "node --experimental-websocket scripts/hot-sync.mjs",
     "install-plugin": "./install.sh",

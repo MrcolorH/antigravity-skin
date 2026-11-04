@@ -30,7 +30,7 @@
   - **恢复悬浮按钮原生动画**：移除对 `.agy-scroll-bottom` 的过度覆盖，恢复官方原生 `transform: translate(-50%, 16px)` 的流畅退出与渐隐逻辑。
 
 #### 3. 跨平台开发与热同步脚本兼容性提升
-- 优化了 [`scripts/hot-sync.mjs`](file:///Users/colorh/Project/AICODING/antigravity-skin/scripts/hot-sync.mjs) 与 [`scripts/inspect-dom.mjs`](file:///Users/colorh/Project/AICODING/antigravity-skin/scripts/inspect-dom.mjs)，自动无缝识别 macOS 的 `Library/Application Support/Antigravity` 及 Windows 的 `%APPDATA%` 路径与用户主目录。
+- 优化了 [`scripts/hot-sync.mjs`](file:///Users/colorh/Project/AICODING/antigravity-skin/scripts/hot-sync.mjs) 与 [`tools/inspect-dom.mjs`](file:///Users/colorh/Project/AICODING/antigravity-skin/tools/inspect-dom.mjs)，自动无缝识别 macOS 的 `Library/Application Support/Antigravity` 及 Windows 的 `%APPDATA%` 路径与用户主目录。
 
 ---
 

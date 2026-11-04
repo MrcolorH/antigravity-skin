@@ -107,7 +107,7 @@ for (const obs of obsoleteDirs) {
 
 const WHITELIST_DIRS = ['client', 'sidecars', 'assets', 'scripts'];
 const WHITELIST_FILES = [
-  'plugin.json', 'config.default.json', 'package.json', 'README.md',
+  'plugin.json', 'config.default.json', 'package.json', 'README.md', 'CHANGELOG.md',
   'loadingOverlay.js', 'provisionSplash.js',
   'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh',
   'patch-loading.bat', 'restore-loading.bat', 'self-heal.bat'

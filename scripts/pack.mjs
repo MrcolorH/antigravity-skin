@@ -24,7 +24,7 @@ fs.mkdirSync(stagingDir, { recursive: true });
 // 2. 纯净白名单拷贝
 const WHITELIST_DIRS = ['client', 'sidecars', 'assets', 'scripts'];
 const WHITELIST_FILES = [
-  'plugin.json', 'config.default.json', 'package.json', 'README.md',
+  'plugin.json', 'config.default.json', 'package.json', 'README.md', 'CHANGELOG.md',
   'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1', 'install.sh', 'uninstall.sh',
   'patch-loading.bat', 'restore-loading.bat', 'loadingOverlay.js', 'provisionSplash.js', 'self-heal.bat'
 ];

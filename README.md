@@ -206,7 +206,8 @@
 ```text
 antigravity-skin/
 ├── plugin.json                 # Antigravity 官方插件清单声明
-├── config.default.json         # 出厂默认配置
+├── config.default.json         # 出厂默认配置模板
+├── CHANGELOG.md                # 版本演进总览与变更日志
 ├── install.bat                 # Windows 双击一键安装脚本
 ├── uninstall.bat               # Windows 双击一键卸载脚本
 ├── install.ps1                 # Windows PowerShell 自动部署脚本
@@ -216,31 +217,50 @@ antigravity-skin/
 ├── patch-loading.bat           # Windows 前置开机动画防闪白溶出引擎升级脚本
 ├── restore-loading.bat         # Windows 一键安全恢复官方原厂开机状态脚本
 ├── self-heal.bat               # Windows 开机动画补丁立即自检与自愈（附守护状态）
+├── loadingOverlay.js           # Windows 主进程 T=0 秒开机补丁模板
+├── provisionSplash.js          # Electron 初始化 Splash 垫片
+├── client/                     # 客户端渲染层代码
+│   ├── index.js                # 客户端总控中心与配置桥接
+│   ├── modules/
+│   │   ├── agy-modal.js        # 原生质感弹窗基建
+│   │   ├── appearance-menu.js  # 原生外观设置卡片深度无缝注入
+│   │   ├── boot-animation.js   # 视频 / 场景封面 / 代码三类全屏开机动画引擎
+│   │   ├── crt-theme.js        # 复古 CRT 特效模块
+│   │   ├── i18n-engine.js      # 智能防污染中文隔离汉化引擎
+│   │   ├── media-display-modal.js # 独立参数调节面板与修饰键配置
+│   │   ├── wallpaper-library-ui.js # 外部素材库资产中心（卡片网格 / 筛选 / 双向应用）
+│   │   └── wallpaper.js        # 多形态壁纸渲染器（video / web iframe / scene）与毛玻璃
+│   └── styles/
+│       ├── crt-theme.css       # 复古扫描线样式
+│       └── glass-theme.css     # 深度毛玻璃与窗口穿透核心样式
 ├── sidecars/
 │   └── skin-engine/
 │       ├── sidecar.json        # 官方 Sidecar 服务声明配置
 │       ├── main.mjs            # 守护进程（流媒体 Range 服务 + CDP 长连接注入 + 状态自愈）
-│       └── wallpaper-library.mjs # 外部素材库解析引擎（project.json / 扫描缓存 / 白名单 / 静态伺服）
-├── client/                     # 客户端渲染层代码
-│   ├── index.js                # 客户端总控中心与配置桥接
-│   ├── modules/
-│   │   ├── appearance-menu.js  # 原生外观设置卡片深度无缝注入
-│   │   ├── wallpaper-library-ui.js # 外部素材库资产中心（卡片网格 / 筛选 / 双向应用）
-│   │   ├── wallpaper.js        # 多形态壁纸渲染器（video / web iframe / scene 海报）与毛玻璃
-│   │   ├── boot-animation.js   # 视频 / 场景封面 / 代码三类全屏开机动画引擎
-│   │   ├── i18n-engine.js      # 智能防污染中文隔离汉化引擎
-│   │   └── crt-theme.js        # 复古 CRT 特效模块
-│   └── styles/
-│       ├── glass-theme.css     # 深度毛玻璃与窗口穿透核心样式
-│       └── crt-theme.css       # 复古扫描线样式
-├── scripts/
+│       ├── scene-pkg.mjs       # PKG 解包与 Scene 数据流驱动
+│       ├── wallpaper-library.mjs # 外部素材库解析引擎（project.json / 缓存 / 静态伺服）
+│       └── vendor/             # 场景渲染三方依赖 (WebWallGL)
+├── scripts/                    # 部署、运维与发布管理脚本
+│   ├── hot-sync.mjs            # 源码文件变动实时监听与自动热同步
 │   ├── install.mjs             # 跨平台纯净白名单部署与 RPC 注册引擎
-│   ├── uninstall.mjs           # 跨平台安全卸载引擎
+│   ├── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
 │   ├── patch-boot-overlay.mjs  # 跨平台核心开机引擎与原生窗口锁黑补丁 (Win & macOS)
-│   ├── self-heal.mjs           # 开机自愈：检测 app.asar 补丁是否被客户端更新覆盖并按需静默重打
 │   ├── register-self-heal.mjs  # 注册/注销开机自愈守护（启动文件夹 VBS 隐藏执行，免管理员）
 │   ├── restore-boot-overlay.mjs# 跨平台官方 app.asar 自动还原脚本 (Win & macOS)
-│   └── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
+│   ├── self-heal.mjs           # 开机自愈：检测 app.asar 补丁是否被覆盖并自动重打
+│   ├── sync-all.mjs            # 全量文件一键快速热同步至系统插件目录
+│   └── uninstall.mjs           # 跨平台安全卸载引擎
+├── tools/                      # 开发者辅助工具
+│   ├── capture-previews.mjs    # 文档效果图与界面截图自动化采集
+│   └── inspect-dom.mjs         # CDP 实时 DOM 节点与计算样式快速探查
+├── tests/                      # 自动化测试套件 (`npm test`)
+│   ├── test-scenescript-properties.mjs   # 场景脚本属性解析与沙箱测试
+│   └── test-wallpaper-interaction.mjs    # 壁纸按键穿透与双轨网桥测试
+├── docs/                       # 核心文档与设计归档
+│   ├── bugs/                   # 缺陷追踪与技术复盘报告 (BUG-001 ~ BUG-024)
+│   ├── images/                 # 项目效果图与文档用图
+│   ├── plan/                   # 模块架构总设计与阶段演进规划
+│   └── releases/               # 历史版本 Release Notes (v0.1.1 ~ v0.2.1)
 └── assets/
     ├── scripts/
     │   └── default-boot.js     # 内置极客科技开机引导代码动效预设
