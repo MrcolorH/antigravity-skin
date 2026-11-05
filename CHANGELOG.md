@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.2** | 输入栏 Gemini Live 实时语音按钮晶莹毛玻璃深度适配、全局搜索框图标隔离与汉化补全 | [RELEASE_v0.2.2.md](docs/releases/RELEASE_v0.2.2.md) |
 | **v0.2.1** | 反重力最新版布局深度适配、穿透穿帮修复与滚动接缝防闪优化（Layout Thrashing Loop 修复） | [RELEASE_v0.2.1.md](docs/releases/RELEASE_v0.2.1.md) |
 | **v0.2.0** | 壁纸交互穿透与按键响应系统（Hold-to-Interact / Alt 穿透 / WebWallGL 双轨网桥） | [RELEASE_v0.2.1.md](docs/releases/RELEASE_v0.2.1.md) |
 | **v0.1.9** | 冷启动开屏体验优化与跨进程原子交接专项修复（消灭冷启动二次开屏闪烁 BUG-024） | [RELEASE_v0.1.9.md](docs/releases/RELEASE_v0.1.9.md) |

@@ -2168,6 +2168,128 @@
           opacity: 1 !important;
         }
 
+        /* ==========================================================================
+           7.1 底部输入栏右侧：语音输入按钮适配（Gemini Live 语音胶囊与语音备忘录音按钮）
+           ========================================================================== */
+        /* 1. 结构与图标颜色保护：严格隔离，确保声波柱与星芒图标显色，彻底告别死黑 */
+        span[data-testid="voice-live-pill"],
+        button[data-testid="voice-start-button"],
+        button[data-testid="voice-end-button"] {
+          display: flex !important;
+          visibility: visible !important;
+          outline: none !important;
+        }
+        span[data-testid="voice-live-pill"] svg,
+        button[data-testid="voice-start-button"] svg,
+        button[data-testid="voice-end-button"] svg {
+          color: inherit !important;
+          opacity: 1 !important;
+          display: block !important;
+          visibility: visible !important;
+        }
+        span[data-testid="voice-live-pill"] svg rect,
+        span[data-testid="voice-live-pill"] svg path,
+        button[data-testid="voice-start-button"] svg rect,
+        button[data-testid="voice-start-button"] svg path {
+          fill: currentColor !important;
+        }
+
+        /* 2. 浅色主题闲置态：晶莹剔透高透毛玻璃水晶胶囊 + Gemini 科技蓝点缀 */
+        span[data-testid="voice-live-pill"]:not(.bg-red-600),
+        html.agy-native-light span[data-testid="voice-live-pill"]:not(.bg-red-600),
+        body:not(.dark):not(.theme-dark) span[data-testid="voice-live-pill"]:not(.bg-red-600) {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.90) 0%, rgba(240, 246, 255, 0.80) 100%) !important;
+          color: #2563eb !important;
+          border: 1px solid rgba(37, 99, 235, 0.25) !important;
+          box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+          backdrop-filter: blur(16px) !important;
+          -webkit-backdrop-filter: blur(16px) !important;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+        span[data-testid="voice-live-pill"]:not(.bg-red-600):hover,
+        html.agy-native-light span[data-testid="voice-live-pill"]:not(.bg-red-600):hover,
+        body:not(.dark):not(.theme-dark) span[data-testid="voice-live-pill"]:not(.bg-red-600):hover {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(230, 242, 255, 0.92) 100%) !important;
+          color: #1d4ed8 !important;
+          border-color: rgba(37, 99, 235, 0.45) !important;
+          box-shadow: 0 4px 14px rgba(37, 99, 235, 0.20), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+          transform: translateY(-0.5px) scale(1.05) !important;
+          opacity: 1 !important;
+        }
+        span[data-testid="voice-live-pill"]:not(.bg-red-600):active,
+        html.agy-native-light span[data-testid="voice-live-pill"]:not(.bg-red-600):active,
+        body:not(.dark):not(.theme-dark) span[data-testid="voice-live-pill"]:not(.bg-red-600):active {
+          transform: translateY(0.5px) scale(0.97) !important;
+          box-shadow: 0 1px 4px rgba(37, 99, 235, 0.12), inset 0 1px 1px rgba(0, 0, 0, 0.05) !important;
+        }
+
+        /* 3. 深色主题闲置态：黑曜石磨砂玻璃 + 柔光幽蓝呼吸边缘 */
+        html:not(.agy-native-light) .dark span[data-testid="voice-live-pill"]:not(.bg-red-600),
+        html:not(.agy-native-light) .theme-dark span[data-testid="voice-live-pill"]:not(.bg-red-600),
+        html.agy-native-dark span[data-testid="voice-live-pill"]:not(.bg-red-600) {
+          background: linear-gradient(135deg, rgba(30, 41, 59, 0.78) 0%, rgba(15, 23, 42, 0.68) 100%) !important;
+          color: #60a5fa !important;
+          border: 1px solid rgba(96, 165, 250, 0.32) !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+        }
+        html:not(.agy-native-light) .dark span[data-testid="voice-live-pill"]:not(.bg-red-600):hover,
+        html:not(.agy-native-light) .theme-dark span[data-testid="voice-live-pill"]:not(.bg-red-600):hover,
+        html.agy-native-dark span[data-testid="voice-live-pill"]:not(.bg-red-600):hover {
+          background: linear-gradient(135deg, rgba(37, 99, 235, 0.28) 0%, rgba(30, 41, 59, 0.88) 100%) !important;
+          color: #93c5fd !important;
+          border-color: rgba(96, 165, 250, 0.55) !important;
+          box-shadow: 0 4px 16px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+          transform: translateY(-0.5px) scale(1.05) !important;
+          opacity: 1 !important;
+        }
+
+        /* 4. Live 语音通话连通/活跃状态：流光动感红底胶囊 + 白净图标 */
+        span[data-testid="voice-live-pill"].bg-red-600,
+        span[data-testid="voice-live-pill"]:has([data-testid="voice-end-button"]) {
+          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+          color: #ffffff !important;
+          border: 1px solid rgba(255, 255, 255, 0.38) !important;
+          box-shadow: 0 3px 14px rgba(239, 68, 68, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+          opacity: 1 !important;
+        }
+        span[data-testid="voice-live-pill"].bg-red-600 svg,
+        span[data-testid="voice-live-pill"]:has([data-testid="voice-end-button"]) svg {
+          color: #ffffff !important;
+        }
+        span[data-testid="voice-live-pill"] button[data-testid="voice-end-button"] {
+          color: #ffffff !important;
+          transition: background-color 0.15s ease !important;
+        }
+        span[data-testid="voice-live-pill"] button[data-testid="voice-end-button"]:hover {
+          background-color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        /* 5. 语音备忘录音按钮（微调配合，提升质感） */
+        button[data-tooltip-id*="input-send-button-record-tooltip"] {
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          color: #475569 !important;
+        }
+        button[data-tooltip-id*="input-send-button-record-tooltip"]:hover {
+          color: #0f172a !important;
+          background-color: rgba(0, 0, 0, 0.06) !important;
+          transform: scale(1.05) !important;
+        }
+        .dark button[data-tooltip-id*="input-send-button-record-tooltip"],
+        .theme-dark button[data-tooltip-id*="input-send-button-record-tooltip"],
+        html.agy-native-dark button[data-tooltip-id*="input-send-button-record-tooltip"] {
+          color: #94a3b8 !important;
+        }
+        .dark button[data-tooltip-id*="input-send-button-record-tooltip"]:hover,
+        .theme-dark button[data-tooltip-id*="input-send-button-record-tooltip"]:hover,
+        html.agy-native-dark button[data-tooltip-id*="input-send-button-record-tooltip"]:hover {
+          color: #f1f5f9 !important;
+          background-color: rgba(255, 255, 255, 0.12) !important;
+          transform: scale(1.05) !important;
+        }
+        button[data-tooltip-id*="input-send-button-record-tooltip"] svg {
+          color: currentColor !important;
+        }
+
         /* 排队卡片内的徽标与操作按钮 */
         [data-testid="queued-messages-card"] .bg-secondary,
         [data-testid="queued-messages-card"] [class*="bg-secondary"] {
@@ -3874,7 +3996,7 @@
           opacity: 0.8 !important;
           font-weight: 550 !important;
         }
-        div.relative.flex.items-center svg,
+        div.relative.flex.items-center:has(> input) svg,
         .sticky.top-0.z-20 svg {
           color: #000000 !important;
           opacity: 1 !important;
@@ -4112,8 +4234,8 @@
           color: #cbd5e1 !important;
           opacity: 0.85 !important;
         }
-        .theme-dark div.relative.flex.items-center svg,
-        .dark div.relative.flex.items-center svg,
+        .theme-dark div.relative.flex.items-center:has(> input) svg,
+        .dark div.relative.flex.items-center:has(> input) svg,
         .theme-dark .sticky.top-0.z-20 svg,
         .dark .sticky.top-0.z-20 svg {
           color: #e2e8f0 !important;
