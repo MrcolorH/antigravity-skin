@@ -1796,25 +1796,37 @@ export function initWallpaper(options = {}) {
 
   function enhanceSingleBubble(step) {
     if (!step || step.classList.contains('user-input-buttons-container')) return;
-    if (step.getAttribute('data-agy-enhanced') === 'true') {
-      const cardEl = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
-                     step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
-                     step.querySelector('.bg-card') ||
-                     step;
-      if (cardEl && cardEl.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn')) return;
+
+    // 优先匹配新版官方统一父容器：包裹媒体附件与气泡文本的 max-w-[80%] 容器
+    const unifiedCard = step.querySelector('.max-w-\\[80\\%\\]') ||
+                        step.querySelector('div:has(> [data-testid="user-message-media-scroll"]), div:has(> [data-testid="user-message-bubble"])');
+
+    const legacyCard = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
+                       step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
+                       step.querySelector('.bg-card');
+
+    const card = unifiedCard || legacyCard || step;
+    if (unifiedCard && !unifiedCard.classList.contains('user-bubble-card')) {
+      unifiedCard.classList.add('user-bubble-card');
     }
 
-    const card = step.querySelector('[data-testid="lifted-context-menu-trigger"]') ||
-                 step.querySelector('div.relative.p-px.rounded-xl.bg-card-border') ||
-                 step.querySelector('.bg-card') ||
-                 step;
+    // 若存在旧内层残留的折叠按钮则清理，确保折叠胶囊统一定位在最外层卡片右上角
+    if (unifiedCard && legacyCard && legacyCard !== unifiedCard) {
+      const oldInnerBtn = legacyCard.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
+      if (oldInnerBtn) oldInnerBtn.remove();
+    }
+
+    if (step.getAttribute('data-agy-enhanced') === 'true') {
+      if (card && card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn')) return;
+    }
 
     const textEl = step.querySelector('[data-quotable="true"]') ||
                    step.querySelector('.whitespace-pre-wrap') ||
+                   step.querySelector('[data-testid="user-message-content"]') ||
                    step.querySelector('.user-bubble-text');
 
     const hasRealImg = !!step.querySelector(
-      'button[aria-label*=".png"], button[aria-label*=".jpg"], button[aria-label*=".jpeg"], button[aria-label*=".webp"], div[data-no-scroll-jump="true"] img, img:not([src*=".svg"]):not(.context-scope-mention img)'
+      'button[aria-label*=".png"], button[aria-label*=".jpg"], button[aria-label*=".jpeg"], button[aria-label*=".webp"], div[data-no-scroll-jump="true"] img, img:not([src*=".svg"]):not(.context-scope-mention img), [data-testid="user-message-media-scroll"] img, [data-testid="user-message-media-scroll"]'
     );
 
     // 纯内存瞬时判定：换行数与字数，0 次读取 scrollHeight 避免强制回流
@@ -1828,9 +1840,14 @@ export function initWallpaper(options = {}) {
 
     step.setAttribute('data-agy-enhanced', 'true');
     step.setAttribute('data-user-collapsible', String(isLongContent));
+    step.setAttribute('data-has-text', String(textContent.length > 0));
+    if (card) {
+      card.setAttribute('data-has-text', String(textContent.length > 0));
+    }
 
     if (!isLongContent) {
       step.removeAttribute('data-user-collapsed');
+      if (card) card.removeAttribute('data-user-collapsed');
       const existingBtn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
       if (existingBtn) existingBtn.remove();
       return;
@@ -1839,6 +1856,8 @@ export function initWallpaper(options = {}) {
     if (!step.hasAttribute('data-user-collapsed')) {
       step.setAttribute('data-user-collapsed', 'true');
     }
+    const currentCollapsed = step.getAttribute('data-user-collapsed') === 'true';
+    if (card) card.setAttribute('data-user-collapsed', String(currentCollapsed));
 
     let btn = card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn');
     if (!btn) {
@@ -1851,11 +1870,11 @@ export function initWallpaper(options = {}) {
         const isCollapsed = step.getAttribute('data-user-collapsed') === 'true';
         const nextState = !isCollapsed;
         step.setAttribute('data-user-collapsed', String(nextState));
+        if (card) card.setAttribute('data-user-collapsed', String(nextState));
         updateCollapseBtnIcon(btn, nextState);
       };
       card.appendChild(btn);
     }
-    const currentCollapsed = step.getAttribute('data-user-collapsed') === 'true';
     updateCollapseBtnIcon(btn, currentCollapsed);
   }
 
