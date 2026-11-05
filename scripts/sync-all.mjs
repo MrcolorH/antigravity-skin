@@ -59,7 +59,13 @@ console.log('🎉 所有插件核心文件已同步到系统插件目录！');
 // 2. 尝试通过 CDP 自动触发宿主热重载
 try {
   let cdpPort = 13257;
-  const devToolsFile = path.join(process.env.APPDATA || '', 'Antigravity', 'DevToolsActivePort');
+  const home = os.homedir();
+  const devToolsFile = process.platform === 'darwin'
+    ? path.join(home, 'Library', 'Application Support', 'Antigravity', 'DevToolsActivePort')
+    : (process.platform === 'win32'
+      ? path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Antigravity', 'DevToolsActivePort')
+      : path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'Antigravity', 'DevToolsActivePort'));
+
   if (fs.existsSync(devToolsFile)) {
     try {
       const p = parseInt(fs.readFileSync(devToolsFile, 'utf8').split(/\r?\n/)[0].trim(), 10);

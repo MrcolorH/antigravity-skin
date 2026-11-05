@@ -166,28 +166,32 @@
   window.__agyCleanMacAntiFlash = cleanMacAntiFlashAndNotify;
 
   function mountHost(el) {
-    if (!el || el.parentElement) return;
-    const target = document.body || document.documentElement;
-    if (target) {
-      target.appendChild(el);
+    if (!el) return;
+    if (document.body) {
+      if (el.parentElement !== document.body) {
+        document.body.appendChild(el);
+      }
       return;
     }
-    // 关键容错：若处于 document_start 等极早期生命周期，安全等待 DOM 根节点就绪
-    const observer = new MutationObserver(() => {
-      const t = document.body || document.documentElement;
-      if (t && !el.parentElement) {
-        observer.disconnect();
-        t.appendChild(el);
+    if (document.documentElement && !el.parentElement) {
+      document.documentElement.appendChild(el);
+    }
+    // 关键容错：若处于 document_start 等极早期生命周期，DOM body 出现时立即移入 body，杜绝被 body 黑色底板遮挡
+    const moveObserver = new MutationObserver(() => {
+      if (document.body) {
+        moveObserver.disconnect();
+        if (el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
       }
     });
     try {
-      observer.observe(document, { childList: true, subtree: true });
+      moveObserver.observe(document.documentElement || document, { childList: true, subtree: true });
     } catch (_) {}
     document.addEventListener('DOMContentLoaded', () => {
-      try { observer.disconnect(); } catch (_) {}
-      const t = document.body || document.documentElement;
-      if (t && !el.parentElement) {
-        t.appendChild(el);
+      try { moveObserver.disconnect(); } catch (_) {}
+      if (document.body && el.parentElement !== document.body) {
+        document.body.appendChild(el);
       }
     }, { once: true });
   }
@@ -477,12 +481,10 @@
       if (e) {
         try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
       }
-      if (canSafelyDismissBoot()) {
-        closeVideoBoot();
-      } else {
-        pendingDismiss = true;
-        shakePill();
-      }
+      // 用户主动按下 ESC 或点击，拥有绝对最高优先级，立即强制放行退出，杜绝死锁阻拦用户！
+      videoErrorFailed = true;
+      isHostReady = true;
+      closeVideoBoot();
     }
 
     function onDismissScheduleTriggered() {
@@ -532,7 +534,7 @@
       autoTimer = setupBootDismissScheduler(host, hint, onDismissScheduleTriggered);
     }
 
-    // 权威宿主就绪检测：确保首页 DOM 与动态壁纸（特别是场景壁纸活态帧）完全落地后再放行
+    // 权威宿主就绪检测：确保首页 DOM 与动态壁纸完全落地后再放行
     readyCheckTimer = setInterval(() => {
       if (cleaned) {
         if (readyCheckTimer) clearInterval(readyCheckTimer);
@@ -562,8 +564,8 @@
       }
     }, 60);
 
-    // 25秒极限兜底
-    setTimeout(markHostReady, 25000);
+    // 2.5秒极限安全兜底（杜绝冷启动在异常状态下死等引发黑屏死锁）
+    setTimeout(markHostReady, 2500);
 
     if (!videoSrc) {
       const emptyBox = document.createElement('div');
@@ -575,6 +577,10 @@
         <div style="font-size:12px;opacity:0.5;margin-top:16px;">${delaySec === 0 ? '按 ESC 或点击画面退出' : `按 ESC 或点击任意位置跳过 (${delaySec}秒后自动进入)`}</div>
       `;
       host.appendChild(emptyBox);
+      autoTimer = setupBootDismissScheduler(host, hint, () => {
+        videoErrorFailed = true;
+        closeVideoBoot();
+      });
       return;
     }
 
@@ -584,9 +590,10 @@
     const pos = bootCfg.fitPosition || 'center';
 
     video = document.createElement('video');
-    video.style.cssText = `width:100%;height:100%;object-fit:${fit};object-position:${pos};filter:brightness(${b}) contrast(${c});pointer-events:none;`;
+    video.style.cssText = `position:absolute;inset:0;width:100%;height:100%;object-fit:${fit};object-position:${pos};filter:brightness(${b}) contrast(${c});pointer-events:none;`;
     video.autoplay = true;
     video.muted = true;
+    video.defaultMuted = true;
     video.playsInline = true;
     video.preload = 'auto';
     video.loop = (delaySec === 0); // 0秒手动驻留时支持循环
@@ -599,6 +606,7 @@
     video.setAttribute('preload', 'auto');
     video.src = videoSrc;
     host.prepend(video);
+    try { video.load(); } catch (_) {}
 
     video.addEventListener('ended', () => {
       if (!canSafelyDismissBoot()) {
@@ -641,20 +649,39 @@
         }
       }
     });
+    const safePlayBootVideo = () => {
+      if (!video) return;
+      video.muted = true;
+      video.defaultMuted = true;
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(err => {
+          console.warn('[Boot Video] Playback blocked, retrying in rAF:', err);
+          requestAnimationFrame(() => {
+            if (video && video.paused) {
+              video.muted = true;
+              video.defaultMuted = true;
+              video.play().catch(() => {
+                videoErrorFailed = true;
+                setTimeout(closeVideoBoot, 300);
+              });
+            }
+          });
+        });
+      }
+    };
+
+    video.addEventListener('loadedmetadata', safePlayBootVideo, { once: true });
+    video.addEventListener('canplay', safePlayBootVideo, { once: true });
     video.addEventListener('error', (e) => {
       console.warn('[Boot Video] Video element error:', e, video.error);
       videoErrorFailed = true;
-      setTimeout(closeVideoBoot, 300);
+      setTimeout(closeVideoBoot, 200);
     });
-    video.play().catch(err => {
-      console.warn('[Boot Video] Playback failed or blocked, retrying muted:', err);
-      video.muted = true;
-      video.setAttribute('muted', '');
-      video.play().catch(() => {
-        videoErrorFailed = true;
-        setTimeout(closeVideoBoot, 300);
-      });
-    });
+
+    if (video.readyState >= 2) {
+      safePlayBootVideo();
+    }
   }
 
   /**
@@ -812,7 +839,7 @@
         }
       }
     }, 60);
-    setTimeout(() => { isHostReady = true; }, 25000);
+    setTimeout(() => { isHostReady = true; }, 2500);
 
     function onKeyDown(e) {
       if (delaySec === 0) {

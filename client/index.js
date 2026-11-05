@@ -4,7 +4,8 @@
 
 (() => {
   // 1. 本地配置缓存与 RPC 桥接
-  let currentConfig = window.__AG_SKIN_CONFIG__ || {
+  let currentConfig = window.__AG_SKIN_CONFIG__ || 
+    (window.__agySkinBridge && typeof window.__agySkinBridge.getConfig === 'function' ? window.__agySkinBridge.getConfig() : null) || {
     enabled: true,
     features: {
       bootAnimation: false,

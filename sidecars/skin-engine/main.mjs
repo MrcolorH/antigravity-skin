@@ -311,6 +311,10 @@ function readConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
       return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')));
     }
+    const globalUserCfg = path.join(os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin', 'config', 'config.json');
+    if (fs.existsSync(globalUserCfg)) {
+      return normalizeConfig(JSON.parse(fs.readFileSync(globalUserCfg, 'utf8')));
+    }
     if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
       return normalizeConfig(JSON.parse(fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf8')));
     }
@@ -2301,11 +2305,13 @@ function buildClientBundle() {
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
 
-  // Windows 开机动画补丁第 0 毫秒确定性互斥防线 (BUG-024)：
-  // 若 Windows 宿主已注入 loadingOverlay.js 补丁，宿主层原生 WebContentsView 拥有绝对优先接管权。
+  // Windows & macOS 开机动画补丁第 0 毫秒确定性互斥防线 (BUG-024 & macOS Native Boot)：
+  // 若 Windows 宿主已注入 loadingOverlay.js 补丁，或 macOS 顶层原生遮罩已启动开机引导，
+  // 宿主层原生 WebContentsView 拥有绝对优先接管权。
   // 在文档初始化的第 0 毫秒同步立下 __agyMasterBootHandled 铁锁，从源头彻底杜绝前端 DOM 容器在冷启动下并行偷跑导致闪屏穿帮！
   const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
-  if (isWindowsPatched && config?.enabled && config?.features?.bootAnimation) {
+  const isMacNativeBootHandled = process.platform === 'darwin' && nativeOverlayBootHandled;
+  if ((isWindowsPatched || isMacNativeBootHandled) && config?.enabled && config?.features?.bootAnimation) {
     bundleParts.push(`(() => {
       try {
         window.__agyMasterBootHandled = true;
@@ -2592,7 +2598,8 @@ function isMainAppTarget(target) {
   return false;
 }
 
-// 6.6 动态接管并无损消除官方原生 Loading 遮罩（纯非侵入式 CDP 样式接管，100% 保持官方代码签名完整）
+// 6.6 动态接管原生 Loading 遮罩：在冷启动黄金 5 秒内秒级呈现开屏动效或优雅微光，物理消除纯黑断层与死黑屏
+let nativeOverlayBootHandled = false;
 const neutralizedLoadingTargets = new Set();
 
 function handleNativeLoadingOverlay(target, port) {
@@ -2603,39 +2610,242 @@ function handleNativeLoadingOverlay(target, port) {
   const wsUrl = target.webSocketDebuggerUrl || (port ? `ws://127.0.0.1:${port}/devtools/page/${targetId}` : null);
   if (!wsUrl) return;
 
+  const cfg = readConfig();
+  const isBootEnabled = !!(cfg?.enabled && cfg?.features?.bootAnimation);
+  const bootCfg = cfg?.features?.bootAnimationConfig || {};
+  const delaySec = Number.isFinite(bootCfg.autoEnterDelay) ? Math.max(0, Math.min(10, Math.round(bootCfg.autoEnterDelay))) : 3;
+  const videoPath = bootCfg.videoPath || '';
+  const fit = bootCfg.fit || 'cover';
+  const fitPos = bootCfg.fitPosition || 'center';
+  const brightness = Number.isFinite(bootCfg.brightness) ? bootCfg.brightness : 1.0;
+  const contrast = Number.isFinite(bootCfg.contrast) ? bootCfg.contrast : 1.0;
+
+  let videoSrc = '';
+  if (videoPath) {
+    videoSrc = (videoPath.startsWith('http://') || videoPath.startsWith('https://'))
+      ? videoPath
+      : `http://127.0.0.1:${HTTP_PORT}/boot-video.mp4?path=${encodeURIComponent(videoPath)}`;
+  }
+
   try {
     const ws = new WebSocket(wsUrl);
     ws.onopen = () => {
-      console.log(`[Skin Engine] Detected native loadingOverlay (${targetId}), neutralizing official pulsating logo...`);
-      const neutralizeScript = `
+      console.log(`[Skin Engine] Detected native loadingOverlay (${targetId}), preparing boot presentation...`);
+
+      if (!isBootEnabled) {
+        // 未开启开机动画：仅平滑微调背景为深色并保留原生脉冲，绝不粗暴删光 Logo 导致死黑
+        const neutralizeScript = `
+          try {
+            document.documentElement.style.background = '#121212';
+            if (document.body) document.body.style.background = '#121212';
+          } catch (_) {}
+        `;
+        ws.send(JSON.stringify({
+          id: 1,
+          method: 'Runtime.evaluate',
+          params: { expression: neutralizeScript }
+        }));
+        setTimeout(() => {
+          try { ws.close(); } catch (_) {}
+        }, 500);
+        return;
+      }
+
+      // 开启了开机动画：原生遮罩在最顶层秒级接管开机引导！
+      nativeOverlayBootHandled = true;
+
+      const bootScript = `(() => {
         try {
           const style = document.createElement('style');
-          style.textContent = 'html, body { background: #000000 !important; } svg, .logo { display: none !important; opacity: 0 !important; visibility: hidden !important; }';
-          if (document.head) {
-            document.head.appendChild(style);
-          } else if (document.documentElement) {
-            document.documentElement.appendChild(style);
+          style.textContent = \`
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body {
+              width: 100vw; height: 100vh;
+              overflow: hidden;
+              background: #000000 !important;
+              background-color: #000000 !important;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              -webkit-user-select: none;
+            }
+            .logo, svg { display: none !important; opacity: 0 !important; }
+            #agy-native-stage {
+              position: fixed; inset: 0;
+              width: 100vw; height: 100vh;
+              background: #000000;
+              display: flex; align-items: center; justify-content: center;
+              z-index: 999999;
+              overflow: hidden;
+              transition: opacity 450ms cubic-bezier(0.25, 1, 0.5, 1), transform 450ms cubic-bezier(0.25, 1, 0.5, 1);
+            }
+            #agy-native-video {
+              position: absolute; inset: 0;
+              width: 100%; height: 100%;
+              object-fit: ${fit};
+              object-position: ${fitPos};
+              filter: brightness(${brightness}) contrast(${contrast});
+              pointer-events: none;
+              opacity: 0;
+              transition: opacity 250ms ease;
+            }
+            #agy-native-fallback {
+              display: flex; flex-direction: column; align-items: center; justify-content: center;
+              gap: 16px; color: #f8fafc;
+              animation: agy-glow-pulse 2s ease-in-out infinite alternate;
+            }
+            @keyframes agy-glow-pulse {
+              0% { opacity: 0.6; transform: scale(0.98); }
+              100% { opacity: 1; transform: scale(1.02); }
+            }
+            .agy-status-pill {
+              position: fixed; bottom: 28px; right: 32px;
+              padding: 8px 18px; border-radius: 9999px;
+              background: rgba(15, 23, 42, 0.82);
+              backdrop-filter: blur(16px);
+              -webkit-backdrop-filter: blur(16px);
+              border: 1px solid rgba(255, 255, 255, 0.15);
+              color: rgba(248, 250, 252, 0.92);
+              font-size: 12px; font-weight: 500;
+              display: flex; align-items: center; gap: 8px;
+              box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+              cursor: pointer; z-index: 1000000;
+              transition: all 0.25s ease;
+            }
+            .agy-status-pill:hover {
+              background: rgba(30, 41, 59, 0.92);
+              border-color: rgba(99, 102, 241, 0.45);
+              transform: translateY(-2px);
+            }
+            .agy-dot {
+              width: 7px; height: 7px; border-radius: 50%;
+              background: #38bdf8;
+              box-shadow: 0 0 8px #38bdf8;
+              animation: agy-dot-glow 1.8s infinite;
+            }
+            @keyframes agy-dot-glow {
+              0%, 100% { opacity: 0.5; transform: scale(0.9); }
+              50% { opacity: 1; transform: scale(1.15); }
+            }
+            kbd {
+              background: rgba(255, 255, 255, 0.16);
+              border: 1px solid rgba(255, 255, 255, 0.25);
+              border-radius: 4px; padding: 1px 5px;
+              font-size: 10px; font-family: monospace;
+            }
+          \`;
+          (document.head || document.documentElement).appendChild(style);
+
+          const oldLogo = document.querySelector('.logo') || document.querySelector('svg');
+          if (oldLogo) oldLogo.remove();
+
+          const stage = document.createElement('div');
+          stage.id = 'agy-native-stage';
+
+          let isDismissed = false;
+          const dismiss = (forceInstant = false) => {
+            if (isDismissed) return;
+            isDismissed = true;
+            if (pill) {
+              pill.style.transition = 'opacity 200ms ease';
+              pill.style.opacity = '0';
+            }
+            if (forceInstant) {
+              stage.style.transition = 'opacity 300ms cubic-bezier(0.25, 1, 0.5, 1), transform 300ms cubic-bezier(0.25, 1, 0.5, 1)';
+              stage.style.opacity = '0';
+              stage.style.transform = 'scale(1.02) translateZ(0)';
+            }
+          };
+
+          const pill = document.createElement('div');
+          pill.className = 'agy-status-pill';
+          pill.innerHTML = '<span class="agy-dot"></span><span>系统启动中 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+          pill.onclick = (e) => { e.stopPropagation(); dismiss(true); };
+          stage.onclick = () => dismiss(true);
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' || e.code === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+              dismiss(true);
+            }
+          }, true);
+
+          let video = null;
+          const src = ${JSON.stringify(videoSrc)};
+          if (src) {
+            video = document.createElement('video');
+            video.id = 'agy-native-video';
+            video.autoplay = true;
+            video.muted = true;
+            video.defaultMuted = true;
+            video.playsInline = true;
+            video.preload = 'auto';
+            if (${delaySec} === 0) video.loop = true;
+            video.src = src;
+
+            const onPlaySuccess = () => {
+              video.style.opacity = '1';
+              if (pill) {
+                pill.innerHTML = '<span class="agy-dot"></span><span>就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+              }
+              if (${delaySec} > 0) {
+                setTimeout(() => {
+                  if (pill) {
+                    pill.innerHTML = '<span class="agy-dot"></span><span>工作区就绪中...</span>';
+                  }
+                  dismiss(false);
+                }, ${delaySec} * 1000);
+              }
+            };
+            video.addEventListener('canplay', onPlaySuccess, { once: true });
+            video.addEventListener('playing', onPlaySuccess, { once: true });
+            video.addEventListener('ended', () => {
+              if (${delaySec} > 0) {
+                if (pill) pill.innerHTML = '<span class="agy-dot"></span><span>工作区就绪中...</span>';
+                dismiss(false);
+              }
+            });
+            video.addEventListener('error', () => {
+              showFallback();
+              if (${delaySec} > 0) setTimeout(() => dismiss(true), 2500);
+            });
+            stage.appendChild(video);
+            try { video.load(); video.play().catch(() => {}); } catch (_) {}
+          } else {
+            showFallback();
+            if (${delaySec} > 0) setTimeout(() => dismiss(true), ${delaySec} * 1000);
           }
-          if (document.body) {
-            document.body.style.background = '#000000';
-            const logo = document.querySelector('.logo') || document.querySelector('svg');
-            if (logo) logo.remove();
+
+          function showFallback() {
+            const fb = document.createElement('div');
+            fb.id = 'agy-native-fallback';
+            fb.innerHTML = '<div style="font-size:32px;">✨</div><div style="font-size:15px;font-weight:600;letter-spacing:1px;color:#e2e8f0;">Antigravity 正在启动...</div>';
+            stage.appendChild(fb);
           }
-        } catch (_) {}
-      `;
+
+          stage.appendChild(pill);
+          (document.body || document.documentElement).appendChild(stage);
+        } catch (e) {
+          console.error('[Native Boot Stage Error]', e);
+        }
+      })()`;
+
       ws.send(JSON.stringify({
         id: 1,
         method: 'Runtime.evaluate',
-        params: { expression: neutralizeScript }
+        params: { expression: bootScript }
       }));
+    };
+
+    ws.onclose = () => {
+      neutralizedLoadingTargets.delete(targetId);
       setTimeout(() => {
-        try { ws.close(); } catch (_) {}
-      }, 500);
+        nativeOverlayBootHandled = false;
+      }, 1000);
     };
-    ws.onerror = () => {
-      try { ws.close(); } catch (_) {}
+
+    ws.onerror = (err) => {
+      console.warn(`[Skin Engine] Native loadingOverlay WebSocket error:`, err.message || err);
     };
-  } catch (_) {}
+  } catch (err) {
+    console.warn(`[Skin Engine] Failed to attach native loading overlay:`, err.message || err);
+  }
 }
 
 // 7. 纯事件驱动核心：Browser 级别长连接与 0 轮询目标发现 (0% CPU Idle)
@@ -2702,10 +2912,7 @@ async function connectBrowserTarget(port) {
             const url = (info.url || '').trim();
             // 动态接管原生 loadingOverlay 遮罩
             if (url.startsWith('data:') && (url.includes('logo') || url.includes('svg') || url.includes('DOCTYPE') || url.includes('%3C') || url.includes('%21DOCTYPE'))) {
-              const cfg = readConfig();
-              if (cfg?.enabled && cfg?.features?.bootAnimation) {
-                handleNativeLoadingOverlay(info, port);
-              }
+              handleNativeLoadingOverlay(info, port);
             } else if (isMainAppTarget(info)) {
               const targetId = info.targetId;
               let session = activeSessions.get(targetId);

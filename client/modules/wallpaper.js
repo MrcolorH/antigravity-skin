@@ -2519,14 +2519,21 @@ if (typeof window !== 'undefined') {
     // 3. 毛玻璃样式已生效
     if (!document.getElementById('agy-dynamic-wallpaper-style')) return false;
 
-    // 4. 宿主核心交互框架（输入框/工作区）必须已经真实渲染落地（绝不在空骨架阶段放行，杜绝开机淡出后眼睁睁看着组件拼凑！）
-    const hasCoreUI = !!(
+    // 4. 宿主核心交互框架（输入框/工作区/主要布局容器）必须已经真实渲染落地（杜绝空骨架抢跑，同时全兼容首页/欢迎页无输入框场景）
+    const hasInput = !!(
       document.querySelector('textarea') ||
       document.querySelector('input') ||
       document.querySelector('[contenteditable="true"]') ||
       document.querySelector('[role="textbox"]')
     );
-    if (!hasCoreUI) return false;
+    const rootEl = document.getElementById('root');
+    const hasCoreLayout = !!(
+      document.querySelector('main') ||
+      document.querySelector('[role="main"]') ||
+      (rootEl && rootEl.childElementCount > 0) ||
+      (document.body && document.body.childElementCount > 2)
+    );
+    if (!hasInput && !hasCoreLayout) return false;
 
     return true;
   };

@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.4** | 冷启动零黑屏秒级开屏引导、macOS 原生过渡层智能接力、开机时序与气泡阅读深度优化 | [RELEASE_v0.2.4.md](docs/releases/RELEASE_v0.2.4.md) |
 | **v0.2.3** | 官方新版对话框文件统一气泡包裹、智能两行截断收起、50vh 视窗保护与经典折叠胶囊恢复 | [RELEASE_v0.2.3.md](docs/releases/RELEASE_v0.2.3.md) |
 | **v0.2.2** | 输入栏 Gemini Live 实时语音按钮晶莹毛玻璃深度适配、全局搜索框图标隔离与汉化补全 | [RELEASE_v0.2.2.md](docs/releases/RELEASE_v0.2.2.md) |
 | **v0.2.1** | 反重力最新版布局深度适配、穿透穿帮修复与滚动接缝防闪优化（Layout Thrashing Loop 修复） | [RELEASE_v0.2.1.md](docs/releases/RELEASE_v0.2.1.md) |

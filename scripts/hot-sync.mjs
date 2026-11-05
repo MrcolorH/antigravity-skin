@@ -53,6 +53,10 @@ const jsPath = path.resolve('client', 'modules', 'wallpaper.js');
 const jsContent = fs.readFileSync(jsPath, 'utf8');
 const cleanJs = jsContent.replace(/^export\s+(function|const|let|var|class)\s+/gm, (m, g1) => g1 + ' ');
 
+const bootPath = path.resolve('client', 'modules', 'boot-animation.js');
+const bootContent = fs.readFileSync(bootPath, 'utf8');
+const cleanBoot = bootContent.replace(/^export\s+(function|const|let|var|class)\s+/gm, (m, g1) => g1 + ' ');
+
 // 2. 热更新注入样式
 await send('Runtime.evaluate', {
   expression: `(() => {
@@ -99,6 +103,7 @@ await send('Runtime.evaluate', {
       const merged = Array.from(new Set([...saved, ...window.__AGY_PRELOADED_LONG_SESSIONS__]));
       localStorage.setItem('__agy_long_sessions', JSON.stringify(merged));
     } catch(e) {}
+    ${cleanBoot}
     ${cleanJs}
     if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.destroy === 'function') {
       try { window.__agyWallpaperInstance.destroy(); } catch (e) {}
@@ -124,6 +129,7 @@ console.log('✅ Wallpaper and Index modules successfully updated in runtime.');
 const targetPluginDir = path.join(process.env.USERPROFILE || os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin');
 const targetPluginCss = path.join(targetPluginDir, 'client', 'styles', 'glass-theme.css');
 const targetPluginJs = path.join(targetPluginDir, 'client', 'modules', 'wallpaper.js');
+const targetPluginBoot = path.join(targetPluginDir, 'client', 'modules', 'boot-animation.js');
 const targetPluginIndex = path.join(targetPluginDir, 'client', 'index.js');
 
 if (fs.existsSync(path.dirname(targetPluginCss))) {
@@ -133,6 +139,10 @@ if (fs.existsSync(path.dirname(targetPluginCss))) {
 if (fs.existsSync(path.dirname(targetPluginJs))) {
   fs.writeFileSync(targetPluginJs, jsContent, 'utf8');
   console.log('✅ Synced wallpaper.js to installed plugin directory.');
+}
+if (fs.existsSync(path.dirname(targetPluginBoot))) {
+  fs.writeFileSync(targetPluginBoot, bootContent, 'utf8');
+  console.log('✅ Synced boot-animation.js to installed plugin directory.');
 }
 if (fs.existsSync(targetPluginIndex)) {
   fs.writeFileSync(targetPluginIndex, indexContent, 'utf8');
