@@ -35,13 +35,12 @@
   } catch (e) {}
 
   function pauseWallpaperVideo() {
+    // 纯视频壁纸：开屏期间必须真实暂停后台壁纸解码，释放 100% 显卡硬件解码带宽给开机视频，彻底解决丢帧卡死
     const v = document.getElementById('agy-dynamic-video');
     if (v) {
       try {
-        v.style.visibility = 'visible';
-        v.style.opacity = '1';
-        v.muted = true;
-        v.play().catch(() => {});
+        v.dataset.bootPaused = '1';
+        v.pause();
       } catch(e) {}
     }
     // 网页 / 场景壁纸在开屏期间优雅挂起（平滑设置 opacity，绝不突变隐藏）
@@ -54,14 +53,14 @@
         frame.contentWindow?.postMessage({ type: 'agy-wallpaper-pause' }, '*');
       } catch(e) {}
     }
-    // 核心诉求：场景壁纸在开屏准备期间绝对不暂停、不隐藏！在幕后全速预启动与预热，进入首页时已是流畅运行态
+    // 场景壁纸：在开屏期间暂停 WebGL 实时帧渲染循环，仅保留静止海报，彻底消灭主线程卡死
     const scene = document.getElementById('agy-dynamic-scene');
     if (scene) {
       try {
         scene.style.visibility = 'visible';
         scene.style.opacity = '1';
-        if (window.__agySceneRenderer && typeof window.__agySceneRenderer.resume === 'function') {
-          window.__agySceneRenderer.resume();
+        if (window.__agySceneRenderer && typeof window.__agySceneRenderer.pause === 'function') {
+          window.__agySceneRenderer.pause();
         }
       } catch(e) {}
     }
@@ -381,6 +380,7 @@
 
     sessionStorage.setItem('__agy_booted__', 'true');
 
+    const animStartTime = Date.now();
     let cleaned = false;
     let video = null;
     let autoTimer = null;
@@ -389,15 +389,19 @@
     let pendingDismiss = false;
     let videoErrorFailed = false;
 
-    // 权威防线：场景壁纸严格要求 WebGL 画布打上 live 标记且首帧稳定运行，或动态明确失败
+    // 权威防线：场景壁纸具备存活 Canvas 或海报已完整展示，或 3.5 秒超时安全兜底，杜绝无限死锁
     function canSafelyDismissBoot() {
       if (videoErrorFailed) return true; // 视频播放失败容灾：绝不让黑屏遮罩死锁视口
       if (!checkIsSceneWallpaper()) {
         return isHostReady;
       }
       const sceneCanvas = document.querySelector('#agy-dynamic-scene canvas.agy-scene-live');
-      const isSceneLive = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) || window.__agySceneDynamicFailed === true;
-      return isHostReady && isSceneLive;
+      const scenePoster = document.querySelector('#agy-dynamic-scene img.agy-scene-poster');
+      const hasVisual = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) ||
+                        (scenePoster && scenePoster.complete && scenePoster.naturalWidth > 0) ||
+                        window.__agySceneDynamicFailed === true;
+      const isTimeout = (Date.now() - animStartTime > 3500);
+      return isHostReady && (hasVisual || isTimeout);
     }
 
     function updateLoadingSceneHint() {
@@ -506,7 +510,6 @@
       }
     }
 
-    const animStartTime = Date.now();
     window.addEventListener('keydown', onKeyDown, true);
     host.addEventListener('click', (e) => {
       if (Date.now() - animStartTime < 300) return;
@@ -609,40 +612,29 @@
     try { video.load(); } catch (_) {}
 
     video.addEventListener('ended', () => {
-      if (!canSafelyDismissBoot()) {
-        // 动态场景尚未就绪，视频绝不退出，立即无缝循环播放，死守全屏遮罩
-        try {
-          video.currentTime = 0;
-          video.play().catch(() => {});
-        } catch (_) {}
-        return;
-      }
       if (delaySec === 0) {
+        // 0秒常驻模式：循环重放开机视频
         try {
           video.currentTime = 0;
           video.play().catch(() => {});
         } catch (_) {}
         return;
       }
-      if (delaySec > 0 && (video.currentTime > 0.3 || (video.duration && video.currentTime >= video.duration - 0.5))) {
+      if (canSafelyDismissBoot()) {
         closeVideoBoot();
+      } else {
+        // 若壁纸仍需毫秒级装配，优雅停在最后一帧等待，严禁暴力 Seek 重播导致黑帧断流！
+        pendingDismiss = true;
+        updateLoadingSceneHint();
       }
     });
 
-    // 零闪烁交叉淡入：结束前 450ms 提前在底层挂载主界面壁纸
+    // 零闪烁交叉淡入：结束前 450ms 提前平滑唤醒底层壁纸
     let preloadedWallpaper = false;
     video.addEventListener('timeupdate', () => {
       if (cleaned || !video.duration || !isFinite(video.duration)) return;
-      // 若快要播放完毕（剩 0.25s）但场景壁纸仍在装配，提前回滚重播，避免末尾黑屏
-      if (!canSafelyDismissBoot() && video.duration - video.currentTime <= 0.25) {
-        try {
-          video.currentTime = 0;
-          video.play().catch(() => {});
-        } catch (_) {}
-        return;
-      }
       if (preloadedWallpaper) return;
-      if (delaySec > 0 && video.duration - video.currentTime <= 0.45 && canSafelyDismissBoot()) {
+      if (delaySec > 0 && video.duration - video.currentTime <= 0.45) {
         preloadedWallpaper = true;
         if (typeof window.__agyResumeBootWallpaper === 'function') {
           try { window.__agyResumeBootWallpaper(); } catch (_) {}
@@ -722,6 +714,7 @@
     mountHost(host);
     sessionStorage.setItem('__agy_booted__', 'true');
 
+    const customAnimStartTime = Date.now();
     let cleaned = false;
     let customCleanup = null;
     let autoTimer = null;
@@ -732,8 +725,12 @@
     function canSafelyDismissCustomBoot() {
       if (!checkIsSceneWallpaper()) return isHostReady;
       const sceneCanvas = document.querySelector('#agy-dynamic-scene canvas.agy-scene-live');
-      const isSceneLive = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) || window.__agySceneDynamicFailed === true;
-      return isHostReady && isSceneLive;
+      const scenePoster = document.querySelector('#agy-dynamic-scene img.agy-scene-poster');
+      const hasVisual = (window.__agySceneFirstFrameReady === true && !!sceneCanvas) ||
+                        (scenePoster && scenePoster.complete && scenePoster.naturalWidth > 0) ||
+                        window.__agySceneDynamicFailed === true;
+      const isTimeout = (Date.now() - customAnimStartTime > 3500);
+      return isHostReady && (hasVisual || isTimeout);
     }
 
     function updateCustomLoadingHint() {

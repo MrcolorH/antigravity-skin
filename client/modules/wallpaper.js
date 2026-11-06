@@ -668,15 +668,19 @@ export function initWallpaper(options = {}) {
   let bootFallbackTimer = null;
 
   function shouldDeferWallpaperForBoot() {
-    // 关键架构革新：开屏动画期间绝不推迟动态壁纸！
-    // 动态壁纸在后台持续进行静默预启动与预热（预跑 1 秒以上），确保开屏结束时已是流畅运行态
-    return false;
+    // 关键架构：若开屏引导动画处于激活状态，场景壁纸推迟重型 WebGL 装配，先由海报秒级占位
+    return !!window.__agyBootPlaying || (!sessionStorage.getItem('__agy_booted__') && !!(window.__AG_SKIN_CONFIG__?.features?.bootAnimation));
   }
   const isBootActive = shouldDeferWallpaperForBoot;
 
   // 开机动画结束时与壁纸同步的平滑渐入接口（视频 / 网页 / 场景统一接管，增量幂等唤醒，绝不销毁已有管线）
   window.__agyResumeBootWallpaper = function() {
     window.__agyBootPlaying = false;
+    if (typeof window.__agyPendingSceneDynamicMount === 'function') {
+      const fn = window.__agyPendingSceneDynamicMount;
+      window.__agyPendingSceneDynamicMount = null;
+      try { fn(); } catch (_) {}
+    }
     const mode = currentMode();
 
     if (mode === 'scene') {
@@ -1345,13 +1349,19 @@ export function initWallpaper(options = {}) {
         c.style.opacity = '1';
       }
 
-      // 关键无缝 Cross-fade：等待新 WebGL canvas 500ms 淡入完成、画面完全呈现后，优雅销毁旧实例并移除旧 canvas
+      // 关键无缝 Cross-fade：等待新 WebGL canvas 500ms 淡入完成、画面完全呈现后，优雅销毁旧实例并移除旧 canvas与海报
       setTimeout(() => {
         if (retiringInst) {
           try { retiringInst.destroy(); } catch (_) {}
         }
         if (retiringCanvas && retiringCanvas.parentNode) {
           try { retiringCanvas.remove(); } catch (_) {}
+        }
+        const poster = box.querySelector('img.agy-scene-poster');
+        if (poster) {
+          poster.style.transition = 'opacity 0.5s ease-out';
+          poster.style.opacity = '0';
+          setTimeout(() => { try { poster.remove(); } catch (_) {} }, 550);
         }
       }, 520);
 
@@ -1447,6 +1457,17 @@ export function initWallpaper(options = {}) {
       document.documentElement.dataset.agyHasVideo = 'true';
     }
 
+    // 阶段优化：挂载轻量海报（Poster / Preview），毫秒级首帧无感占位，消灭所有黑屏与卡死
+    const previewSrc = buildPreviewUrl();
+    let poster = box.querySelector('img.agy-scene-poster');
+    if (!poster && previewSrc) {
+      poster = document.createElement('img');
+      poster.className = 'agy-scene-poster';
+      poster.src = previewSrc;
+      poster.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;z-index:1;pointer-events:none;transition:opacity 0.5s ease;';
+      box.appendChild(poster);
+    }
+
     // 几何统一收口到控制器
     applySceneGeometry();
     mountSceneAudio();
@@ -1456,13 +1477,27 @@ export function initWallpaper(options = {}) {
       if (isDestroyed) return;
       mountSceneDynamic(box).catch(() => {});
     };
-    // 核心生命线：使用宏任务立即触发装配，彻底打破 Chromium 开屏遮罩下的 rAF 死锁！
-    if (typeof document !== 'undefined' && document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(triggerDynamic, 0);
-      }, { once: true });
+
+    // 若开机动画正在播放，将重量级 WebWallGL 165MB 解压推迟到开机淡出或浏览器空闲期
+    if (shouldDeferWallpaperForBoot()) {
+      window.__agyPendingSceneDynamicMount = triggerDynamic;
+      // 4 秒安全保底自动唤醒（若用户驻留开屏动画未手动进入）
+      setTimeout(() => {
+        if (typeof window.__agyPendingSceneDynamicMount === 'function') {
+          const fn = window.__agyPendingSceneDynamicMount;
+          window.__agyPendingSceneDynamicMount = null;
+          fn();
+        }
+      }, 4000);
     } else {
-      setTimeout(triggerDynamic, 0);
+      // 核心生命线：使用宏任务立即触发装配，彻底打破 Chromium 开屏遮罩下的 rAF 死锁！
+      if (typeof document !== 'undefined' && document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          setTimeout(triggerDynamic, 0);
+        }, { once: true });
+      } else {
+        setTimeout(triggerDynamic, 0);
+      }
     }
     return box;
   }
@@ -2498,7 +2533,6 @@ if (typeof window !== 'undefined') {
     if (source === 'scene') {
       const sceneBox = document.getElementById('agy-dynamic-scene');
       if (!sceneBox) return false;
-      // 零海报架构：动态场景必须 WebWallGL 首帧完成，并且带有 live 状态标识！
       if (window.__agySceneDynamicFailed) {
         return true; // 异常兜底，放行避免死锁
       }
@@ -2507,9 +2541,9 @@ if (typeof window !== 'undefined') {
         window.__agySceneRenderer &&
         sceneBox.querySelector('canvas.agy-scene-live')
       );
-      if (!isLiveCanvas) return false;
-      const liveDuration = Date.now() - (window.__agySceneFirstFrameTime || 0);
-      if (liveDuration < 1000) return false;
+      const poster = sceneBox.querySelector('img.agy-scene-poster');
+      const hasPoster = !!(poster && poster.complete && poster.naturalWidth > 0);
+      if (!isLiveCanvas && !hasPoster) return false;
       return true;
     } else if (source === 'video') {
       const vid = document.getElementById('agy-dynamic-video');

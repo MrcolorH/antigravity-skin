@@ -609,7 +609,7 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
                 const s = document.getElementById('agy-dynamic-scene');
                 if (!s) return false;
                 const c = s.querySelector('canvas.agy-scene-live') || s.querySelector('canvas');
-                const p = s.querySelector('img.agy-scene-img');
+                const p = s.querySelector('img.agy-scene-poster') || s.querySelector('img.agy-scene-img') || s.querySelector('img');
                 const hasVisual = c || (p && p.complete && p.naturalWidth > 0);
                 if (!hasVisual) return false;
               } else if (dw.sourceType === 'video' || (!dw.sourceType && dw.videoPath)) {
