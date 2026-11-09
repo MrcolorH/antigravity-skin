@@ -79,7 +79,8 @@ try {
     res.on('end', () => {
       try {
         const targets = JSON.parse(data);
-        const page = targets.find(t => t.type === 'page' && !t.url.includes('devtools://'));
+        const page = targets.find(t => t.type === 'page' && t.url && t.url.startsWith('https://127.0.0.1:')) ||
+                     targets.find(t => t.type === 'page' && !t.url.startsWith('data:') && !t.url.includes('devtools://'));
         if (page && page.webSocketDebuggerUrl && typeof globalThis.WebSocket === 'function') {
           const ws = new globalThis.WebSocket(page.webSocketDebuggerUrl);
           ws.addEventListener('open', () => {

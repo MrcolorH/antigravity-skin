@@ -2379,15 +2379,146 @@
           color: currentColor !important;
         }
 
-        /* 排队卡片内的徽标与操作按钮 */
-        [data-testid="queued-messages-card"] .bg-secondary,
-        [data-testid="queued-messages-card"] [class*="bg-secondary"] {
-          background-color: rgba(255, 255, 255, 0.4) !important;
-          border-radius: 12px !important;
+        /* ==========================================================================
+           7.2 排队消息卡片（Queued Messages Card）：徽标、文字、折叠按钮与操作按钮适配
+           ========================================================================== */
+        /* 1. 数字数量徽标（仅限 span 徽标，严禁使用模糊类选择器以防误伤 hover:bg-secondary 按钮） */
+        [data-testid="queued-messages-card"] span.bg-secondary,
+        [data-testid="queued-messages-card"] span[class*="rounded-full"],
+        div[role="region"][aria-label*="队列消息"] span.bg-secondary,
+        div[role="region"][aria-label*="Queued messages"] span.bg-secondary {
+          background-color: rgba(0, 0, 0, 0.08) !important;
+          color: rgba(0, 0, 0, 0.8) !important;
+          border-radius: 9999px !important;
         }
-        .theme-dark [data-testid="queued-messages-card"] .bg-secondary,
-        .dark [data-testid="queued-messages-card"] .bg-secondary {
-          background-color: rgba(255, 255, 255, 0.12) !important;
+        .theme-dark [data-testid="queued-messages-card"] span.bg-secondary,
+        .dark [data-testid="queued-messages-card"] span.bg-secondary,
+        html.agy-native-dark [data-testid="queued-messages-card"] span.bg-secondary,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] span.bg-secondary,
+        .theme-dark [data-testid="queued-messages-card"] span[class*="rounded-full"],
+        .dark [data-testid="queued-messages-card"] span[class*="rounded-full"],
+        html.agy-native-dark [data-testid="queued-messages-card"] span[class*="rounded-full"],
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] span[class*="rounded-full"],
+        .theme-dark div[role="region"][aria-label*="队列消息"] span.bg-secondary,
+        .dark div[role="region"][aria-label*="队列消息"] span.bg-secondary,
+        html.agy-native-dark div[role="region"][aria-label*="队列消息"] span.bg-secondary,
+        html.agy-dark-wallpaper div[role="region"][aria-label*="队列消息"] span.bg-secondary {
+          background-color: rgba(255, 255, 255, 0.16) !important;
+          color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        /* 2. 排队消息卡片右侧所有操作按钮（折叠/展开按钮与立即发送/编辑/删除等操作按钮）：常态全透明底、图标恒定高对比显示 */
+        [data-testid="queued-messages-card"] button,
+        [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        div[role="region"][aria-label*="队列消息"] button,
+        div[role="region"][aria-label*="Queued messages"] button {
+          background: transparent !important;
+          background-color: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease !important;
+        }
+
+        /* 浅色主题常态：清晰可见的深灰图标，严禁纯灰圆底掩盖图形 */
+        [data-testid="queued-messages-card"] button,
+        [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        html.agy-native-light [data-testid="queued-messages-card"] button,
+        html.agy-light-wallpaper [data-testid="queued-messages-card"] button,
+        div[role="region"][aria-label*="队列消息"] button,
+        div[role="region"][aria-label*="Queued messages"] button {
+          color: rgba(30, 41, 59, 0.78) !important;
+        }
+
+        /* 深色主题常态：清晰明亮的浅白图标，常态恒定可见，彻底告别必须鼠标悬停才显现的异常 */
+        .theme-dark [data-testid="queued-messages-card"] button,
+        .dark [data-testid="queued-messages-card"] button,
+        html.agy-native-dark [data-testid="queued-messages-card"] button,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] button,
+        .theme-dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        .dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        html.agy-native-dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"],
+        .theme-dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        .dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        html.agy-native-dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button,
+        .theme-dark div[role="region"][aria-label*="队列消息"] button,
+        .dark div[role="region"][aria-label*="队列消息"] button,
+        html.agy-native-dark div[role="region"][aria-label*="队列消息"] button,
+        html.agy-dark-wallpaper div[role="region"][aria-label*="队列消息"] button {
+          color: rgba(255, 255, 255, 0.78) !important;
+        }
+
+        /* 内部 SVG 图标常态：始终可见、继承前景色并填满填充属性 */
+        [data-testid="queued-messages-card"] button svg,
+        [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"] svg,
+        [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button svg,
+        div[role="region"][aria-label*="队列消息"] button svg,
+        div[role="region"][aria-label*="Queued messages"] button svg {
+          display: block !important;
+          visibility: visible !important;
+          opacity: 1 !important;
+          fill: currentColor !important;
+          color: inherit !important;
+        }
+
+        /* 3. 悬停 Hover 交互状态：柔和的毛玻璃高亮衬底与 100% 鲜明图标色 */
+        /* 浅色主题悬停 */
+        [data-testid="queued-messages-card"] button:hover,
+        [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"]:hover,
+        [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button:hover,
+        html.agy-native-light [data-testid="queued-messages-card"] button:hover,
+        html.agy-light-wallpaper [data-testid="queued-messages-card"] button:hover,
+        div[role="region"][aria-label*="队列消息"] button:hover,
+        div[role="region"][aria-label*="Queued messages"] button:hover {
+          color: #0f172a !important;
+          background-color: rgba(0, 0, 0, 0.08) !important;
+          border-radius: 8px !important;
+        }
+
+        /* 深色主题悬停 */
+        .theme-dark [data-testid="queued-messages-card"] button:hover,
+        .dark [data-testid="queued-messages-card"] button:hover,
+        html.agy-native-dark [data-testid="queued-messages-card"] button:hover,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] button:hover,
+        .theme-dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"]:hover,
+        .dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"]:hover,
+        html.agy-native-dark [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"]:hover,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] [data-testid="queued-messages-expand-button"]:hover,
+        .theme-dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button:hover,
+        .dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button:hover,
+        html.agy-native-dark [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button:hover,
+        html.agy-dark-wallpaper [data-testid="queued-messages-card"] [data-testid="queued-decorators"] button:hover,
+        .theme-dark div[role="region"][aria-label*="队列消息"] button:hover,
+        .dark div[role="region"][aria-label*="队列消息"] button:hover,
+        html.agy-native-dark div[role="region"][aria-label*="队列消息"] button:hover,
+        html.agy-dark-wallpaper div[role="region"][aria-label*="队列消息"] button:hover {
+          color: #ffffff !important;
+          background-color: rgba(255, 255, 255, 0.16) !important;
+          border-radius: 8px !important;
+        }
+
+        /* 删除按钮悬停时柔红警示 */
+        [data-testid="queued-decorators"] button[aria-label*="Delete"]:hover,
+        [data-testid="queued-decorators"] button[aria-label*="删除"]:hover,
+        [data-testid="queued-decorators"] button[data-tooltip-id*="delete"]:hover {
+          color: #f87171 !important;
+          background-color: rgba(239, 68, 68, 0.18) !important;
+        }
+
+        /* 发送按钮悬停时科技蓝 */
+        [data-testid="queued-decorators"] button[aria-label*="Send"]:hover,
+        [data-testid="queued-decorators"] button[aria-label*="发送"]:hover,
+        [data-testid="queued-decorators"] button[data-tooltip-id*="send"]:hover {
+          color: #60a5fa !important;
+          background-color: rgba(59, 130, 246, 0.18) !important;
         }
 
         /* 8. 对话框聚焦高亮（仅作用于输入框自身卡片，绝不向上波及全局容器） */
