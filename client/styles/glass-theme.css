@@ -1383,6 +1383,8 @@
           margin-bottom: 8px !important;
           padding: 12px 14px 10px 16px !important;
           box-sizing: border-box !important;
+          min-width: 52px !important;
+          min-height: 40px !important;
 
           /* 恢复极佳晶莹毛玻璃：适度半透底色透出背景壁纸，搭配 16px 精致磨砂模糊 */
           background: linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(240, 246, 255, 0.48) 100%) !important;
@@ -1465,6 +1467,14 @@
           margin-bottom: 8px !important;
           padding-right: 38px !important;
           align-self: flex-start !important;
+        }
+
+        /* 当无文字只有媒体时：消除底部多余边距，且无折叠按钮时右侧不预留避让空间 */
+        [data-has-text="false"] [data-testid="user-message-media-scroll"],
+        [class*="user-input-step"][data-has-text="false"] [data-testid="user-message-media-scroll"],
+        .user-bubble-card[data-has-text="false"] [data-testid="user-message-media-scroll"] {
+          margin-bottom: 0 !important;
+          padding-right: 0 !important;
         }
 
         /* 上传的文件芯片（XLSX, PDF, DOCX, ZIP 等）微光晶莹美化 */
@@ -1632,16 +1642,16 @@
           overflow: hidden !important;
         }
 
-        /* 附件容器彻底隐藏（无论是新版顶部独立媒体滚动栏还是旧版内层附件，收起态彻底隐藏） */
-        [data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
-        [class*="user-input-step"][data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
-        .user-bubble-card[data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
-        .user-bubble-card[data-user-collapsed="true"] .user-bubble-attachments,
-        [data-user-collapsed="true"] .user-bubble-attachments,
-        [data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
-        [data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button),
-        [class*="user-input-step"][data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
-        [class*="user-input-step"][data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button) {
+        /* 附件容器彻底隐藏（仅当存在提问文本且处于收起态时隐藏附件，若无文本则绝对不隐藏） */
+        [data-has-text="true"][data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
+        [class*="user-input-step"][data-has-text="true"][data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
+        .user-bubble-card[data-has-text="true"][data-user-collapsed="true"] [data-testid="user-message-media-scroll"],
+        .user-bubble-card[data-has-text="true"][data-user-collapsed="true"] .user-bubble-attachments,
+        [data-has-text="true"][data-user-collapsed="true"] .user-bubble-attachments,
+        [data-has-text="true"][data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
+        [data-has-text="true"][data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button),
+        [class*="user-input-step"][data-has-text="true"][data-user-collapsed="true"] .flex-1 > div[data-no-scroll-jump="true"],
+        [class*="user-input-step"][data-has-text="true"][data-user-collapsed="true"] .flex-1 > div[class*="flex-wrap"]:has(button) {
           display: none !important;
         }
 

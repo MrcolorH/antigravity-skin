@@ -1851,10 +1851,6 @@ export function initWallpaper(options = {}) {
       if (oldInnerBtn) oldInnerBtn.remove();
     }
 
-    if (step.getAttribute('data-agy-enhanced') === 'true') {
-      if (card && card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn')) return;
-    }
-
     const textEl = step.querySelector('[data-quotable="true"]') ||
                    step.querySelector('.whitespace-pre-wrap') ||
                    step.querySelector('[data-testid="user-message-content"]') ||
@@ -1865,19 +1861,33 @@ export function initWallpaper(options = {}) {
     );
 
     // 纯内存瞬时判定：换行数与字数，0 次读取 scrollHeight 避免强制回流
-    const textContent = (textEl ? textEl.textContent : step.textContent || '').trim();
+    // 注意：严禁回退读取 step.textContent，否则会误读时间戳("15m ago")与操作按钮文本导致无文字被误判为有文字
+    const textContent = (textEl ? textEl.textContent : '').trim();
     const lineCount = textContent.split(/\r?\n/).filter(Boolean).length;
+    const hasText = textContent.length > 0;
 
+    // 关键架构防线：
+    // 若完全没有文字只有图片/文件（图片自带 64px 缩略图横排），绝不作为超长内容折叠！
+    // 杜绝“只有图片默认收起”导致消息完全不可见且框体塌陷为微小空点的恶性体验。
     let isLongContent = false;
-    if (hasRealImg || lineCount > 1 || textContent.length > 45) {
-      isLongContent = true;
+    if (hasText) {
+      if (hasRealImg || lineCount > 1 || textContent.length > 45) {
+        isLongContent = true;
+      }
+    }
+
+    if (step.getAttribute('data-agy-enhanced') === 'true' &&
+        step.getAttribute('data-has-text') === String(hasText) &&
+        step.getAttribute('data-user-collapsible') === String(isLongContent)) {
+      const hasBtn = !!(card && card.querySelector('.user-bubble-toggle-btn, .agy-user-collapse-btn'));
+      if (hasBtn === isLongContent) return;
     }
 
     step.setAttribute('data-agy-enhanced', 'true');
     step.setAttribute('data-user-collapsible', String(isLongContent));
-    step.setAttribute('data-has-text', String(textContent.length > 0));
+    step.setAttribute('data-has-text', String(hasText));
     if (card) {
-      card.setAttribute('data-has-text', String(textContent.length > 0));
+      card.setAttribute('data-has-text', String(hasText));
     }
 
     if (!isLongContent) {
