@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.10** | 用户消息气泡展开态 50vh 最大高度限制、自包含平滑滚动与防嵌套重叠 | [RELEASE_v0.2.10.md](docs/releases/RELEASE_v0.2.10.md) |
 | **v0.2.9** | 在线热更新后版本状态实时自动同步与闭环核验、陈旧缓存防倒退机制修复 | [RELEASE_v0.2.9.md](docs/releases/RELEASE_v0.2.9.md) |
 | **v0.2.8** | 全面适配 Antigravity 2.30+ 容器架构、动态壁纸毛玻璃穿透修复、过渡层守护重连优化 | [RELEASE_v0.2.8.md](docs/releases/RELEASE_v0.2.8.md) |
 | **v0.2.7** | 纯图片消息默认收起塌陷修复、提问文字与时间戳精准隔离、气泡最小安全底线防护 | [RELEASE_v0.2.7.md](docs/releases/RELEASE_v0.2.7.md) |

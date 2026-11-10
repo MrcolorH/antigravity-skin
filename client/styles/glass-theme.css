@@ -1667,7 +1667,7 @@
         }
 
         /* ==========================================================================
-           展开态 (data-user-collapsed="false")：全文与图片附件完整展开 (最大高度为窗口一半 50vh，放不下出现垂直滚动条)
+           展开态 (data-user-collapsed="false")：全文与图片附件完整展开 (最大高度限制为窗口一半 50vh，放不下出现垂直滚动条)
            ========================================================================== */
         [data-user-collapsed="false"] .user-bubble-text,
         [data-user-collapsed="false"] [data-quotable="true"],
@@ -1685,22 +1685,79 @@
           word-break: break-word !important;
         }
 
-        /* 展开态：全文与图片附件完整自然展开，彻底解除高度与内部滚动限制，由外层对话视口统一滚动 */
+        /* 展开态视窗防遮挡：最大高度严格限制为窗口一半 (50vh)，内容放不下由气泡卡片自包含滚动 */
         .user-bubble-card[data-user-collapsed="false"],
+        [data-user-collapsed="false"] .user-bubble-card,
         [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"],
+        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"],
+        [data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"],
+        [class*="user-input-step"][data-user-collapsed="false"] div.relative.p-px.rounded-xl.bg-card-border:not([class*="user-input-step"] div[class*="max-w-"][class*="80%"] div) {
+          max-height: 50vh !important;
+          overflow-y: auto !important;
+          overscroll-behavior: contain !important;
+          scrollbar-width: thin !important;
+        }
+
+        /* 气泡内部子元素不限制高度且不生成滚动条，杜绝内层嵌套滚动条与重叠 */
         [class*="user-input-step"][data-user-collapsed="false"] .flex-1,
         [class*="user-input-step"][data-user-collapsed="false"] [class*="max-h-"],
         [class*="user-input-step"][data-user-collapsed="false"] [data-testid="user-message-bubble"],
-        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="user-message-content"] {
+        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="user-message-content"],
+        [data-user-collapsed="false"] .user-bubble-content,
+        [data-user-collapsed="false"] [data-testid="user-message-content"],
+        [data-user-collapsed="false"] [data-testid="user-message-bubble"],
+        [data-user-collapsed="false"] .flex-1 {
           max-height: none !important;
           overflow: visible !important;
           overflow-y: visible !important;
           scrollbar-width: none !important;
         }
 
-        /* 气泡内部彻底消除所有滚动条，杜绝内层滚动条与外层页面滚动条并排重叠 */
+        /* 展开态气泡卡片珠光微光半透明滚动条 (浅色模式) */
+        .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar,
+        [data-user-collapsed="false"] .user-bubble-card::-webkit-scrollbar,
+        [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"]::-webkit-scrollbar,
+        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"]::-webkit-scrollbar {
+          display: block !important;
+          width: 5px !important;
+        }
+
+        .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb,
+        [data-user-collapsed="false"] .user-bubble-card::-webkit-scrollbar-thumb,
+        [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"]::-webkit-scrollbar-thumb,
+        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"]::-webkit-scrollbar-thumb {
+          background: rgba(99, 102, 241, 0.35) !important;
+          border-radius: 9999px !important;
+          transition: background 0.2s ease !important;
+        }
+
+        .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb:hover,
+        [data-user-collapsed="false"] .user-bubble-card::-webkit-scrollbar-thumb:hover,
+        [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"]::-webkit-scrollbar-thumb:hover,
+        [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"]::-webkit-scrollbar-thumb:hover {
+          background: rgba(99, 102, 241, 0.55) !important;
+        }
+
+        /* 展开态气泡卡片深色模式滚动条适配 (Dark Mode) */
+        .dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb,
+        .theme-dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb,
+        html.agy-native-dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb,
+        .dark [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"]::-webkit-scrollbar-thumb,
+        .theme-dark [class*="user-input-step"][data-user-collapsed="false"] div[class*="max-w-"][class*="80%"]::-webkit-scrollbar-thumb,
+        .dark [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"]::-webkit-scrollbar-thumb,
+        .theme-dark [class*="user-input-step"][data-user-collapsed="false"] [data-testid="lifted-context-menu-trigger"]::-webkit-scrollbar-thumb {
+          background: rgba(165, 180, 252, 0.35) !important;
+        }
+
+        .dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb:hover,
+        .theme-dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb:hover,
+        html.agy-native-dark .user-bubble-card[data-user-collapsed="false"]::-webkit-scrollbar-thumb:hover {
+          background: rgba(165, 180, 252, 0.55) !important;
+        }
+
+        /* 气泡内部所有子元素彻底消除滚动条，杜绝内层滚动条与卡片滚动条并排重叠 */
         .user-bubble-card[data-user-collapsed="false"] *::-webkit-scrollbar,
-        [class*="user-input-step"][data-user-collapsed="false"] *::-webkit-scrollbar {
+        [class*="user-input-step"][data-user-collapsed="false"] *:not(.user-bubble-card):not([class*="max-w-"][class*="80%"]):not([data-testid="lifted-context-menu-trigger"])::-webkit-scrollbar {
           display: none !important;
           width: 0 !important;
           height: 0 !important;
