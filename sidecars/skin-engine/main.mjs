@@ -1054,6 +1054,13 @@ const server = http.createServer((req, res) => {
                 expression: `(() => {
                   try {
                     console.log('[Skin Engine] Hot reload triggering in client window...');
+                    window.__AG_SKIN_VERSION__ = ${JSON.stringify(newVersion)};
+                    window.__agyLastUpdateCheckResult = {
+                      ok: true,
+                      currentVersion: ${JSON.stringify(newVersion)},
+                      latestVersion: ${JSON.stringify(newVersion)},
+                      hasUpdate: false
+                    };
                     if (window.__agyCurrentMenuInstance && typeof window.__agyCurrentMenuInstance.destroy === 'function') {
                       window.__agyCurrentMenuInstance.destroy();
                     }

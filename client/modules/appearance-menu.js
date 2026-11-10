@@ -2689,7 +2689,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // ==========================================
     const curVerSpan = customOptions.querySelector('#agy-update-cur-ver');
     if (curVerSpan) {
-      curVerSpan.textContent = `v${window.__AG_SKIN_VERSION__ || '0.2.2'}`;
+      curVerSpan.textContent = `v${window.__AG_SKIN_VERSION__ || '0.2.8'}`;
     }
     const updateBadge = customOptions.querySelector('#agy-update-badge');
     const statusTip = customOptions.querySelector('#agy-update-status-tip');
@@ -2704,8 +2704,18 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     function applyUpdateUI(data) {
       if (!data) return;
-      if (curVerSpan && data.currentVersion) {
-        curVerSpan.textContent = `v${data.currentVersion}`;
+      if (data.currentVersion) {
+        if (!window.__AG_SKIN_VERSION__ || compareSemver(data.currentVersion, window.__AG_SKIN_VERSION__) > 0) {
+          window.__AG_SKIN_VERSION__ = data.currentVersion;
+        }
+      }
+      const effectiveVer = window.__AG_SKIN_VERSION__ || data.currentVersion || '0.2.8';
+      if (curVerSpan) {
+        curVerSpan.textContent = `v${effectiveVer}`;
+      }
+      // 关键防线：若最新版本不高于当前生效版本，强制校正 hasUpdate 为 false
+      if (data.hasUpdate && data.latestVersion && compareSemver(data.latestVersion, effectiveVer) <= 0) {
+        data.hasUpdate = false;
       }
       if (data.hasUpdate) {
         if (updateBadge) {
@@ -2714,6 +2724,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         }
         if (btnApply) {
           btnApply.style.display = 'inline-flex';
+          btnApply.disabled = false;
           btnApply.innerHTML = `<span>🚀 立即热更新 (v${data.latestVersion})</span>`;
         }
         if (statusTip) {
@@ -2754,7 +2765,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       applyUpdateUI(updateDataCache);
     }
 
-    async function handleCheckUpdate(isSilent = false) {
+    async function handleCheckUpdate(isSilent = false, isPostUpdate = false) {
       if (!btnCheck) return;
       if (!isSilent) {
         btnCheck.disabled = true;
@@ -2763,6 +2774,9 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           statusTip.textContent = '正在连接 GitHub Releases 检查最新版本...';
           statusTip.className = 'text-[11px] text-sky-400 font-medium';
         }
+      } else if (isPostUpdate && statusTip) {
+        statusTip.textContent = '正在自动重新检查最新版本状态...';
+        statusTip.className = 'text-[11px] text-sky-400 font-medium';
       }
 
       try {
@@ -2788,7 +2802,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               const ghData = await ghRes.json();
               if (ghData && ghData.tag_name) {
                 const latestTag = ghData.tag_name.replace(/^[^\d]*/, '');
-                const curVer = window.__AG_SKIN_VERSION__ || '0.2.2';
+                const curVer = window.__AG_SKIN_VERSION__ || '0.2.8';
                 const assetZip = ghData.assets && Array.isArray(ghData.assets)
                   ? ghData.assets.find(a => a.name && a.name.endsWith('.zip'))?.browser_download_url
                   : null;
@@ -2815,7 +2829,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
               const cdnData = await cdnRes.json();
               if (cdnData && cdnData.version) {
                 const latestTag = cdnData.version;
-                const curVer = window.__AG_SKIN_VERSION__ || '0.2.2';
+                const curVer = window.__AG_SKIN_VERSION__ || '0.2.8';
                 data = {
                   ok: true,
                   currentVersion: curVer,
@@ -2839,12 +2853,17 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         updateDataCache = data;
         applyUpdateUI(data);
 
-        if (!data.hasUpdate && !isSilent && statusTip) {
-          statusTip.textContent = `当前已是最新版本 (v${data.currentVersion || window.__AG_SKIN_VERSION__ || '0.2.2'})，无需更新。`;
-          statusTip.className = 'text-[11px] text-muted-foreground opacity-75';
+        if (!data.hasUpdate && (!isSilent || isPostUpdate) && statusTip) {
+          const finalVer = data.currentVersion || window.__AG_SKIN_VERSION__ || '0.2.8';
+          statusTip.textContent = isPostUpdate
+            ? `✨ 已成功热更新至 v${finalVer}，当前已是最新版本！`
+            : `当前已是最新版本 (v${finalVer})，无需更新。`;
+          statusTip.className = isPostUpdate
+            ? 'text-[11px] text-emerald-400 font-medium'
+            : 'text-[11px] text-muted-foreground opacity-75';
         }
       } catch (err) {
-        if (!isSilent && statusTip) {
+        if ((!isSilent || isPostUpdate) && statusTip) {
           statusTip.textContent = '检查更新失败：' + err.message;
           statusTip.className = 'text-[11px] text-rose-400';
         }
@@ -2902,20 +2921,44 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           const result = await res.json();
           if (!result.ok) throw new Error(result.error || '执行更新失败');
 
-          // 更新成功
-          window.__agyLastUpdateCheckResult = null;
-          updateDataCache = null;
-          if (curVerSpan) curVerSpan.textContent = `v${result.version || targetVer}`;
+          // 更新成功：立即刷新内存与全局版本，杜绝旧版本残留
+          const newInstalledVer = result.version || targetVer;
+          window.__AG_SKIN_VERSION__ = newInstalledVer;
+
+          // 构造就绪缓存并应用，隐藏更新按钮与徽章
+          const resolvedData = {
+            ok: true,
+            currentVersion: newInstalledVer,
+            latestVersion: newInstalledVer,
+            hasUpdate: false
+          };
+          window.__agyLastUpdateCheckResult = resolvedData;
+          updateDataCache = resolvedData;
+          applyUpdateUI(resolvedData);
+
+          if (curVerSpan) curVerSpan.textContent = `v${newInstalledVer}`;
           if (updateBadge) updateBadge.style.display = 'none';
           if (btnApply) btnApply.style.display = 'none';
           if (changelogBox) changelogBox.style.display = 'none';
+          if (btnCheck) btnCheck.disabled = false;
+
           if (statusTip) {
-            statusTip.textContent = `✨ 恭喜！已成功热更新至 v${result.version || targetVer}，新特性已实时生效！`;
+            statusTip.textContent = `✨ 恭喜！已成功热更新至 v${newInstalledVer}，正在自动复核最新版本...`;
             statusTip.className = 'text-[11px] text-emerald-400 font-medium';
           }
 
+          // 核心修复：更新后无需用户手动点击检查，自动触发一次复核检查更新
+          setTimeout(async () => {
+            try {
+              await handleCheckUpdate(true, true);
+              if (curVerSpan) {
+                curVerSpan.textContent = `v${window.__AG_SKIN_VERSION__ || newInstalledVer}`;
+              }
+            } catch (_) {}
+          }, 1200);
+
           setTimeout(() => {
-            alert(`🎉 恭喜！Antigravity 皮肤插件已成功热更新至 v${result.version || targetVer}！\n新特性已即时生效。`);
+            alert(`🎉 恭喜！Antigravity 皮肤插件已成功热更新至 v${newInstalledVer}！\n已自动完成版本核对，新特性已即时生效。`);
           }, 300);
         } catch (err) {
           if (statusTip) {
