@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.8** | 全面适配 Antigravity 2.30+ 容器架构、动态壁纸毛玻璃穿透修复、过渡层守护重连优化 | [RELEASE_v0.2.8.md](docs/releases/RELEASE_v0.2.8.md) |
 | **v0.2.7** | 纯图片消息默认收起塌陷修复、提问文字与时间戳精准隔离、气泡最小安全底线防护 | [RELEASE_v0.2.7.md](docs/releases/RELEASE_v0.2.7.md) |
 | **v0.2.6** | 排队消息卡片右侧按钮图标常态隐形与灰色圆点遮挡修复、徽标选择器精准隔离 | [RELEASE_v0.2.6.md](docs/releases/RELEASE_v0.2.6.md) |
 | **v0.2.5** | 彻底消除冷启动穿插黑屏与白闪、重型场景壁纸分段解耦杜绝主线程卡死、退场 Seek 黑帧与死锁修复 | [RELEASE_v0.2.5.md](docs/releases/RELEASE_v0.2.5.md) |

@@ -129,6 +129,11 @@
 
         /* 2. 全局底板：深色/浅色沉浸底色由 z-index: -1000000 的 #agy-wallpaper-backdrop 全权接管；
            html 与 body 以及所有宿主根容器必须保持 100% 纯透明穿透，严禁在 body 上涂刷实色油漆遮挡底层动态壁纸！ */
+        :root, html, body,
+        .agy-inset-shell, [class*="agy-inset-shell"] {
+          --shell-canvas: transparent !important;
+        }
+
         html, html.dark, html.theme-dark, html[class*="dark"],
         body, body.dark, body.theme-dark, body[class*="dark"], body[class*="theme-"],
         #root, #app, main,
@@ -136,11 +141,17 @@
         .theme-standalone,
         .agy-shell, .agy-sheet,
         [class*="agy-shell"], [class*="agy-sheet"],
+        .agy-inset-shell, [class*="agy-inset-shell"],
         body[data-agy-theme] .agy-shell,
         body[data-agy-theme] .agy-sheet,
         body[data-agy-home-glow] .agy-sheet:has(.agy-home),
         body[data-agy-theme] .agy-home,
-        .agy-home {
+        .agy-home,
+        .agy-sheet[data-sheet-inset] [data-main-content-body],
+        [data-main-content-body],
+        [data-side-panel-body],
+        .agy-inset-shell [data-side-panel-body] {
+          --shell-canvas: transparent !important;
           background-color: transparent !important;
           background: transparent !important;
           background-image: none !important;

@@ -2639,7 +2639,7 @@ function handleNativeLoadingOverlay(target, port) {
     };
 
     ws.onclose = () => {
-      neutralizedLoadingTargets.delete(targetId);
+      // 保持已处理标记，仅当 targetDestroyed 发生时再做清理，避免重连循环刷屏
     };
 
     ws.onerror = (err) => {
