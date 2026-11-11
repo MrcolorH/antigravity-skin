@@ -2073,7 +2073,10 @@
         [data-testid="agent-response"],
         div[data-testid="agent-response"],
         div[role="article"][aria-label="Agent response"],
-        div[aria-label="Agent response"] {
+        div[aria-label="Agent response"],
+        div[role="article"][aria-label="智能体回复"],
+        div[aria-label="智能体回复"],
+        div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
           background-color: rgba(255, 255, 255, 0.44) !important;
           backdrop-filter: blur(20px) saturate(150%) !important;
           -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
@@ -2092,7 +2095,13 @@
         .dark div[role="article"][aria-label="Agent response"],
         .dark div[aria-label="Agent response"],
         .theme-dark div[role="article"][aria-label="Agent response"],
-        .theme-dark div[aria-label="Agent response"] {
+        .theme-dark div[aria-label="Agent response"],
+        .dark div[role="article"][aria-label="智能体回复"],
+        .dark div[aria-label="智能体回复"],
+        .theme-dark div[role="article"][aria-label="智能体回复"],
+        .theme-dark div[aria-label="智能体回复"],
+        .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+        .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
           background-color: rgba(20, 26, 42, 0.55) !important;
           backdrop-filter: blur(20px) saturate(150%) !important;
           -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
@@ -2101,7 +2110,9 @@
         }
         [data-testid="agent-response"] .leading-relaxed,
         div[data-testid="agent-response"] .leading-relaxed,
-        div[aria-label="Agent response"] .leading-relaxed {
+        div[aria-label="Agent response"] .leading-relaxed,
+        div[aria-label="智能体回复"] .leading-relaxed,
+        div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed {
           color: #0f172a !important;
           font-weight: 500 !important;
           line-height: 1.68 !important;
@@ -2111,7 +2122,11 @@
         .theme-dark div[data-testid="agent-response"] .leading-relaxed,
         .dark div[data-testid="agent-response"] .leading-relaxed,
         .theme-dark div[aria-label="Agent response"] .leading-relaxed,
-        .dark div[aria-label="Agent response"] .leading-relaxed {
+        .dark div[aria-label="Agent response"] .leading-relaxed,
+        .theme-dark div[aria-label="智能体回复"] .leading-relaxed,
+        .dark div[aria-label="智能体回复"] .leading-relaxed,
+        .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed,
+        .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed {
           color: #f8fafc !important;
         }
 
@@ -5171,10 +5186,16 @@ html.agy-native-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-
 div[data-testid="agent-response"],
 div[role="article"][aria-label="Agent response"],
 div[aria-label="Agent response"],
+div[role="article"][aria-label="智能体回复"],
+div[aria-label="智能体回复"],
+div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
 html.agy-native-light [data-testid="agent-response"],
 html.agy-native-light div[data-testid="agent-response"],
 html.agy-native-light div[role="article"][aria-label="Agent response"],
-html.agy-native-light div[aria-label="Agent response"] {
+html.agy-native-light div[aria-label="Agent response"],
+html.agy-native-light div[role="article"][aria-label="智能体回复"],
+html.agy-native-light div[aria-label="智能体回复"],
+html.agy-native-light div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
   background-color: var(--agy-agent-light-bg) !important;
   backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(1.12) !important;
   -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(1.12) !important;
@@ -5187,14 +5208,23 @@ html.agy-native-dark [data-testid="agent-response"],
 html.agy-native-dark div[data-testid="agent-response"],
 html.agy-native-dark div[role="article"][aria-label="Agent response"],
 html.agy-native-dark div[aria-label="Agent response"],
+html.agy-native-dark div[role="article"][aria-label="智能体回复"],
+html.agy-native-dark div[aria-label="智能体回复"],
+html.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
 .dark [data-testid="agent-response"],
 .dark div[data-testid="agent-response"],
 .dark div[role="article"][aria-label="Agent response"],
 .dark div[aria-label="Agent response"],
+.dark div[role="article"][aria-label="智能体回复"],
+.dark div[aria-label="智能体回复"],
+.dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
 .theme-dark [data-testid="agent-response"],
 .theme-dark div[data-testid="agent-response"],
 .theme-dark div[role="article"][aria-label="Agent response"],
-.theme-dark div[aria-label="Agent response"] {
+.theme-dark div[aria-label="Agent response"],
+.theme-dark div[role="article"][aria-label="智能体回复"],
+.theme-dark div[aria-label="智能体回复"],
+.theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
   background-color: var(--agy-agent-dark-bg) !important;
   backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(0.70) !important;
   -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(0.70) !important;
