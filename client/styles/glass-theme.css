@@ -1374,6 +1374,8 @@
            ======================================================== */
         [data-testid="user-input-step"],
         div[class*="group/user-input-step"],
+        [data-testid="agent-response"],
+        div[data-testid="agent-response"],
         div[role="article"][aria-label="Agent response"],
         div[aria-label="Agent response"] {
           content-visibility: visible !important;
@@ -2068,6 +2070,8 @@
         }
 
         /* 助理回复消息卡片 (Agent Response) - 经典水润通透毛玻璃（字迹清晰锐利，壁纸通透可见，单层无嵌套极速渲染） */
+        [data-testid="agent-response"],
+        div[data-testid="agent-response"],
         div[role="article"][aria-label="Agent response"],
         div[aria-label="Agent response"] {
           background-color: rgba(255, 255, 255, 0.44) !important;
@@ -2081,6 +2085,10 @@
           margin-bottom: 12px !important;
           transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
         }
+        .dark [data-testid="agent-response"],
+        .dark div[data-testid="agent-response"],
+        .theme-dark [data-testid="agent-response"],
+        .theme-dark div[data-testid="agent-response"],
         .dark div[role="article"][aria-label="Agent response"],
         .dark div[aria-label="Agent response"],
         .theme-dark div[role="article"][aria-label="Agent response"],
@@ -2091,11 +2099,17 @@
           border: 1px solid rgba(255, 255, 255, 0.14) !important;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
         }
+        [data-testid="agent-response"] .leading-relaxed,
+        div[data-testid="agent-response"] .leading-relaxed,
         div[aria-label="Agent response"] .leading-relaxed {
           color: #0f172a !important;
           font-weight: 500 !important;
           line-height: 1.68 !important;
         }
+        .theme-dark [data-testid="agent-response"] .leading-relaxed,
+        .dark [data-testid="agent-response"] .leading-relaxed,
+        .theme-dark div[data-testid="agent-response"] .leading-relaxed,
+        .dark div[data-testid="agent-response"] .leading-relaxed,
         .theme-dark div[aria-label="Agent response"] .leading-relaxed,
         .dark div[aria-label="Agent response"] .leading-relaxed {
           color: #f8fafc !important;
@@ -5153,8 +5167,12 @@ html.agy-native-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-
    15.3 AI 回复卡片
    ========================================================================== */
 /* 浅色主题：浅色牛奶磨砂玻璃，高对比度清晰深字 */
+[data-testid="agent-response"],
+div[data-testid="agent-response"],
 div[role="article"][aria-label="Agent response"],
 div[aria-label="Agent response"],
+html.agy-native-light [data-testid="agent-response"],
+html.agy-native-light div[data-testid="agent-response"],
 html.agy-native-light div[role="article"][aria-label="Agent response"],
 html.agy-native-light div[aria-label="Agent response"] {
   background-color: var(--agy-agent-light-bg) !important;
@@ -5165,10 +5183,16 @@ html.agy-native-light div[aria-label="Agent response"] {
 }
 
 /* 深色主题：深黑曜石玻璃 */
+html.agy-native-dark [data-testid="agent-response"],
+html.agy-native-dark div[data-testid="agent-response"],
 html.agy-native-dark div[role="article"][aria-label="Agent response"],
 html.agy-native-dark div[aria-label="Agent response"],
+.dark [data-testid="agent-response"],
+.dark div[data-testid="agent-response"],
 .dark div[role="article"][aria-label="Agent response"],
 .dark div[aria-label="Agent response"],
+.theme-dark [data-testid="agent-response"],
+.theme-dark div[data-testid="agent-response"],
 .theme-dark div[role="article"][aria-label="Agent response"],
 .theme-dark div[aria-label="Agent response"] {
   background-color: var(--agy-agent-dark-bg) !important;
@@ -5209,8 +5233,16 @@ html:not(.agy-native-light) .theme-dark [class*="user-input-step"] [data-quotabl
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.90), 0 0 12px rgba(0, 0, 0, 0.60) !important;
 }
 
+[data-testid="agent-response"],
+[data-testid="agent-response"] .leading-relaxed,
+div[data-testid="agent-response"],
+div[data-testid="agent-response"] .leading-relaxed,
 div[aria-label="Agent response"],
 div[aria-label="Agent response"] .leading-relaxed,
+html.agy-native-light [data-testid="agent-response"],
+html.agy-native-light [data-testid="agent-response"] .leading-relaxed,
+html.agy-native-light div[data-testid="agent-response"],
+html.agy-native-light div[data-testid="agent-response"] .leading-relaxed,
 html.agy-native-light div[aria-label="Agent response"],
 html.agy-native-light div[aria-label="Agent response"] .leading-relaxed {
   color: var(--agy-text-on-light) !important;
@@ -5219,10 +5251,22 @@ html.agy-native-light div[aria-label="Agent response"] .leading-relaxed {
   text-shadow: none !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"],
+html.agy-native-dark [data-testid="agent-response"] .leading-relaxed,
+html.agy-native-dark div[data-testid="agent-response"],
+html.agy-native-dark div[data-testid="agent-response"] .leading-relaxed,
 html.agy-native-dark div[aria-label="Agent response"],
 html.agy-native-dark div[aria-label="Agent response"] .leading-relaxed,
+html:not(.agy-native-light) .dark [data-testid="agent-response"],
+html:not(.agy-native-light) .dark [data-testid="agent-response"] .leading-relaxed,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"],
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] .leading-relaxed,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"],
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] .leading-relaxed,
+html:not(.agy-native-light) .theme-dark [data-testid="agent-response"],
+html:not(.agy-native-light) .theme-dark [data-testid="agent-response"] .leading-relaxed,
+html:not(.agy-native-light) .theme-dark div[data-testid="agent-response"],
+html:not(.agy-native-light) .theme-dark div[data-testid="agent-response"] .leading-relaxed,
 html:not(.agy-native-light) .theme-dark div[aria-label="Agent response"],
 html:not(.agy-native-light) .theme-dark div[aria-label="Agent response"] .leading-relaxed {
   color: var(--agy-text-on-dark) !important;
@@ -5230,6 +5274,10 @@ html:not(.agy-native-light) .theme-dark div[aria-label="Agent response"] .leadin
 }
 
 /* 次级/弱化文字：透明度从 0.75 提到 0.92，避免高透明面板下彻底看不清 */
+[data-testid="agent-response"] [class*="text-muted-foreground"],
+[data-testid="agent-response"] [class*="opacity-"],
+div[data-testid="agent-response"] [class*="text-muted-foreground"],
+div[data-testid="agent-response"] [class*="opacity-"],
 div[aria-label="Agent response"] [class*="text-muted-foreground"],
 div[aria-label="Agent response"] [class*="opacity-"] {
   opacity: 1 !important;
@@ -5264,6 +5312,10 @@ html.agy-light-wallpaper [data-testid="user-input-step"] [data-quotable="true"],
 html.agy-light-wallpaper [class*="user-input-step"] [data-quotable="true"],
 html.agy-light-wallpaper [data-testid="user-input-step"] [class*="whitespace-pre-wrap"],
 html.agy-light-wallpaper [class*="user-input-step"] [class*="whitespace-pre-wrap"],
+html.agy-light-wallpaper [data-testid="agent-response"],
+html.agy-light-wallpaper [data-testid="agent-response"] .leading-relaxed,
+html.agy-light-wallpaper div[data-testid="agent-response"],
+html.agy-light-wallpaper div[data-testid="agent-response"] .leading-relaxed,
 html.agy-light-wallpaper div[aria-label="Agent response"],
 html.agy-light-wallpaper div[aria-label="Agent response"] .leading-relaxed,
 html.agy-light-wallpaper div[class*="bg-card-border"] [contenteditable="true"],
@@ -5276,7 +5328,11 @@ html.agy-light-wallpaper div[class*="rounded-2xl"] textarea {
 /* ==========================================================================
    15.5 代码区：面板变透后单独给一层稳定底噪，代码绝不糊在壁纸上
    ========================================================================== */
+[data-testid="agent-response"] pre,
+div[data-testid="agent-response"] pre,
 div[aria-label="Agent response"] pre,
+html.agy-native-light [data-testid="agent-response"] pre,
+html.agy-native-light div[data-testid="agent-response"] pre,
 html.agy-native-light div[aria-label="Agent response"] pre {
   background-color: rgba(252, 253, 255, 0.92) !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
@@ -5284,31 +5340,61 @@ html.agy-native-light div[aria-label="Agent response"] pre {
   text-shadow: none !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"] pre,
+html.agy-native-dark div[data-testid="agent-response"] pre,
 html.agy-native-dark div[aria-label="Agent response"] pre,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] pre,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] pre,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] pre,
+html:not(.agy-native-light) .theme-dark [data-testid="agent-response"] pre,
+html:not(.agy-native-light) .theme-dark div[data-testid="agent-response"] pre,
 html:not(.agy-native-light) .theme-dark div[aria-label="Agent response"] pre {
   background-color: rgba(6, 9, 16, 0.62) !important;
   border: 1px solid rgba(255, 255, 255, 0.10) !important;
 }
 
 /* 纯文本（非语法高亮 span）的代码底色兜底，保证不会出现白字白底 */
+[data-testid="agent-response"] pre,
+[data-testid="agent-response"] pre code,
+div[data-testid="agent-response"] pre,
+div[data-testid="agent-response"] pre code,
 div[aria-label="Agent response"] pre,
 div[aria-label="Agent response"] pre code,
+html.agy-native-light [data-testid="agent-response"] pre,
+html.agy-native-light [data-testid="agent-response"] pre code,
+html.agy-native-light div[data-testid="agent-response"] pre,
+html.agy-native-light div[data-testid="agent-response"] pre code,
 html.agy-native-light div[aria-label="Agent response"] pre,
 html.agy-native-light div[aria-label="Agent response"] pre code {
   color: #0b1220 !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"] pre,
+html.agy-native-dark [data-testid="agent-response"] pre code,
+html.agy-native-dark div[data-testid="agent-response"] pre,
+html.agy-native-dark div[data-testid="agent-response"] pre code,
 html.agy-native-dark div[aria-label="Agent response"] pre,
 html.agy-native-dark div[aria-label="Agent response"] pre code,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] pre,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] pre code,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] pre,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] pre code,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] pre,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] pre code {
   color: #e8eefc !important;
 }
 
 /* 行内代码胶囊 */
+[data-testid="agent-response"] p code:not(pre code),
+[data-testid="agent-response"] li code:not(pre code),
+div[data-testid="agent-response"] p code:not(pre code),
+div[data-testid="agent-response"] li code:not(pre code),
 div[aria-label="Agent response"] p code:not(pre code),
 div[aria-label="Agent response"] li code:not(pre code),
+html.agy-native-light [data-testid="agent-response"] p code:not(pre code),
+html.agy-native-light [data-testid="agent-response"] li code:not(pre code),
+html.agy-native-light div[data-testid="agent-response"] p code:not(pre code),
+html.agy-native-light div[data-testid="agent-response"] li code:not(pre code),
 html.agy-native-light div[aria-label="Agent response"] p code:not(pre code),
 html.agy-native-light div[aria-label="Agent response"] li code:not(pre code) {
   background-color: rgba(250, 251, 255, 0.92) !important;
@@ -5317,8 +5403,16 @@ html.agy-native-light div[aria-label="Agent response"] li code:not(pre code) {
   text-shadow: none !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"] p code:not(pre code),
+html.agy-native-dark [data-testid="agent-response"] li code:not(pre code),
+html.agy-native-dark div[data-testid="agent-response"] p code:not(pre code),
+html.agy-native-dark div[data-testid="agent-response"] li code:not(pre code),
 html.agy-native-dark div[aria-label="Agent response"] p code:not(pre code),
 html.agy-native-dark div[aria-label="Agent response"] li code:not(pre code),
+html:not(.agy-native-light) .dark [data-testid="agent-response"] p code:not(pre code),
+html:not(.agy-native-light) .dark [data-testid="agent-response"] li code:not(pre code),
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] p code:not(pre code),
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] li code:not(pre code),
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] p code:not(pre code),
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] li code:not(pre code) {
   background-color: rgba(255, 255, 255, 0.14) !important;
@@ -5327,29 +5421,55 @@ html:not(.agy-native-light) .dark div[aria-label="Agent response"] li code:not(p
 }
 
 /* 链接 */
+[data-testid="agent-response"] a,
+div[data-testid="agent-response"] a,
 div[aria-label="Agent response"] a,
+html.agy-native-light [data-testid="agent-response"] a,
+html.agy-native-light div[data-testid="agent-response"] a,
 html.agy-native-light div[aria-label="Agent response"] a {
   color: #1d4ed8 !important;
   text-decoration-color: rgba(29, 78, 216, 0.4) !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"] a,
+html.agy-native-dark div[data-testid="agent-response"] a,
 html.agy-native-dark div[aria-label="Agent response"] a,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] a,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] a,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] a,
+html:not(.agy-native-light) .theme-dark [data-testid="agent-response"] a,
+html:not(.agy-native-light) .theme-dark div[data-testid="agent-response"] a,
 html:not(.agy-native-light) .theme-dark div[aria-label="Agent response"] a {
   color: #93c5fd !important;
   text-decoration-color: rgba(147, 197, 253, 0.5) !important;
 }
 
 /* 表格分隔线 */
+[data-testid="agent-response"] table th,
+[data-testid="agent-response"] table td,
+div[data-testid="agent-response"] table th,
+div[data-testid="agent-response"] table td,
 div[aria-label="Agent response"] table th,
 div[aria-label="Agent response"] table td,
+html.agy-native-light [data-testid="agent-response"] table th,
+html.agy-native-light [data-testid="agent-response"] table td,
+html.agy-native-light div[data-testid="agent-response"] table th,
+html.agy-native-light div[data-testid="agent-response"] table td,
 html.agy-native-light div[aria-label="Agent response"] table th,
 html.agy-native-light div[aria-label="Agent response"] table td {
   border-color: rgba(0, 0, 0, 0.10) !important;
 }
 
+html.agy-native-dark [data-testid="agent-response"] table th,
+html.agy-native-dark [data-testid="agent-response"] table td,
+html.agy-native-dark div[data-testid="agent-response"] table th,
+html.agy-native-dark div[data-testid="agent-response"] table td,
 html.agy-native-dark div[aria-label="Agent response"] table th,
 html.agy-native-dark div[aria-label="Agent response"] table td,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] table th,
+html:not(.agy-native-light) .dark [data-testid="agent-response"] table td,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] table th,
+html:not(.agy-native-light) .dark div[data-testid="agent-response"] table td,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] table th,
 html:not(.agy-native-light) .dark div[aria-label="Agent response"] table td {
   border-color: rgba(255, 255, 255, 0.14) !important;
@@ -5397,17 +5517,29 @@ html.agy-light-wallpaper .text-red-500 {
   font-weight: 600 !important;
 }
 
+html.agy-native-light [data-testid="agent-response"] pre .token.punctuation,
+html.agy-native-light div[data-testid="agent-response"] pre .token.punctuation,
 html.agy-native-light div[aria-label="Agent response"] pre .token.punctuation,
+html.agy-light-wallpaper [data-testid="agent-response"] pre .token.punctuation,
+html.agy-light-wallpaper div[data-testid="agent-response"] pre .token.punctuation,
 html.agy-light-wallpaper div[aria-label="Agent response"] pre .token.punctuation {
   color: #334155 !important; /* 代码标点从 2.85:1 提升至 9.50:1 */
 }
 
+html.agy-native-light [data-testid="agent-response"] pre .token.string,
+html.agy-native-light div[data-testid="agent-response"] pre .token.string,
 html.agy-native-light div[aria-label="Agent response"] pre .token.string,
+html.agy-light-wallpaper [data-testid="agent-response"] pre .token.string,
+html.agy-light-wallpaper div[data-testid="agent-response"] pre .token.string,
 html.agy-light-wallpaper div[aria-label="Agent response"] pre .token.string {
   color: #166534 !important; /* 代码字符串从 3.43:1 提升至 6.80:1 */
 }
 
+html.agy-native-light [data-testid="agent-response"] pre .token.comment,
+html.agy-native-light div[data-testid="agent-response"] pre .token.comment,
 html.agy-native-light div[aria-label="Agent response"] pre .token.comment,
+html.agy-light-wallpaper [data-testid="agent-response"] pre .token.comment,
+html.agy-light-wallpaper div[data-testid="agent-response"] pre .token.comment,
 html.agy-light-wallpaper div[aria-label="Agent response"] pre .token.comment {
   color: #475569 !important; /* 代码注释从 2.90:1 提升至 5.80:1 */
 }

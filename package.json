@@ -1,6 +1,6 @@
 {
   "name": "antigravity-skin",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Antigravity Custom Theme, Dynamic Wallpaper, Boot Animation and Appearance Menu Integration",
   "type": "module",
   "scripts": {
@@ -8,6 +8,8 @@
     "test": "node tests/test-scenescript-properties.mjs && node tests/test-wallpaper-interaction.mjs",
     "sync": "node --experimental-websocket scripts/sync-all.mjs",
     "hot-sync": "node --experimental-websocket scripts/hot-sync.mjs",
+    "update:i18n": "node tools/update-i18n-upstream.mjs && node tools/build-i18n-engine.mjs",
+    "build:i18n": "node tools/build-i18n-engine.mjs",
     "install-plugin": "./install.sh",
     "uninstall-plugin": "./uninstall.sh",
     "install-win": "powershell -ExecutionPolicy Bypass -File install.ps1",
