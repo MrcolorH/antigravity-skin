@@ -29,10 +29,10 @@
   const API_PORT = window.__AG_SKIN_PORT__ || 59288;
   const API_BASE = `http://127.0.0.1:${API_PORT}`;
 
-  // 状态句柄与壁纸状态缓存
-  let wallpaperHandle = null;
+  // 状态句柄与壁纸状态缓存（跨热重载/复用上下文共享，防止重复初始化撕裂视频管线）
+  let wallpaperHandle = window.__agyWallpaperInstance || null;
   let crtHandle = null;
-  let menuHandle = null;
+  let menuHandle = window.__agyAppearanceMenuHandle || null;
   let lastWallpaperState = {
     isCustomTheme: undefined,
     isVideoOn: undefined,
@@ -140,8 +140,10 @@
   const CG_DARK = '#0b0f14';
   const CG_MIN_CONTRAST = 4.5; // 严格遵循 WCAG 2.1 AA 级对比度标准 (4.5:1)
   const CG_MAX_FLIPS = 900;
+  const CG_NO_BD = { __none: true };
   let cgTimer = null;
   let cgObserver = null;
+  let cgIsMutating = false;
 
   const cgToLinear = (v) => {
     const c = v / 255;
@@ -185,12 +187,18 @@
   // 壁纸部分使用「纵向亮度剖面」按元素所在高度取值（不能只看全图平均值）
   function cgBackdrop(el, cache, rect) {
     let node = el;
+    const missedNodes = [];
     while (node && node !== document.documentElement) {
       if (cache && cache.has(node)) {
         const hit = cache.get(node);
-        if (hit) return hit;
-        node = node.parentElement;
-        continue;
+        if (hit === CG_NO_BD) {
+          node = node.parentElement;
+          continue;
+        }
+        if (hit) {
+          for (const m of missedNodes) cache.set(m, CG_NO_BD);
+          return hit;
+        }
       }
       const cs = getComputedStyle(node);
       const bg = cgParseColor(cs.backgroundColor);
@@ -201,9 +209,18 @@
         const grad = cgGradientColor(cs);
         if (grad && grad.a >= 0.5) found = { lum: cgRelLum(grad.r, grad.g, grad.b) };
       }
-      if (cache && found) cache.set(node, found);
-      if (found) return found;
+      if (found) {
+        if (cache) {
+          cache.set(node, found);
+          for (const m of missedNodes) cache.set(m, CG_NO_BD);
+        }
+        return found;
+      }
+      missedNodes.push(node);
       node = node.parentElement;
+    }
+    if (cache) {
+      for (const m of missedNodes) cache.set(m, CG_NO_BD);
     }
     const html = document.documentElement;
     const isLightWallpaper = html.classList.contains('agy-light-wallpaper') || html.classList.contains('agy-native-light');
@@ -239,7 +256,7 @@
   }
 
   function cgRevert(el) {
-    if (!el) return;
+    if (!el || (!el.__agyCgApplied && !el.hasAttribute(CG_ATTR))) return;
     if (el.hasAttribute(CG_ATTR)) {
       el.removeAttribute(CG_ATTR);
     }
@@ -257,17 +274,41 @@
     el.__agyCgApplied = false;
   }
 
+  function cgHasRunningBootOverlay() {
+    if (window.__agyBootPlaying) return true;
+    const host = document.querySelector('#agy-video-boot-host, #agy-custom-code-boot-host, #agy-scene-boot-host');
+    return !!(host && host.dataset.agyDismissing !== '1');
+  }
+
+  /**
+   * 读写彻底分离的 ContrastGuard：
+   * 第一阶段仅执行只读采样（共享单次 Layout/Style 计算，彻底根除 900+ 次 `:has()` 全页强制重排卡顿），
+   * 第二阶段统一批量写入差异变更。
+   */
   function runContrastGuard() {
     const body = document.body;
     const html = document.documentElement;
     if (!body || !html) return;
     if (!html.classList.contains('agy-dark-wallpaper') && !html.classList.contains('agy-light-wallpaper')) return;
+    if (cgHasRunningBootOverlay()) {
+      scheduleContrastGuard(800);
+      return;
+    }
 
-    let flipped = 0;
     const backdropCache = new Map();
-    let candidates = body.querySelectorAll('*');
+    const toRevert = [];
+    const toApply = [];
+    const candidates = body.querySelectorAll('*');
+    const queueRevert = (el) => {
+      if (el.__agyCgApplied || el.hasAttribute(CG_ATTR)) toRevert.push(el);
+    };
+
+    // Phase 1: Pure DOM read / measure pass (ZERO mutations)
     for (const el of candidates) {
-      if (flipped > CG_MAX_FLIPS) break;
+      if (toApply.length >= CG_MAX_FLIPS) break;
+
+      const isAlreadyApplied = !!(el.__agyCgApplied || el.hasAttribute(CG_ATTR));
+      if (!isAlreadyApplied && el.namespaceURI === 'http://www.w3.org/2000/svg') continue;
 
       // 只处理「直接包含非空文本节点」或「图标按钮（直接子 SVG）」的元素，避免无意义遍历
       let hasText = false;
@@ -278,15 +319,13 @@
       }
       let hasIcon = false;
       if (!hasText) {
-        // 图标通常嵌在 button > span > span > svg 这种多层结构里，
-        // 条件是「自身无文本 + 内部有 svg/codicon」
         const childCount = el.childElementCount;
         if (childCount > 0 && childCount <= 3 && !(el.textContent || '').trim()) {
           if (el.querySelector('svg, .codicon')) hasIcon = true;
         }
       }
       if (!hasText && !hasIcon) {
-        if (el.hasAttribute(CG_ATTR) || el.__agyCgApplied) cgRevert(el);
+        if (isAlreadyApplied) toRevert.push(el);
         continue;
       }
       if (el.closest('#agy-dynamic-iframe,#agy-wallpaper-backdrop,#agy-video-boot-host,#agy-custom-code-boot-host,#agy-scene-boot-host,[data-agy-no-cg]')) continue;
@@ -300,36 +339,19 @@
       if (!fg || fg.a < 0.35) continue;
 
       const bd = cgBackdrop(el, backdropCache, rect);
-      if (!bd) { cgRevert(el); continue; }
+      if (!bd) { queueRevert(el); continue; }
 
       const baseFg = el.__agyCgOrigFg || fg;
       const fgLum = cgRelLum(baseFg.r, baseFg.g, baseFg.b);
 
-      // ======================================================================
-      // 单向安全护栏机制（Safety Guard Rail）：
-      // 1. 在浅色底（bd.lum >= 0.35）上：
-      //    - 若原字色本来就是深色（fgLum < 0.40），天然清晰可读，严禁翻成白字！
-      //    - 只有当原字色也是浅色（fgLum >= 0.40，即浅字压白底）且对比度不达标时，才翻转为高反差深墨黑；
-      // 2. 在深色底（bd.lum < 0.35）上：
-      //    - 若原字色本来就是浅色（fgLum >= 0.35），天然清晰可读，严禁翻成深黑字！
-      //    - 只有当原字色也是深黑（fgLum < 0.35，即黑字压黑底）且对比度不达标时，才翻转为明亮浅白；
-      // ======================================================================
       if (bd.lum >= 0.35) {
-        if (fgLum < 0.40) {
-          cgRevert(el);
-          continue;
-        }
-        if (cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
-          cgRevert(el);
+        if (fgLum < 0.40 || cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
+          queueRevert(el);
           continue;
         }
       } else {
-        if (fgLum >= 0.35) {
-          cgRevert(el);
-          continue;
-        }
-        if (cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
-          cgRevert(el);
+        if (fgLum >= 0.35 || cgContrast(fgLum, bd.lum) >= CG_MIN_CONTRAST) {
+          queueRevert(el);
           continue;
         }
       }
@@ -338,18 +360,35 @@
       const targetRgb = tone === 'light' ? 'rgb(244, 247, 251)' : 'rgb(11, 15, 20)';
       // 已就位（标记一致且颜色确实生效）则跳过
       if (el.getAttribute(CG_ATTR) === tone && cs.color === targetRgb) continue;
-      if (!el.__agyCgOrigFg) el.__agyCgOrigFg = { r: baseFg.r, g: baseFg.g, b: baseFg.b };
-      if (!el.hasAttribute(CG_ATTR)) {
-        el.__agyCgOrigColor = el.style.getPropertyValue('color') || null;
+      toApply.push({ el, tone, hasText, baseFg });
+    }
+
+    // Phase 2: Batched DOM write pass
+    if (!toRevert.length && !toApply.length) return;
+    cgIsMutating = true;
+    try {
+      for (const el of toRevert) {
+        cgRevert(el);
       }
-      el.setAttribute(CG_ATTR, tone);
-      el.__agyCgApplied = true;
-      // 双保险：属性选择器（react 重渲染冲不掉）+ inline important（战胜主题的高特指度 !important）
-      el.style.setProperty('color', tone === 'light' ? CG_LIGHT : CG_DARK, 'important');
-      if (hasText) {
-        el.style.setProperty('text-shadow', tone === 'light' ? '0 1px 2px rgba(0,0,0,.6)' : '0 1px 2px rgba(255,255,255,.6)');
+      for (const item of toApply) {
+        const { el, tone, hasText, baseFg } = item;
+        if (!el.__agyCgOrigFg) el.__agyCgOrigFg = { r: baseFg.r, g: baseFg.g, b: baseFg.b };
+        if (!el.hasAttribute(CG_ATTR)) {
+          el.__agyCgOrigColor = el.style.getPropertyValue('color') || null;
+        }
+        el.setAttribute(CG_ATTR, tone);
+        el.__agyCgApplied = true;
+        // 双保险：属性选择器（react 重渲染冲不掉）+ inline important（战胜主题的高特指度 !important）
+        el.style.setProperty('color', tone === 'light' ? CG_LIGHT : CG_DARK, 'important');
+        if (hasText) {
+          el.style.setProperty('text-shadow', tone === 'light' ? '0 1px 2px rgba(0,0,0,.6)' : '0 1px 2px rgba(255,255,255,.6)');
+        }
       }
-      flipped++;
+      if (cgObserver && typeof cgObserver.takeRecords === 'function') {
+        cgObserver.takeRecords();
+      }
+    } finally {
+      cgIsMutating = false;
     }
   }
 
@@ -368,6 +407,7 @@
     if (cgObserver || !document.body) return;
     try {
       cgObserver = new MutationObserver(() => {
+        if (cgIsMutating || cgHasRunningBootOverlay()) return;
         clearTimeout(cgWatchTimer);
         cgWatchTimer = setTimeout(() => {
           try { runContrastGuard(); } catch (_) {}
@@ -548,7 +588,17 @@
           resetContrastGuard();
         }
       };
-      img.src = url;
+      if (typeof window !== 'undefined' && typeof window.__agyResolveBlobMediaUrl === 'function') {
+        window.__agyResolveBlobMediaUrl(url).then((resolved) => {
+          if (seq !== luminanceProbeSeq) return;
+          img.src = (resolved && resolved.url) ? resolved.url : url;
+        }).catch(() => {
+          if (seq !== luminanceProbeSeq) return;
+          img.src = url;
+        });
+      } else {
+        img.src = url;
+      }
     } catch (_) {}
   }
 
@@ -631,6 +681,7 @@
             });
             window.__agyWallpaperInstance = wallpaperHandle;
             lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey };
+            window.__agyLastWallpaperState = lastWallpaperState;
           }
         } else {
           // 仅当滤镜参数发生改变时才更新 CSS 变量（0 渲染开销，素材完全不中断）
@@ -684,9 +735,11 @@
             lastWallpaperState.videoPath = videoPath;
             lastWallpaperState.isCustomTheme = isCustomTheme;
           } else if (mediaOn && sourceType === 'video') {
-            // 视频自愈保障：元素丢失或处于暂停态时轻量补挂，不触发场景/网页重建
+            // 视频自愈保障：元素丢失或非加载态下处于暂停态时轻量补挂，不触发场景/网页重建
             const vidEl = document.getElementById('agy-dynamic-video');
-            if (!vidEl || vidEl.paused || vidEl.style.opacity !== '1') {
+            const isLoadingBlob = !!(vidEl && vidEl.dataset && vidEl.dataset.agyMediaLoading === '1');
+            const isBootPaused = !!(vidEl && vidEl.dataset && vidEl.dataset.bootPaused === '1');
+            if (!vidEl || (!isLoadingBlob && !isBootPaused && (vidEl.paused || vidEl.style.opacity !== '1'))) {
               if (typeof wallpaperHandle.setVideoEnabled === 'function') {
                 wallpaperHandle.setVideoEnabled(true, videoUrl);
               }
@@ -771,10 +824,14 @@
       if (crtEl) crtEl.remove();
     } catch(e) {}
 
-    // C. 语言切换
+    // C. 语言切换（仅当有效目标语言发生变化时才调用，避免 applyFeatures 频繁触发全树扫描）
     try {
-      if (f.language && window.__agyI18n && typeof window.__agyI18n.setLanguage === 'function') {
-        window.__agyI18n.setLanguage(f.language);
+      const targetLang = f.chineseLocalization === false ? 'en' : (f.language || 'zh-CN');
+      if (window.__agyI18n && typeof window.__agyI18n.setLanguage === 'function') {
+        const currentLang = typeof window.__agyI18n.getLanguage === 'function' ? window.__agyI18n.getLanguage() : null;
+        if (currentLang !== targetLang) {
+          window.__agyI18n.setLanguage(targetLang);
+        }
       }
     } catch(e) {}
   }
@@ -852,23 +909,30 @@
   if (window.__AG_SKIN_ATTACHED__) {
     console.log('[Antigravity Skin] Re-checking skin active state & DOM attachments...');
     syncNativeThemeClass();
-    window.__agyApplyFeatures = applyFeatures;
+    wallpaperHandle = wallpaperHandle || window.__agyWallpaperInstance || null;
+    if (window.__agyLastWallpaperState) {
+      lastWallpaperState = window.__agyLastWallpaperState;
+    }
+    const activeApply = (typeof window.__agyApplyFeatures === 'function' && window.__agyApplyFeatures !== applyFeatures)
+      ? window.__agyApplyFeatures
+      : applyFeatures;
     try {
-      applyFeatures(window.__AG_SKIN_CONFIG__ || currentConfig);
+      activeApply(window.__AG_SKIN_CONFIG__ || currentConfig);
     } catch (e) {}
 
     if (typeof window.__agySyncTitleBar === 'function') {
       window.__agySyncTitleBar(true);
     }
 
-    if (typeof window.__agyInitAppearanceMenu === 'function') {
+    if (!window.__agyAppearanceMenuHandle && typeof window.__agyInitAppearanceMenu === 'function') {
       menuHandle = window.__agyInitAppearanceMenu(
         () => (window.__AG_SKIN_CONFIG__ || currentConfig),
         saveConfigRemote,
         (updatedConfig) => {
-          applyFeatures(updatedConfig);
+          activeApply(updatedConfig);
         }
       );
+      window.__agyAppearanceMenuHandle = menuHandle;
     }
     // 关键自愈：如果素材或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
     const needStyle = currentConfig.features?.themeStyles !== false;
@@ -880,11 +944,12 @@
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
                           !!document.getElementById('agy-scene-boot-host');
+    const isDeferredVideo = !!window.__agyPendingVideoDynamicMount;
     const hasVideo = !!document.getElementById('agy-dynamic-video') ||
                      !!document.getElementById('agy-dynamic-iframe') ||
                      !!document.getElementById('agy-dynamic-scene');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
-    if (!isBootPlaying) {
+    if (!isBootPlaying && !isDeferredVideo) {
       if (!needWallpaper && hasVideo) {
         ['agy-dynamic-video', 'agy-dynamic-iframe', 'agy-dynamic-scene', 'agy-dynamic-audio'].forEach(id => {
           const el = document.getElementById(id);
@@ -896,7 +961,7 @@
       }
       if ((needWallpaper && !hasVideo) || (needStyle && !hasStyle)) {
         console.log('[Antigravity Skin] Missing video or style in DOM, re-applying features immediately...');
-        applyFeatures(currentConfig);
+        activeApply(currentConfig);
       }
     }
 
@@ -997,6 +1062,7 @@
           applyFeatures(updatedConfig);
         }
       );
+      window.__agyAppearanceMenuHandle = menuHandle;
     }
   } catch (err) {
     console.warn('[Antigravity Skin] Error in __agyInitAppearanceMenu:', err);

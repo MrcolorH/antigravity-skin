@@ -251,7 +251,7 @@
     }
 
     // 跳过回复正文（保留控件操作按钮）
-    const agentResponse = element.closest('[data-testid="agent-response"], [aria-label="Agent response"], [aria-label="智能体回复"]');
+    const agentResponse = element.closest('[aria-label="Agent response"], [aria-label="智能体回复"]');
     if (agentResponse) {
       const isInteractive = element.closest('button, [role="button"], [class*="action"], [class*="button-container"]');
       if (!isInteractive) return true;
@@ -325,42 +325,64 @@
     return !!element.closest(containerSelector);
   }
 
-  function translateElement(element) {
-    if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
-    for (const attr of ['aria-label', 'title', 'placeholder', 'alt']) {
-      const value = element.getAttribute(attr);
-      if (!value || !/[a-zA-Z]/.test(value)) continue;
-      const originalKey = `__orig_${attr}`;
-      if (element[originalKey] === undefined) {
-        element[originalKey] = value;
-      }
-      const translated = translate(element[originalKey]);
-      if (translated !== value) element.setAttribute(attr, translated);
+  function drainSelfMutations() {
+    if (i18nObserver && typeof i18nObserver.takeRecords === 'function') {
+      try { i18nObserver.takeRecords(); } catch (e) {}
     }
   }
 
+  function translateElement(element) {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) return;
+    let mutated = false;
+    for (const attr of ['aria-label', 'title', 'placeholder', 'alt']) {
+      const value = element.getAttribute(attr);
+      if (!value || !/[a-zA-Z]/.test(value)) continue;
+      const lastMap = element.__zh_lastAttrs || (element.__zh_lastAttrs = {});
+      if (lastMap[attr] === value && element.__zh_patched) continue;
+      const originalKey = `__orig_${attr}`;
+      if (element[originalKey] === undefined || lastMap[attr] !== value) {
+        element[originalKey] = value;
+      }
+      const translated = translate(element[originalKey]);
+      if (translated !== value) {
+        lastMap[attr] = translated;
+        element.setAttribute(attr, translated);
+        mutated = true;
+      } else {
+        lastMap[attr] = value;
+      }
+    }
+    if (mutated) drainSelfMutations();
+  }
+
   function translateSingleTextNode(node) {
-    if (!node || node.nodeType !== Node.TEXT_NODE || node.__zh_patched) return;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return;
     const val = node.nodeValue || '';
+    if (node.__zh_patched && node.__zh_lastValue === val) return;
     if (val.length === 0 || !/[a-zA-Z]/.test(val)) {
+      node.__zh_lastValue = val;
       node.__zh_patched = true;
       return;
     }
     if (shouldSkip(node)) return;
     if (!isInAntigravityContainer(node)) return;
 
-    if (node.__original_en === undefined) {
+    if (node.__original_en === undefined || (node.__zh_patched && node.__zh_lastValue !== val)) {
       node.__original_en = val;
     }
     const translated = translate(node.__original_en);
     if (translated !== val) {
+      node.__zh_lastValue = translated;
       node.nodeValue = translated;
+      drainSelfMutations();
+    } else {
+      node.__zh_lastValue = val;
     }
     node.__zh_patched = true;
   }
 
   function translateNode(root) {
-    if (!root || !root.isConnected) return;
+    if (!root || (root.nodeType !== Node.DOCUMENT_NODE && !root.isConnected)) return;
     if (root.nodeType === Node.TEXT_NODE) {
       translateSingleTextNode(root);
       return;
@@ -429,8 +451,31 @@
 
   let i18nObserver = null;
   let i18nTimer = null;
+  let deferredBootI18n = false;
+  let bootResumeFallbackTimer = null;
+  let hasInitialTranslated = false;
+  let hasAppliedZhTranslation = false;
+  let currentAppliedLang = null;
   const pendingNodes = new Set();
+  const pendingAttrElements = new Set();
   let urgentTranslationUntil = 0;
+
+  function isBootBlockingI18n() {
+    if (window.__agyBootPlaying) return true;
+    if (typeof document !== 'undefined' && typeof document.querySelector === 'function') {
+      const host = document.querySelector('#agy-video-boot-host, #agy-custom-code-boot-host, #agy-scene-boot-host');
+      if (host && host.dataset && host.dataset.agyDismissing !== '1') return true;
+    }
+    return false;
+  }
+
+  function scheduleNextSlice(cb) {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(cb);
+    } else {
+      setTimeout(cb, 0);
+    }
+  }
 
   function triggerUrgentTranslationMode(durationMs = 1500) {
     urgentTranslationUntil = Date.now() + durationMs;
@@ -449,38 +494,76 @@
 
   function flushPendingTranslations() {
     i18nTimer = null;
-    if (window.__agyCurrentLang === 'en' || pendingNodes.size === 0) {
+    if (window.__agyCurrentLang === 'en' || (pendingNodes.size === 0 && pendingAttrElements.size === 0)) {
       pendingNodes.clear();
+      pendingAttrElements.clear();
       return;
     }
-    const nodes = Array.from(pendingNodes);
-    pendingNodes.clear();
+    if (pendingAttrElements.size > 0) {
+      const attrs = Array.from(pendingAttrElements);
+      pendingAttrElements.clear();
+      for (const el of attrs) {
+        if (el.isConnected && !isPrunableSubtree(el) && isInAntigravityContainer(el)) {
+          translateElement(el);
+          el.__zh_patched = true;
+        }
+      }
+    }
 
-    for (const node of nodes) {
+    const startMs = Date.now();
+    const isUrgent = Date.now() < urgentTranslationUntil;
+    const iter = pendingNodes.values();
+    while (pendingNodes.size > 0) {
+      const next = iter.next();
+      if (next.done) break;
+      const node = next.value;
+      pendingNodes.delete(node);
       if (node.isConnected) {
         translateNode(node);
+      }
+      if (!isUrgent && Date.now() - startMs >= 10 && pendingNodes.size > 0) {
+        i18nTimer = 1;
+        scheduleNextSlice(flushPendingTranslations);
+        return;
       }
     }
   }
 
+  function scheduleFlushTimer() {
+    if (i18nTimer) return;
+    if (typeof queueMicrotask === 'function' && Date.now() < urgentTranslationUntil) {
+      i18nTimer = 1;
+      queueMicrotask(flushPendingTranslations);
+    } else {
+      i18nTimer = 1;
+      scheduleNextSlice(flushPendingTranslations);
+    }
+  }
+
+  function scheduleAttributeTranslation(el) {
+    if (!el || isPrunableSubtree(el)) return;
+    if (isUrgentNode(el)) {
+      if (isInAntigravityContainer(el)) {
+        translateElement(el);
+        el.__zh_patched = true;
+      }
+      return;
+    }
+    pendingAttrElements.add(el);
+    scheduleFlushTimer();
+  }
+
   function scheduleIncrementalTranslation(node) {
     if (!node) return;
+    if (node.nodeType === Node.ELEMENT_NODE && isPrunableSubtree(node)) return;
+    if (node.nodeType === Node.TEXT_NODE && node.__zh_patched && node.nodeValue === node.__zh_lastValue) return;
     if (isUrgentNode(node)) {
       translateNode(node);
       return;
     }
 
     pendingNodes.add(node);
-    if (!i18nTimer) {
-      if (typeof queueMicrotask === 'function') {
-        i18nTimer = 1;
-        queueMicrotask(() => {
-          flushPendingTranslations();
-        });
-      } else {
-        i18nTimer = setTimeout(flushPendingTranslations, 16);
-      }
-    }
+    scheduleFlushTimer();
   }
 
   function startObserver() {
@@ -499,9 +582,20 @@
             scheduleIncrementalTranslation(m.addedNodes[j]);
           }
         } else if (m.type === 'characterData') {
-          scheduleIncrementalTranslation(m.target);
+          const t = m.target;
+          if (t.__zh_patched && t.nodeValue === t.__zh_lastValue) continue;
+          t.__zh_patched = false;
+          scheduleIncrementalTranslation(t);
         } else if (m.type === 'attributes') {
-          scheduleIncrementalTranslation(m.target);
+          const t = m.target;
+          const attr = m.attributeName;
+          if (!t || t.nodeType !== Node.ELEMENT_NODE) continue;
+          if (attr === 'data-testid') {
+            scheduleIncrementalTranslation(t);
+          } else {
+            if (attr && t.__zh_lastAttrs && t.__zh_lastAttrs[attr] === t.getAttribute(attr)) continue;
+            scheduleAttributeTranslation(t);
+          }
         }
       }
     });
@@ -517,22 +611,70 @@
     window.__agyI18nObserver = i18nObserver;
   }
 
+  function runDeferredBootTranslation() {
+    if (bootResumeFallbackTimer) {
+      clearTimeout(bootResumeFallbackTimer);
+      bootResumeFallbackTimer = null;
+    }
+    if (!deferredBootI18n || window.__agyCurrentLang === 'en') return;
+    deferredBootI18n = false;
+    if (document && document.documentElement) {
+      document.documentElement.lang = 'zh-CN';
+    }
+    if (typeof document !== 'undefined') {
+      translateNode(document);
+      hasInitialTranslated = true;
+      hasAppliedZhTranslation = true;
+    }
+    startObserver();
+  }
+
   function applyLanguage(lang) {
+    if (lang === currentAppliedLang && hasInitialTranslated && (lang === 'en' || (i18nObserver && !deferredBootI18n))) {
+      return;
+    }
     window.__agyCurrentLang = lang;
+    currentAppliedLang = lang;
     if (lang === 'en') {
+      deferredBootI18n = false;
+      if (bootResumeFallbackTimer) {
+        clearTimeout(bootResumeFallbackTimer);
+        bootResumeFallbackTimer = null;
+      }
+      pendingNodes.clear();
+      pendingAttrElements.clear();
       if (i18nObserver) {
         try { i18nObserver.disconnect(); } catch (e) {}
         i18nObserver = null;
       }
       if (typeof document !== 'undefined') {
-        revertToEnglish(document);
+        if (hasAppliedZhTranslation) {
+          revertToEnglish(document);
+          hasAppliedZhTranslation = false;
+        }
+        hasInitialTranslated = true;
       }
     } else {
       if (document && document.documentElement) {
         document.documentElement.lang = 'zh-CN';
       }
+      if (isBootBlockingI18n()) {
+        deferredBootI18n = true;
+        if (bootResumeFallbackTimer) clearTimeout(bootResumeFallbackTimer);
+        bootResumeFallbackTimer = setTimeout(() => {
+          if (deferredBootI18n && !isBootBlockingI18n()) {
+            runDeferredBootTranslation();
+          } else if (deferredBootI18n) {
+            // 兜底释放，避免开屏异常驻留导致汉化永久跳过
+            bootResumeFallbackTimer = setTimeout(runDeferredBootTranslation, 6000);
+          }
+        }, 4000);
+        return;
+      }
       if (typeof document !== 'undefined') {
         translateNode(document);
+        hasInitialTranslated = true;
+        hasAppliedZhTranslation = true;
       }
       startObserver();
     }
@@ -541,10 +683,14 @@
   window.__agyI18n = {
     getLanguage: () => window.__agyCurrentLang || 'zh-CN',
     setLanguage: (lang) => applyLanguage(lang),
-    triggerUrgent: triggerUrgentTranslationMode
+    triggerUrgent: triggerUrgentTranslationMode,
+    resumeAfterBoot: runDeferredBootTranslation
   };
 
-  const initialLang = (window.__AG_SKIN_CONFIG__ && window.__AG_SKIN_CONFIG__.features?.language) || 'zh-CN';
+  const initFeatures = window.__AG_SKIN_CONFIG__ && window.__AG_SKIN_CONFIG__.features;
+  const initialLang = (initFeatures && initFeatures.chineseLocalization === false)
+    ? 'en'
+    : ((initFeatures && initFeatures.language) || 'zh-CN');
   if (document.readyState === 'loading') {
     window.addEventListener('DOMContentLoaded', () => applyLanguage(initialLang), { once: true });
   } else {

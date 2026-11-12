@@ -10,11 +10,148 @@
   if (typeof window === 'undefined') return;
   window.__antigravityBootInstalled = true;
 
+  /**
+   * Antigravity 2.31+ / Electron 44 Chromium 152 会对 https 页面中直连 http://127.0.0.1:<port> 的
+   * <video>/<img>/<audio> 子资源触发约 15s 的内部阻塞，而同端口 fetch() 仅需数毫秒。
+   * 将本地回环媒体通过 fetch() 转为内存 blob: URL 并按规范化键共享复用，可彻底消除 15s 卡死与二次加载延迟。
+   */
+  const MAX_BLOB_MEDIA_BYTES = 250 * 1024 * 1024;
+  const MAX_BLOB_CACHE_ENTRIES = 4;
+
+  function getMediaCacheKey(rawUrl) {
+    try {
+      const u = new URL(rawUrl, typeof location !== 'undefined' ? location.href : 'http://127.0.0.1');
+      if ((u.pathname === '/boot-video.mp4' || u.pathname === '/wallpaper.mp4' || u.pathname === '/api/video') && u.searchParams.get('path')) {
+        return `local-video:${u.origin}:${u.searchParams.get('path')}`;
+      }
+      return `url:${u.href}`;
+    } catch (_) {
+      return `url:${String(rawUrl || '')}`;
+    }
+  }
+
+  function isLoopbackHttpUrl(rawUrl) {
+    return typeof rawUrl === 'string' && /^http:\/\/(?:127\.0\.0\.1|localhost):\d+\//i.test(rawUrl.trim());
+  }
+
+  function isBlobUrlInDomUse(blobUrl) {
+    if (!blobUrl || typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return false;
+    try {
+      const mediaNodes = document.querySelectorAll('video, img, audio');
+      for (let i = 0; i < mediaNodes.length; i++) {
+        const node = mediaNodes[i];
+        if (node && (node.src === blobUrl || node.currentSrc === blobUrl)) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  function evictMediaCacheIfNeeded(cache) {
+    while (cache.size >= MAX_BLOB_CACHE_ENTRIES) {
+      let oldestKey = null;
+      let oldestTime = Infinity;
+      for (const [k, entry] of cache.entries()) {
+        if (entry && entry.blobUrl && isBlobUrlInDomUse(entry.blobUrl)) continue;
+        const ts = entry ? entry.lastUsed : 0;
+        if (ts < oldestTime) {
+          oldestTime = ts;
+          oldestKey = k;
+        }
+      }
+      if (!oldestKey) break;
+      const evicted = cache.get(oldestKey);
+      cache.delete(oldestKey);
+      if (evicted && evicted.blobUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        try { URL.revokeObjectURL(evicted.blobUrl); } catch (_) {}
+      }
+    }
+  }
+
+  if (typeof window.__agyResolveBlobMediaUrl !== 'function') {
+    window.__agyMediaBlobCache = window.__agyMediaBlobCache || new Map();
+    window.__agyResolveBlobMediaUrl = async function resolveBlobMediaUrl(rawUrl, opts = {}) {
+      if (!rawUrl || !isLoopbackHttpUrl(rawUrl)) {
+        return { url: rawUrl, isBlob: false, cached: false };
+      }
+      if (typeof fetch !== 'function' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        return { url: rawUrl, isBlob: false, cached: false };
+      }
+      const cache = window.__agyMediaBlobCache;
+      const key = getMediaCacheKey(rawUrl);
+
+      if (opts.bustCache && cache.has(key)) {
+        const prev = cache.get(key);
+        cache.delete(key);
+        if (prev && prev.blobUrl && !isBlobUrlInDomUse(prev.blobUrl) && typeof URL.revokeObjectURL === 'function') {
+          try { URL.revokeObjectURL(prev.blobUrl); } catch (_) {}
+        }
+      }
+
+      const existing = cache.get(key);
+      if (existing && !opts.noCache) {
+        existing.lastUsed = Date.now();
+        if (existing.blobUrl) {
+          return { url: existing.blobUrl, isBlob: true, cached: true };
+        }
+        if (existing.promise) {
+          const resolved = await existing.promise;
+          return resolved || { url: rawUrl, isBlob: false, cached: false };
+        }
+      }
+
+      const fetchAndCreateBlob = async () => {
+        try {
+          const resp = await fetch(rawUrl);
+          if (!resp || !resp.ok) return { url: rawUrl, isBlob: false, cached: false };
+          const lenHeader = resp.headers && typeof resp.headers.get === 'function' ? resp.headers.get('content-length') : null;
+          const contentLen = lenHeader ? Number(lenHeader) : 0;
+          if (Number.isFinite(contentLen) && contentLen > MAX_BLOB_MEDIA_BYTES) {
+            return { url: rawUrl, isBlob: false, cached: false };
+          }
+          const blob = await resp.blob();
+          if (!blob || !blob.size || blob.size > MAX_BLOB_MEDIA_BYTES) {
+            return { url: rawUrl, isBlob: false, cached: false };
+          }
+          const blobUrl = URL.createObjectURL(blob);
+          return { url: blobUrl, isBlob: true, cached: false, size: blob.size };
+        } catch (_) {
+          return { url: rawUrl, isBlob: false, cached: false };
+        }
+      };
+
+      if (opts.noCache) {
+        return await fetchAndCreateBlob();
+      }
+
+      evictMediaCacheIfNeeded(cache);
+      const entry = { blobUrl: '', size: 0, lastUsed: Date.now(), promise: null };
+      entry.promise = fetchAndCreateBlob().then((res) => {
+        if (res && res.isBlob && res.url) {
+          entry.blobUrl = res.url;
+          entry.size = res.size || 0;
+          entry.lastUsed = Date.now();
+          entry.promise = null;
+          return { url: res.url, isBlob: true, cached: false };
+        }
+        if (cache.get(key) === entry) cache.delete(key);
+        return res;
+      });
+      cache.set(key, entry);
+      return await entry.promise;
+    };
+  }
+
   // 极速冷启动优先级保障：若主进程已接管开机引导或本会话已播放过，彻底杜绝重复播放 (BUG-024)
   try {
+    const activeBootHost = typeof document !== 'undefined' &&
+      document.querySelector('#agy-video-boot-host, #agy-custom-code-boot-host, #agy-scene-boot-host');
+    const isActiveBootRunning = !!(activeBootHost && activeBootHost.dataset.agyDismissing !== '1');
     if (window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__')) {
       sessionStorage.setItem('__agy_booted__', 'true');
-      window.__agyBootPlaying = false;
+      // 严禁在开屏动画仍激活时将 __agyBootPlaying 误覆写为 false，导致底层壁纸/ContrastGuard 抢跑争夺主线程与硬件解码
+      if (!isActiveBootRunning) {
+        window.__agyBootPlaying = false;
+      }
     } else {
       const _earlyCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
       if (_earlyCfg.features?.bootAnimation) {
@@ -388,10 +525,15 @@
     let readyCheckTimer = null;
     let pendingDismiss = false;
     let videoErrorFailed = false;
+    let videoFrameReady = !videoSrc;
+    let dismissScheduled = false;
 
-    // 权威防线：场景壁纸具备存活 Canvas 或海报已完整展示，或 3.5 秒超时安全兜底，杜绝无限死锁
+    // 权威防线：必须同时等待开机视频首帧可读（或 5s 容灾超时）与底层壁纸/宿主就绪，严禁视频 0 帧时纯黑秒退！
     function canSafelyDismissBoot() {
       if (videoErrorFailed) return true; // 视频播放失败容灾：绝不让黑屏遮罩死锁视口
+      if (videoSrc && !videoFrameReady) {
+        if (Date.now() - animStartTime <= 5000) return false;
+      }
       if (!checkIsSceneWallpaper()) {
         return isHostReady;
       }
@@ -430,15 +572,22 @@
         clearInterval(readyCheckTimer);
         readyCheckTimer = null;
       }
+      host.dataset.agyDismissing = '1';
       window.__agyBootPlaying = false;
+      cleanMacAntiFlashAndNotify();
       restoreTitleBarOverlay();
       window.removeEventListener('keydown', onKeyDown, true);
 
-      // 1. 在开屏遮罩开始淡出的第一时间（T=0）立即平滑唤醒底层壁纸（形成 500ms 交叉渐变 Cross-fade）
+      // 1. 在开屏遮罩开始淡出的第一时间（T=0）立即平滑唤醒底层壁纸与延迟汉化（形成 500ms 交叉渐变 Cross-fade）
       if (typeof window.__agyResumeBootWallpaper === 'function') {
         try { window.__agyResumeBootWallpaper(); } catch(e) {}
       } else {
         resumeWallpaperVideo();
+      }
+      if (window.__agyI18n && typeof window.__agyI18n.resumeAfterBoot === 'function') {
+        setTimeout(() => {
+          try { window.__agyI18n.resumeAfterBoot(); } catch (_) {}
+        }, 16);
       }
 
       // 2. 电影级丝滑溶出：严禁在淡出前清空视频源（杜绝先缓黑！），以最后一帧画面配合轻柔景深微放缩平滑溶入首页
@@ -457,7 +606,6 @@
         }
         try { host.remove(); } catch(e) {}
         restoreTitleBarOverlay();
-        cleanMacAntiFlashAndNotify();
       }, 520);
     }
 
@@ -521,20 +669,44 @@
     hint.innerHTML = '<div class="spinner"></div><span class="status-text">系统启动中...</span>';
     host.appendChild(hint);
 
+    let bootWallpaperPrewarmed = false;
+    function maybePrewarmWallpaper() {
+      if (bootWallpaperPrewarmed || cleaned || !isHostReady) return;
+      if (video && !videoErrorFailed && video.readyState < 2) return;
+      bootWallpaperPrewarmed = true;
+      if (typeof window.__agyPrewarmBootWallpaper === 'function') {
+        try { window.__agyPrewarmBootWallpaper({ pausePlayback: delaySec === 0 }); } catch (_) {}
+      }
+    }
+
+    function maybeStartDismissScheduler() {
+      if (dismissScheduled || cleaned || !isHostReady || !canSafelyDismissBoot()) return;
+      dismissScheduled = true;
+      hint.className = 'agy-boot-status-pill status-ready';
+      if (delaySec === 0) {
+        hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
+      } else {
+        hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
+      }
+      autoTimer = setupBootDismissScheduler(host, hint, onDismissScheduleTriggered);
+    }
+
+    function markVideoFrameReady() {
+      if (videoFrameReady) return;
+      videoFrameReady = true;
+      maybeStartDismissScheduler();
+      maybePrewarmWallpaper();
+    }
+
     function markHostReady() {
       if (isHostReady) return;
       isHostReady = true;
       if (!canSafelyDismissBoot()) {
         updateLoadingSceneHint();
       } else {
-        hint.className = 'agy-boot-status-pill status-ready';
-        if (delaySec === 0) {
-          hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
-        } else {
-          hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
-        }
+        maybeStartDismissScheduler();
       }
-      autoTimer = setupBootDismissScheduler(host, hint, onDismissScheduleTriggered);
+      maybePrewarmWallpaper();
     }
 
     // 权威宿主就绪检测：确保首页 DOM 与动态壁纸完全落地后再放行
@@ -550,14 +722,7 @@
       }
       if (isHostReady) {
         if (canSafelyDismissBoot()) {
-          if (hint.className.includes('status-loading')) {
-            hint.className = 'agy-boot-status-pill status-ready';
-            if (delaySec === 0) {
-              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击画面进入工作区</span>';
-            } else {
-              hint.innerHTML = '<span class="ready-dot"></span><span class="status-text">就绪 · 按 <kbd>ESC</kbd> 或点击跳过</span>';
-            }
-          }
+          maybeStartDismissScheduler();
           if (pendingDismiss) {
             closeVideoBoot();
           }
@@ -569,6 +734,12 @@
 
     // 2.5秒极限安全兜底（杜绝冷启动在异常状态下死等引发黑屏死锁）
     setTimeout(markHostReady, 2500);
+    setTimeout(() => {
+      if (!cleaned && !videoFrameReady) {
+        videoFrameReady = true;
+        maybeStartDismissScheduler();
+      }
+    }, 5000);
 
     if (!videoSrc) {
       const emptyBox = document.createElement('div');
@@ -607,9 +778,34 @@
     video.setAttribute('autoplay', '');
     video.setAttribute('playsinline', '');
     video.setAttribute('preload', 'auto');
-    video.src = videoSrc;
+    if (video.dataset) video.dataset.agyLogicalSrc = videoSrc;
     host.prepend(video);
-    try { video.load(); } catch (_) {}
+
+    const canUseBlobLoader = isLoopbackHttpUrl(videoSrc) &&
+      typeof fetch === 'function' &&
+      typeof URL !== 'undefined' &&
+      typeof URL.createObjectURL === 'function' &&
+      typeof window.__agyResolveBlobMediaUrl === 'function';
+
+    if (canUseBlobLoader) {
+      window.__agyResolveBlobMediaUrl(videoSrc).then((resolved) => {
+        if (cleaned || !video) return;
+        const targetSrc = (resolved && resolved.url) ? resolved.url : videoSrc;
+        video.src = targetSrc;
+        try { video.load(); } catch (_) {}
+        if (video.readyState >= 2) {
+          markVideoFrameReady();
+          safePlayBootVideo();
+        }
+      }).catch(() => {
+        if (cleaned || !video) return;
+        video.src = videoSrc;
+        try { video.load(); } catch (_) {}
+      });
+    } else {
+      video.src = videoSrc;
+      try { video.load(); } catch (_) {}
+    }
 
     video.addEventListener('ended', () => {
       if (delaySec === 0) {
@@ -629,15 +825,25 @@
       }
     });
 
-    // 零闪烁交叉淡入：结束前 450ms 提前平滑唤醒底层壁纸
+    // 零闪烁交叉淡入：首帧就绪立即预热底层壁纸，并在结束前 450ms 提前平滑唤醒
     let preloadedWallpaper = false;
+    video.addEventListener('loadeddata', () => {
+      markVideoFrameReady();
+      maybePrewarmWallpaper();
+    }, { once: true });
+    video.addEventListener('playing', () => {
+      markVideoFrameReady();
+      maybePrewarmWallpaper();
+    }, { once: true });
     video.addEventListener('timeupdate', () => {
+      if (!videoFrameReady && video.readyState >= 2) markVideoFrameReady();
+      if (!bootWallpaperPrewarmed) maybePrewarmWallpaper();
       if (cleaned || !video.duration || !isFinite(video.duration)) return;
       if (preloadedWallpaper) return;
       if (delaySec > 0 && video.duration - video.currentTime <= 0.45) {
         preloadedWallpaper = true;
-        if (typeof window.__agyResumeBootWallpaper === 'function') {
-          try { window.__agyResumeBootWallpaper(); } catch (_) {}
+        if (typeof window.__agyPrewarmBootWallpaper === 'function') {
+          try { window.__agyPrewarmBootWallpaper({ pausePlayback: false }); } catch (_) {}
         }
       }
     });
@@ -664,14 +870,25 @@
     };
 
     video.addEventListener('loadedmetadata', safePlayBootVideo, { once: true });
-    video.addEventListener('canplay', safePlayBootVideo, { once: true });
+    video.addEventListener('canplay', () => {
+      markVideoFrameReady();
+      safePlayBootVideo();
+    }, { once: true });
     video.addEventListener('error', (e) => {
+      // 若 blob URL 意外失效，自动回退直连原 URL 重试一次
+      if (video && video.dataset && video.dataset.agyBlobRetried !== '1' && String(video.src || '').startsWith('blob:') && videoSrc) {
+        video.dataset.agyBlobRetried = '1';
+        video.src = videoSrc;
+        try { video.load(); } catch (_) {}
+        return;
+      }
       console.warn('[Boot Video] Video element error:', e, video.error);
       videoErrorFailed = true;
       setTimeout(closeVideoBoot, 200);
     });
 
     if (video.readyState >= 2) {
+      markVideoFrameReady();
       safePlayBootVideo();
     }
   }
@@ -759,14 +976,21 @@
         clearInterval(readyCheckTimer);
         readyCheckTimer = null;
       }
+      host.dataset.agyDismissing = '1';
       window.__agyBootPlaying = false;
+      cleanMacAntiFlashAndNotify();
       restoreTitleBarOverlay();
       window.removeEventListener('keydown', onKeyDown, true);
-      // 在开屏遮罩淡出的一瞬间（T=0）平滑唤醒底层壁纸
+      // 在开屏遮罩淡出的一瞬间（T=0）平滑唤醒底层壁纸与延迟汉化
       if (typeof window.__agyResumeBootWallpaper === 'function') {
         try { window.__agyResumeBootWallpaper(); } catch(e) {}
       } else {
         resumeWallpaperVideo();
+      }
+      if (window.__agyI18n && typeof window.__agyI18n.resumeAfterBoot === 'function') {
+        setTimeout(() => {
+          try { window.__agyI18n.resumeAfterBoot(); } catch (_) {}
+        }, 16);
       }
 
       host.style.transition = 'opacity 500ms cubic-bezier(0.25, 1, 0.5, 1), transform 500ms cubic-bezier(0.25, 1, 0.5, 1)';
@@ -779,7 +1003,6 @@
         }
         try { host.remove(); } catch(e) {}
         restoreTitleBarOverlay();
-        cleanMacAntiFlashAndNotify();
       }, 520);
     }
 

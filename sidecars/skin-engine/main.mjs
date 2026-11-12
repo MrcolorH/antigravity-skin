@@ -834,6 +834,65 @@ function persistLibraryConfig(mutator) {
   return cfg;
 }
 
+/** Determine whether current config requires bundling the heavy WebWallGL shader runtime. */
+function shouldInlineWebWallGL(cfg) {
+  if (!cfg || cfg.enabled === false) return false;
+  const f = cfg.features || {};
+  const dw = f.dynamicWallpaper || {};
+  const dwSource = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+  const needsSceneDw = dw.enabled !== false && dwSource === 'scene';
+  const needsSceneBoot = !!(f.bootAnimation && f.bootAnimationConfig && f.bootAnimationConfig.mode === 'scene');
+  return needsSceneDw || needsSceneBoot;
+}
+
+/** Fast non-cryptographic hash tag (length + FNV-1a) for bundle deduplication. */
+function computeBundleHash(input) {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${input.length}:${(hash >>> 0).toString(36)}`;
+}
+
+/** Inject webwallgl.js over CDP into open sessions missing window.WebWallGL and refresh preload scripts. */
+async function ensureWebWallGLOnActiveSessions() {
+  const vendorFile = path.join(PLUGIN_ROOT, 'sidecars', 'skin-engine', 'vendor', 'webwallgl.js');
+  if (!fs.existsSync(vendorFile)) return 0;
+  let webwallglCode = '';
+  try {
+    webwallglCode = fs.readFileSync(vendorFile, 'utf8');
+  } catch (err) {
+    console.warn('[Skin Engine] Failed to read webwallgl.js for on-demand injection:', err.message);
+    return 0;
+  }
+  if (!webwallglCode) return 0;
+
+  let injectedCount = 0;
+  for (const session of activeSessions.values()) {
+    if (!session || !session.ws || session.ws.readyState !== WebSocket.OPEN) continue;
+    try {
+      const checkRes = await session.send('Runtime.evaluate', {
+        expression: '!!(window.WebWallGL && typeof window.WebWallGL.mount === "function")',
+        returnByValue: true
+      });
+      if (!checkRes?.result?.value) {
+        await session.send('Runtime.evaluate', {
+          expression: webwallglCode,
+          returnByValue: false
+        });
+        injectedCount++;
+      }
+      if (typeof session.refreshNewDocScript === 'function') {
+        await session.refreshNewDocScript();
+      }
+    } catch (err) {
+      console.warn('[Skin Engine] Failed on-demand webwallgl injection:', err.message);
+    }
+  }
+  return injectedCount;
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
 
@@ -912,6 +971,9 @@ const server = http.createServer((req, res) => {
         const dwWp = parsed?.features?.dynamicWallpaper?.wallpaperDir;
         if (bootWp) setTimeout(() => ensureScenePoster(bootWp), 10);
         if (dwWp && dwWp !== bootWp) setTimeout(() => ensureScenePoster(dwWp), 50);
+        if (shouldInlineWebWallGL(parsed)) {
+          ensureWebWallGLOnActiveSessions().catch(() => {});
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -953,7 +1015,11 @@ const server = http.createServer((req, res) => {
     if (process.platform === 'darwin') {
       for (const [id, session] of activeSessions.entries()) {
         try {
-          session.send('Emulation.setDefaultBackgroundColorOverride', {});
+          if (typeof session.clearAntiFlash === 'function') {
+            session.clearAntiFlash();
+          } else {
+            session.send('Emulation.setDefaultBackgroundColorOverride', {});
+          }
         } catch (_) {}
       }
     }
@@ -2048,13 +2114,40 @@ const server = http.createServer((req, res) => {
       }
 
       const range = req.headers.range;
+      const attachStreamLifecycle = (fileStream) => {
+        const destroyStream = () => {
+          try { fileStream.destroy(); } catch (_) {}
+        };
+        fileStream.on('error', () => {
+          destroyStream();
+          try { if (!res.writableEnded) res.end(); } catch (_) {}
+        });
+        req.on('close', destroyStream);
+        res.on('close', destroyStream);
+        fileStream.pipe(res);
+      };
 
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      if (range && /^bytes=/i.test(range)) {
+        const parts = String(range).replace(/bytes=/i, '').split('-');
+        let start;
+        let end;
+        if (parts[0] === '') {
+          const suffixLen = parseInt(parts[1], 10);
+          start = Number.isFinite(suffixLen) && suffixLen > 0 ? Math.max(0, fileSize - suffixLen) : 0;
+          end = fileSize - 1;
+        } else {
+          start = parseInt(parts[0], 10);
+          end = parts[1] !== undefined && parts[1] !== '' ? parseInt(parts[1], 10) : fileSize - 1;
+        }
+        if (isNaN(start)) start = 0;
+        if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+        if (start < 0 || start > end || start >= fileSize) {
+          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+          res.end();
+          return;
+        }
         const chunkSize = (end - start) + 1;
-        // 扩充 highWaterMark 至 512KB，大幅压低 Windows 平台下的逐包传输开销
+        // 扩充 highWaterMark 至 512KB，大幅压低大文件逐包传输开销
         const fileStream = fs.createReadStream(vidPath, { start, end, highWaterMark: 1024 * 512 });
 
         res.writeHead(206, {
@@ -2066,7 +2159,7 @@ const server = http.createServer((req, res) => {
           'ETag': etag,
           'Last-Modified': mtime
         });
-        fileStream.pipe(res);
+        attachStreamLifecycle(fileStream);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
@@ -2076,7 +2169,7 @@ const server = http.createServer((req, res) => {
           'ETag': etag,
           'Last-Modified': mtime
         });
-        fs.createReadStream(vidPath, { highWaterMark: 1024 * 512 }).pipe(res);
+        attachStreamLifecycle(fs.createReadStream(vidPath, { highWaterMark: 1024 * 512 }));
       }
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -2121,6 +2214,20 @@ const server = http.createServer((req, res) => {
       contentType: 'application/javascript; charset=utf-8',
       cacheControl: 'public, max-age=86400'
     });
+    return;
+  }
+
+  // 5b. 按需通过 CDP 注入 webwallgl.js（避免非场景模式启动注入 1.1 MB 冗余脚本）
+  if (url.pathname === '/api/vendor/webwallgl/ensure' && req.method === 'POST') {
+    ensureWebWallGLOnActiveSessions()
+      .then((injectedCount) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, injectedCount }));
+      })
+      .catch((err) => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      });
     return;
   }
 
@@ -2259,14 +2366,17 @@ function buildClientBundle() {
 
   let bundleParts = [];
 
-  // WebWallGL 核心渲染引擎内联注入（0ms 秒开，彻底杜绝 macOS HTTPS 跨协议 Mixed Content 脚本拦截风险）
-  const webwallglPath = path.join(PLUGIN_ROOT, 'sidecars', 'skin-engine', 'vendor', 'webwallgl.js');
-  if (fs.existsSync(webwallglPath)) {
-    try {
-      const webwallglCode = fs.readFileSync(webwallglPath, 'utf8');
-      if (webwallglCode) bundleParts.push(webwallglCode);
-    } catch (e) {
-      console.warn('[Skin Engine] Failed to inline webwallgl.js:', e);
+  // WebWallGL 核心渲染引擎按需内联注入：仅在配置了场景壁纸或场景开屏时随包注入，视频/网页模式节省 ~1.1MB 传输与解析开销
+  const activeBundleConfig = readConfig();
+  if (shouldInlineWebWallGL(activeBundleConfig)) {
+    const webwallglPath = path.join(PLUGIN_ROOT, 'sidecars', 'skin-engine', 'vendor', 'webwallgl.js');
+    if (fs.existsSync(webwallglPath)) {
+      try {
+        const webwallglCode = fs.readFileSync(webwallglPath, 'utf8');
+        if (webwallglCode) bundleParts.push(webwallglCode);
+      } catch (e) {
+        console.warn('[Skin Engine] Failed to inline webwallgl.js:', e);
+      }
     }
   }
 
@@ -2415,25 +2525,61 @@ function createCdpSession(target, port) {
     unhealthyCount: 0
   };
 
-  async function executeInjection() {
+  function buildTaggedClientBundle() {
+    const rawBundle = buildClientBundle();
+    const bundleHash = computeBundleHash(rawBundle);
+    return {
+      bundleHash,
+      bundle: `${rawBundle}\n;window.__AG_SKIN_BUNDLE_HASH__ = ${JSON.stringify(bundleHash)};`
+    };
+  }
+
+  async function refreshNewDocScript(bundleInfo) {
+    const { bundleHash, bundle } = bundleInfo || buildTaggedClientBundle();
+    if (session.lastScriptId && session.lastBundleHash === bundleHash) {
+      return bundleHash;
+    }
+    await send('Page.enable');
+    // 保持长连接下的全生命周期自动预载（仅在脚本内容变更时重建，避免重复注册执行）
+    if (session.lastScriptId) {
+      try {
+        await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: session.lastScriptId });
+      } catch (_) {}
+      session.lastScriptId = null;
+    }
+    const addRes = await send('Page.addScriptToEvaluateOnNewDocument', { source: bundle });
+    if (addRes && addRes.identifier) {
+      session.lastScriptId = addRes.identifier;
+    }
+    session.lastBundleHash = bundleHash;
+    return bundleHash;
+  }
+  session.refreshNewDocScript = refreshNewDocScript;
+
+  async function executeInjection(options = {}) {
     if (session.injecting) return;
     session.injecting = true;
     try {
-      const bundle = buildClientBundle();
+      const bundleInfo = buildTaggedClientBundle();
       await send('Page.enable');
       await send('Runtime.enable');
-      // 保持长连接下的全生命周期自动预载（先移除旧版本，避免重复执行残留）
-      if (session.lastScriptId) {
+      await refreshNewDocScript(bundleInfo);
+
+      if (!options.forceEvaluate) {
         try {
-          await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: session.lastScriptId });
+          const attachCheck = await send('Runtime.evaluate', {
+            expression: 'window.__AG_SKIN_ATTACHED__ ? (window.__AG_SKIN_BUNDLE_HASH__ || "__legacy__") : ""',
+            returnByValue: true
+          });
+          if (attachCheck?.result?.value === bundleInfo.bundleHash) {
+            session.isHealthy = true;
+            return;
+          }
         } catch (_) {}
       }
-      const addRes = await send('Page.addScriptToEvaluateOnNewDocument', { source: bundle });
-      if (addRes && addRes.identifier) {
-        session.lastScriptId = addRes.identifier;
-      }
+
       // 立即对当前 DOM 树执行挂载
-      await send('Runtime.evaluate', { expression: bundle, returnByValue: true });
+      await send('Runtime.evaluate', { expression: bundleInfo.bundle, returnByValue: true });
       session.isHealthy = true;
       console.log(`[Skin Engine] Successfully attached skin to target ${targetId}`);
     } catch (err) {
@@ -2443,14 +2589,52 @@ function createCdpSession(target, port) {
     }
   }
 
+  function clearSessionAntiFlash() {
+    if (session.antiFlashTimer) {
+      clearTimeout(session.antiFlashTimer);
+      session.antiFlashTimer = null;
+    }
+    if (ws.readyState === WebSocket.OPEN) {
+      send('Emulation.setDefaultBackgroundColorOverride', {}).catch(() => {});
+      send('Runtime.evaluate', {
+        expression: `(() => {
+          try {
+            const st = document.getElementById('agy-macos-anti-flash');
+            if (st) st.remove();
+            if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+              document.documentElement.style.background = '';
+            }
+            if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+              document.body.style.background = '';
+            }
+          } catch (_) {}
+        })()`
+      }).catch(() => {});
+    }
+  }
+  session.clearAntiFlash = clearSessionAntiFlash;
+
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
 
-    // 🍎 macOS 专属视口零闪白防线：冷启动若开启开机动效且尚未完成引导，第 0 毫秒硬件级锁黑视口底板
+    // 🍎 macOS 专属视口零闪白防线：先校验是否已过开屏阶段，绝不将已完成启动的首页长期锁死在纯黑底板下
     if (process.platform === 'darwin') {
       try {
         const cfg = readConfig();
-        if (cfg?.enabled && cfg?.features?.bootAnimation) {
+        let alreadyBooted = false;
+        try {
+          const bootCheck = await send('Runtime.evaluate', {
+            expression: `(() => {
+              try {
+                return !!(window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__'));
+              } catch (_) { return false; }
+            })()`,
+            returnByValue: true
+          });
+          alreadyBooted = !!bootCheck?.result?.value;
+        } catch (_) {}
+
+        if (cfg?.enabled && cfg?.features?.bootAnimation && !alreadyBooted) {
           await send('Emulation.setDefaultBackgroundColorOverride', {
             color: { r: 0, g: 0, b: 0, a: 1 }
           });
@@ -2469,6 +2653,29 @@ function createCdpSession(target, port) {
               } catch (_) {}
             })()`
           });
+          if (session.antiFlashTimer) clearTimeout(session.antiFlashTimer);
+          session.antiFlashTimer = setTimeout(() => {
+            session.antiFlashTimer = null;
+            if (ws.readyState !== WebSocket.OPEN) return;
+            send('Emulation.setDefaultBackgroundColorOverride', {}).catch(() => {});
+            send('Runtime.evaluate', {
+              expression: `(() => {
+                try {
+                  if (window.__agyBootPlaying) return;
+                  const st = document.getElementById('agy-macos-anti-flash');
+                  if (st) st.remove();
+                  if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+                    document.documentElement.style.background = '';
+                  }
+                  if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+                    document.body.style.background = '';
+                  }
+                } catch (_) {}
+              })()`
+            }).catch(() => {});
+          }, 12000);
+        } else {
+          clearSessionAntiFlash();
         }
       } catch (_) {}
     }
@@ -2497,29 +2704,40 @@ function createCdpSession(target, port) {
         return;
       }
 
-      // 页面导航或加载完成时的智能保活检查
+      // 页面导航或加载完成时的智能保活检查（仅限顶层 frame，子 iframe/webview 不重复触发注入）
       if (msg.method === 'Page.frameNavigated') {
-        await executeInjection();
+        if (msg.params?.frame?.parentId) return;
+        await executeInjection({ forceEvaluate: false });
       } else if (msg.method === 'Page.loadEventFired') {
         try {
           const chk = await send('Runtime.evaluate', { expression: '!!window.__AG_SKIN_ATTACHED__', returnByValue: true });
           if (!chk?.result?.value) {
-            await executeInjection();
+            await executeInjection({ forceEvaluate: false });
           }
         } catch (_) {}
       }
     } catch (e) {}
   };
 
+  function releaseSessionEntry() {
+    if (session.antiFlashTimer) {
+      clearTimeout(session.antiFlashTimer);
+      session.antiFlashTimer = null;
+    }
+    if (activeSessions.get(targetId) === session) {
+      activeSessions.delete(targetId);
+    }
+  }
+
   ws.onclose = () => {
     console.log(`[Skin Engine] CDP session closed for ${targetId}`);
-    activeSessions.delete(targetId);
+    releaseSessionEntry();
   };
 
   ws.onerror = (err) => {
     console.warn(`[Skin Engine] CDP session error on ${targetId}:`, err.message || err);
     try { ws.close(); } catch (e) {}
-    activeSessions.delete(targetId);
+    releaseSessionEntry();
   };
 
   session.checkHealthAndHeal = async () => {
@@ -2632,7 +2850,18 @@ function handleNativeLoadingOverlay(target, port) {
           document.documentElement.style.background = '#000000';
           if (document.body) document.body.style.background = '#000000';
           const oldLogo = document.querySelector('.logo') || document.querySelector('svg');
+          const hadLogo = !!oldLogo;
           if (oldLogo) oldLogo.remove();
+          if (hadLogo && document.body && !document.getElementById('agy-native-loading-pill')) {
+            const st = document.createElement('style');
+            st.textContent = '@keyframes agyNativeSpin{to{transform:rotate(360deg)}}';
+            (document.head || document.documentElement).appendChild(st);
+            const pill = document.createElement('div');
+            pill.id = 'agy-native-loading-pill';
+            pill.style.cssText = 'position:fixed;bottom:28px;right:32px;padding:8px 18px;border-radius:9999px;background:rgba(15,23,42,0.9);border:1px solid rgba(52,211,153,0.45);color:rgba(255,255,255,0.88);font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:99999;';
+            pill.innerHTML = '<div style="width:14px;height:14px;border:2px solid rgba(56,189,248,0.25);border-top-color:#38bdf8;border-radius:50%;animation:agyNativeSpin 0.8s linear infinite;flex-shrink:0;"></div><span>系统启动中...</span>';
+            document.body.appendChild(pill);
+          }
         } catch (_) {}
       `;
       ws.send(JSON.stringify({
@@ -2721,12 +2950,17 @@ async function connectBrowserTarget(port) {
             const url = (info.url || '').trim();
             // 动态接管原生 loadingOverlay 遮罩（若 Windows 宿主已注入 loadingOverlay.js 补丁，由主进程独占管理，严禁外部重复介入）
             const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
-            if (!isWindowsPatched && url.startsWith('data:') && (url.includes('logo') || url.includes('svg') || url.includes('DOCTYPE') || url.includes('%3C') || url.includes('%21DOCTYPE'))) {
+            const lowerUrl = url.toLowerCase();
+            if (!isWindowsPatched && url.startsWith('data:') && (lowerUrl.includes('logo') || lowerUrl.includes('svg') || lowerUrl.includes('doctype') || lowerUrl.includes('%3c') || lowerUrl.includes('%23ffffff') || lowerUrl.includes('%23fafafa'))) {
               handleNativeLoadingOverlay(info, port);
             } else if (isMainAppTarget(info)) {
               const targetId = info.targetId;
               let session = activeSessions.get(targetId);
-              if (!session || session.ws.readyState !== WebSocket.OPEN) {
+              const state = session?.ws?.readyState;
+              if (!session || (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING)) {
+                if (session?.ws && state !== WebSocket.CLOSED) {
+                  try { session.ws.close(); } catch (_) {}
+                }
                 const fullTarget = {
                   id: targetId,
                   targetId: targetId,

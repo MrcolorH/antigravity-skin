@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.13** | 彻底修复冷启动/首页黑屏卡死（本地回环媒体 Blob 极速加载、开机首帧门控、i18n/ContrastGuard/CDP 冷启动全链路优化） | [RELEASE_v0.2.13.md](docs/releases/RELEASE_v0.2.13.md) |
 | **v0.2.12** | 统一 AI 回复正文与工具链毛玻璃气泡形态、全语言容器容错与闭环适配 | [RELEASE_v0.2.12.md](docs/releases/RELEASE_v0.2.12.md) |
 | **v0.2.11** | 适配 Antigravity 新版消息容器与 AI 对话框毛玻璃背景多维容错修复 | [RELEASE_v0.2.11.md](docs/releases/RELEASE_v0.2.11.md) |
 | **v0.2.10** | 用户消息气泡展开态 50vh 最大高度限制、自包含平滑滚动与防嵌套重叠 | [RELEASE_v0.2.10.md](docs/releases/RELEASE_v0.2.10.md) |
