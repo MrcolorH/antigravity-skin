@@ -205,6 +205,23 @@ if (fs.existsSync(targetUtilsFile)) {
   }
 }
 
+// C. 注入 remote-debugging-port 开启开关 (适配 Antigravity v2.33.0+ 默认禁用 CDP 端口的底层机制)
+const targetMainFile = path.join(tempExtractDir, 'dist', 'main.js');
+if (fs.existsSync(targetMainFile)) {
+  let mainCode = fs.readFileSync(targetMainFile, 'utf8');
+  if (!mainCode.includes("appendSwitch('remote-debugging-port'")) {
+    const targetAnchor = "electron_1.app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');";
+    if (mainCode.includes(targetAnchor)) {
+      mainCode = mainCode.replace(
+        targetAnchor,
+        `${targetAnchor}\nelectron_1.app.commandLine.appendSwitch('remote-debugging-port', '0');`
+      );
+      fs.writeFileSync(targetMainFile, mainCode, 'utf8');
+      console.log('     ✅ 已在 main.js 注入 remote-debugging-port 自动开启开关 (适配新版 Antigravity)。');
+    }
+  }
+}
+
 // 6. 重新打包 app.asar
 console.log(`[5/5] 正在重新安全封装 app.asar ...`);
 const tempAsarOut = path.join(resourcesDir, 'app.asar.tmp');
@@ -243,12 +260,12 @@ try {
           ];
           for (const app of candidates) {
             if (fs.existsSync(app)) {
-              execSync(`open -a "${app}"`, { stdio: 'ignore' });
+              execSync(`open -a "${app}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
               console.log('✨ 客户端已成功拉起启动！');
               return;
             }
           }
-          execSync('open -b com.google.antigravity', { stdio: 'ignore' });
+          execSync('open -b com.google.antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
           console.log('✨ 客户端已成功拉起启动！');
         } else if (process.platform === 'win32') {
           function findAntigravityExe() {
@@ -319,7 +336,7 @@ try {
 
             // 策略 1：使用 PowerShell Start-Process（调用 Win32 ShellExecuteEx，操作系统级独立派生，完全脱离控制台生命周期）
             try {
-              execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -WorkingDirectory '${exeDir}'"`, {
+              execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -ArgumentList '--remote-debugging-port=0' -WorkingDirectory '${exeDir}'"`, {
                 windowsHide: true,
                 stdio: 'ignore',
                 env: cleanEnv
@@ -330,7 +347,7 @@ try {
             // 策略 2：Node.js spawn 彻底分离进程组 (detached: true) 双重加固
             if (!launched) {
               try {
-                const child = spawn(exe, [], {
+                const child = spawn(exe, ['--remote-debugging-port=0'], {
                   cwd: exeDir,
                   detached: true,
                   stdio: 'ignore',

@@ -1,4 +1,4 @@
-# Antigravity Skin - Windows 一键安装脚本
+﻿# Antigravity Skin - Windows 一键安装脚本
 $ErrorActionPreference = "Stop"
 
 Write-Host "==================================================" -ForegroundColor Cyan
@@ -128,6 +128,33 @@ try {
             Write-Host "  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。" -ForegroundColor Yellow
         }
     }
+
+    # 6. 配置桌面与开始菜单快捷方式启动参数 (开启 remote-debugging-port)
+    try {
+        Write-Host "正在优化 Windows 快捷方式启动参数 (适配 v2.33.0+ 默认禁用 CDP 的问题)..." -ForegroundColor Green
+        $wsh = New-Object -ComObject WScript.Shell
+        $lnkDirs = @(
+            [System.Environment]::GetFolderPath('Desktop'),
+            [System.Environment]::GetFolderPath('CommonDesktopDirectory'),
+            [System.Environment]::GetFolderPath('Programs'),
+            [System.Environment]::GetFolderPath('CommonPrograms')
+        )
+        foreach ($d in $lnkDirs) {
+            if (Test-Path $d) {
+                Get-ChildItem -Path $d -Filter "*Antigravity*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                    try {
+                        $sc = $wsh.CreateShortcut($_.FullName)
+                        if ($sc.TargetPath -and $sc.TargetPath.ToLower().Contains("antigravity")) {
+                            if ($sc.Arguments -notmatch "remote-debugging-port") {
+                                $sc.Arguments = ($sc.Arguments + " --remote-debugging-port=0").Trim()
+                                $sc.Save()
+                            }
+                        }
+                    } catch {}
+                }
+            }
+        }
+    } catch {}
 
     Write-Host "==================================================" -ForegroundColor Cyan
     Write-Host " [√] 安装部署完成！" -ForegroundColor Green

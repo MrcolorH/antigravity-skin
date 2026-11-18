@@ -321,6 +321,37 @@ if (process.platform === 'win32') {
       console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
     }
   }
+
+  // 6. 配置桌面与开始菜单快捷方式启动参数 (开启 remote-debugging-port)
+  try {
+    console.log('\n[6/6] 正在配置 Windows 快捷方式启动参数 (适配 v2.33.0+ 默认禁用 CDP 的问题)...');
+    const psCmd = `
+      $wsh = New-Object -ComObject WScript.Shell
+      $paths = @(
+        [Environment]::GetFolderPath('Desktop'),
+        [Environment]::GetFolderPath('CommonDesktopDirectory'),
+        [Environment]::GetFolderPath('Programs'),
+        [Environment]::GetFolderPath('CommonPrograms')
+      )
+      foreach ($p in $paths) {
+        if (Test-Path $p) {
+          Get-ChildItem -Path $p -Filter "*Antigravity*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            try {
+              $shortcut = $wsh.CreateShortcut($_.FullName)
+              if ($shortcut.TargetPath -and $shortcut.TargetPath.ToLower().Contains("antigravity")) {
+                if ($shortcut.Arguments -notmatch "remote-debugging-port") {
+                  $shortcut.Arguments = ($shortcut.Arguments + " --remote-debugging-port=0").Trim()
+                  $shortcut.Save()
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    `;
+    execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\\r?\\n\\s*/g, ' ')}"`, { stdio: 'ignore' });
+    console.log('  [√] 桌面与开始菜单快捷方式已成功加上 --remote-debugging-port=0 参数。');
+  } catch (_) {}
 }
 
 function restartAntigravity() {
@@ -333,12 +364,12 @@ function restartAntigravity() {
       ];
       for (const c of candidates) {
         if (fs.existsSync(c)) {
-          execSync(`open -a "${c}"`, { stdio: 'ignore' });
+          execSync(`open -a "${c}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
           console.log('✨ 客户端已成功重新拉起启动！');
           return;
         }
       }
-      execSync('open -a Antigravity', { stdio: 'ignore' });
+      execSync('open -a Antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     } else if (process.platform === 'win32') {
       // 1. 如果客户端已由补丁脚本成功唤醒，避免重复拉起引发冲突
@@ -384,13 +415,13 @@ function restartAntigravity() {
         delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
 
         try {
-          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -WorkingDirectory '${exeDir}'"`, {
+          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -ArgumentList '--remote-debugging-port=0' -WorkingDirectory '${exeDir}'"`, {
             windowsHide: true,
             stdio: 'ignore',
             env: cleanEnv
           });
         } catch (_) {
-          const child = spawn(exe, [], { cwd: exeDir, detached: true, stdio: 'ignore', env: cleanEnv });
+          const child = spawn(exe, ['--remote-debugging-port=0'], { cwd: exeDir, detached: true, stdio: 'ignore', env: cleanEnv });
           child.unref();
         }
         console.log('✨ 客户端已成功重新拉起启动！');
@@ -398,7 +429,7 @@ function restartAntigravity() {
         console.log('💡 未能自动找到 Antigravity.exe，请手动启动客户端。');
       }
     } else {
-      execSync('antigravity &', { stdio: 'ignore' });
+      execSync('antigravity --remote-debugging-port=0 &', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     }
   } catch (_) {

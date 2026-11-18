@@ -120,8 +120,16 @@ with open(config_file, 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
 " 2>/dev/null || true
 
+# 在用户本地 bin 目录写入快速启动命令（适配 macOS 终端唤起）
+mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+cat > "$HOME/.local/bin/antigravity" <<'EOF'
+#!/usr/bin/env bash
+open -a Antigravity --args --remote-debugging-port=0 "$@" 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 "$@" 2>/dev/null
+EOF
+chmod +x "$HOME/.local/bin/antigravity" 2>/dev/null || true
+
 echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
-open -a Antigravity 2>/dev/null || open -b com.google.antigravity 2>/dev/null || true
+open -a Antigravity --args --remote-debugging-port=0 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 2>/dev/null || true
 
 echo "=================================================="
 echo " [√] 安装部署完成！"
