@@ -19,9 +19,14 @@ console.log('  正在安装与优化 Antigravity 主题与皮肤插件...');
 console.log('==================================================');
 
 let detectedExePath = null;
+const isInsideAntigravityHost = !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN);
 
 // 0. 自动退出运行中的客户端及后台语言服务以解除文件锁定并杜绝配置覆写竞态
 function ensureProcessClosed() {
+  if (isInsideAntigravityHost) {
+    console.log('💡 检测到当前正运行于 Antigravity 宿主环境/内置会话中，跳过退出主进程以防止会话中断。');
+    return;
+  }
   try {
     if (process.platform === 'win32') {
       try {
@@ -370,7 +375,39 @@ if (process.platform === 'win32') {
   } catch (_) {}
 }
 
+if (process.platform === 'darwin') {
+  try {
+    console.log('\n[6/6] 正在配置 macOS 专属启动器 (解决从 Dock/聚焦搜索裸跑默认禁用调试端口的问题)...');
+    let appDir = '/Applications';
+    try {
+      fs.accessSync(appDir, fs.constants.W_OK);
+    } catch (_) {
+      appDir = path.join(home, 'Applications');
+      fs.mkdirSync(appDir, { recursive: true });
+    }
+    const launcherApp = path.join(appDir, 'Antigravity (Skin).app');
+    const iconSrc = '/Applications/Antigravity.app/Contents/Resources/icon.icns';
+    const osaCmd = `osacompile -o "${launcherApp}" -e 'do shell script "open -a /Applications/Antigravity.app --args --remote-debugging-port=0"'`;
+    execSync(osaCmd, { stdio: 'ignore' });
+    if (fs.existsSync(iconSrc)) {
+      const destIcon = path.join(launcherApp, 'Contents', 'Resources', 'applet.icns');
+      fs.copyFileSync(iconSrc, destIcon);
+      execSync(`touch "${launcherApp}"`, { stdio: 'ignore' });
+    }
+    console.log(`  [√] 已成功为您生成专属启动器: ${launcherApp}`);
+    console.log(`  👉 推荐：从 Spotlight 启动或将「Antigravity (Skin)」拖入程序坞 (Dock)，即可一键秒级带参唤起！`);
+  } catch (e) {
+    console.log('  ⚠️ 创建启动器出现提示 (可直接使用终端命令 antigravity 启动):', e.message);
+  }
+}
+
 function restartAntigravity() {
+  if (isInsideAntigravityHost) {
+    console.log('\n✨ 插件与运行配置已就绪！');
+    console.log('🔔 提示：由于当前运行于 Antigravity 宿主环境内，安装程序未强行关闭当前会话。');
+    console.log('   请您使用快捷键 Cmd+Q 完全退出 Antigravity 后，打开「Antigravity (Skin)」或使用终端命令 antigravity 重新启动即可生效！');
+    return;
+  }
   console.log('\n✨ 正在自动为您重新拉起 Antigravity 客户端...');
   try {
     if (process.platform === 'darwin') {
@@ -380,12 +417,12 @@ function restartAntigravity() {
       ];
       for (const c of candidates) {
         if (fs.existsSync(c)) {
-          execSync(`open -a "${c}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
+          execSync(`open -n -a "${c}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
           console.log('✨ 客户端已成功重新拉起启动！');
           return;
         }
       }
-      execSync('open -a Antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
+      execSync('open -n -a Antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     } else if (process.platform === 'win32') {
       // 1. 如果客户端已由补丁脚本成功唤醒，避免重复拉起引发冲突

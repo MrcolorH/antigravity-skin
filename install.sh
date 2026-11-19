@@ -17,8 +17,15 @@ if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/scripts/install.mjs" ]; then
     fi
 fi
 
+IS_INSIDE_HOST=0
+if [ -n "$ANTIGRAVITY_LS_ADDRESS" ] || [ -n "$ANTIGRAVITY_CSRF_TOKEN" ]; then
+    IS_INSIDE_HOST=1
+fi
+
 # 模式 B：通过管道远程一行命令执行 (curl ... | bash)，或者系统无 Node.js 环境
-if pgrep -i antigravity >/dev/null 2>&1 || pgrep -f "language_server.*antigravity" >/dev/null 2>&1; then
+if [ "$IS_INSIDE_HOST" -eq 1 ]; then
+    echo "💡 检测到当前正运行于 Antigravity 宿主环境/内置终端中，跳过强制退出以防止中断当前会话。"
+elif pgrep -i antigravity >/dev/null 2>&1 || pgrep -f "language_server.*antigravity" >/dev/null 2>&1; then
     echo "⚠️ 检测到 Antigravity 客户端或后台语言服务正在运行，正在执行安全优雅退出..."
     osascript -e 'quit app "Antigravity"' 2>/dev/null || true
     COUNT=0
@@ -31,7 +38,7 @@ if pgrep -i antigravity >/dev/null 2>&1 || pgrep -f "language_server.*antigravit
     done
     pkill -i antigravity 2>/dev/null || true
     pkill -f "language_server.*antigravity" 2>/dev/null || true
-    sleep 0.3
+    sleep 0.5
     echo "     ✅ Antigravity 客户端及后台语言服务已安全就绪。"
 fi
 
@@ -140,8 +147,27 @@ open -a Antigravity --args --remote-debugging-port=0 "$@" 2>/dev/null || open -b
 EOF
 chmod +x "$HOME/.local/bin/antigravity" 2>/dev/null || true
 
-echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
-open -a Antigravity --args --remote-debugging-port=0 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 2>/dev/null || true
+# 配置 macOS 专属启动器应用 (适配 v2.33.0+ 默认禁用 CDP 的问题)
+if command -v osacompile >/dev/null 2>&1; then
+    APP_DIR="/Applications"
+    [ -w "$APP_DIR" ] || APP_DIR="$HOME/Applications"
+    mkdir -p "$APP_DIR" 2>/dev/null || true
+    LAUNCHER_APP="$APP_DIR/Antigravity (Skin).app"
+    osacompile -o "$LAUNCHER_APP" -e 'do shell script "open -a /Applications/Antigravity.app --args --remote-debugging-port=0"' 2>/dev/null || true
+    if [ -f "/Applications/Antigravity.app/Contents/Resources/icon.icns" ]; then
+        cp "/Applications/Antigravity.app/Contents/Resources/icon.icns" "$LAUNCHER_APP/Contents/Resources/applet.icns" 2>/dev/null || true
+        touch "$LAUNCHER_APP" 2>/dev/null || true
+    fi
+fi
+
+if [ "$IS_INSIDE_HOST" -eq 1 ]; then
+    echo "✨ 插件与运行配置已就绪！"
+    echo "🔔 提示：由于当前运行于 Antigravity 宿主会话内，未强行退出当前会话。"
+    echo "   请您使用快捷键 Cmd+Q 完全退出 Antigravity 后，打开「Antigravity (Skin)」或使用终端命令 antigravity 即可完美生效！"
+else
+    echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
+    open -n -a Antigravity --args --remote-debugging-port=0 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 2>/dev/null || true
+fi
 
 echo "=================================================="
 echo " [√] 安装部署完成！"
