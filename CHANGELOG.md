@@ -8,7 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
-| **v0.2.15** | 修复语言服务超时崩溃与重启后插件脱落隐患（精准隔离外部开发服务 CDP 劫持、阻断 AI 流式输出与 Monaco 编辑器 DOM 监听风暴、安装脚本进程优雅退出与配置写入防竞态） | [RELEASE_v0.2.15.md](docs/releases/RELEASE_v0.2.15.md) |
+| **v0.2.15** | 修复语言服务超时崩溃与重启后插件脱落隐患（精准隔离外部开发服务 CDP 劫持、阻断 AI 流式输出与 Monaco 编辑器 DOM 监听风暴、安装脚本进程优雅退出与配置写入防竞态、macOS 官方 App 默认注入调试端口实现 Dock 原生秒级启动） | [RELEASE_v0.2.15.md](docs/releases/RELEASE_v0.2.15.md) |
 | **v0.2.14** | 适配 Antigravity v2.33.0+ 默认禁用 CDP 调试端口变更，安装脚本自动注入 remote-debugging-port 启动参数与快捷方式全量自愈 | [RELEASE_v0.2.14.md](docs/releases/RELEASE_v0.2.14.md) |
 | **v0.2.13** | 彻底修复冷启动/首页黑屏卡死（本地回环媒体 Blob 极速加载、开机首帧门控、i18n/ContrastGuard/CDP 冷启动全链路优化） | [RELEASE_v0.2.13.md](docs/releases/RELEASE_v0.2.13.md) |
 | **v0.2.12** | 统一 AI 回复正文与工具链毛玻璃气泡形态、全语言容器容错与闭环适配 | [RELEASE_v0.2.12.md](docs/releases/RELEASE_v0.2.12.md) |

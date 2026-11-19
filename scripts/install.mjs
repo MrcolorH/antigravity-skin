@@ -316,96 +316,71 @@ async function cleanRunningHost() {
 
 await cleanRunningHost();
 
-// 5. Windows 平台特权：自动执行前置开机动画动态联动补丁（自动关闭运行中的客户端解除锁定）
-// 注意：macOS 采用纯非侵入式架构，由 Sidecar 守护进程通过 CDP 动态接管与消除原生 loading，100% 保持官方代码签名完整！
-if (process.platform === 'win32') {
-  console.log('\n[4/4] 正在配置 Windows 客户端前置开机动画引擎 (自动退出运行中的客户端以解除文件锁定)...');
+// 5. 跨平台支持：自动执行内核调试端口与前置动效补丁
+// 直接注入 main.js 开启 remote-debugging-port，无需更换启动器，任何姿势打开客户端均默认带参生效！
+if (process.platform === 'win32' || process.platform === 'darwin') {
+  console.log('\n[4/4] 正在配置客户端内核调试端口与开机动效补丁 (写入默认开启参数，无需外部启动器)...');
   const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
   const patchScript = fs.existsSync(deployedPatchScript) ? deployedPatchScript : path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
   if (fs.existsSync(patchScript)) {
     try {
-      const { execSync } = await import('node:child_process');
       execSync(`"${process.execPath}" "${patchScript}"`, { stdio: 'inherit' });
     } catch (e) {
-      console.log('  ⚠️ 开机动画补丁执行出现异常:', e.message);
-      console.log('     👉 您可随时在外观设置中点击「一键修复」或双击 patch-loading.bat 重新合入！');
+      console.log('  ⚠️ 开机动画与内核补丁执行出现异常:', e.message);
+      console.log('     👉 您可随时在外观设置中点击「一键修复」重新合入！');
     }
   }
 
-  // 5. 注册开机自愈守护：客户端更新覆盖 app.asar 后，下次登录 Windows 自动静默重打补丁
-  const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
-  if (fs.existsSync(registerScript)) {
+  // 注册开机自愈守护 (Windows)：客户端更新覆盖 app.asar 后，下次登录自动静默重打补丁
+  if (process.platform === 'win32') {
+    const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
+    if (fs.existsSync(registerScript)) {
+      try {
+        console.log('\n[5/5] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
+        execSync(`"${process.execPath}" "${registerScript}"`, { stdio: 'inherit' });
+      } catch (e) {
+        console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
+      }
+    }
+
+    // 配置桌面与开始菜单快捷方式启动参数
     try {
-      console.log('\n[5/5] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
-      execSync(`"${process.execPath}" "${registerScript}"`, { stdio: 'inherit' });
-    } catch (e) {
-      console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
-    }
-  }
-
-  // 6. 配置桌面与开始菜单快捷方式启动参数 (开启 remote-debugging-port)
-  try {
-    console.log('\n[6/6] 正在配置 Windows 快捷方式启动参数 (适配 v2.33.0+ 默认禁用 CDP 的问题)...');
-    const psCmd = `
-      $wsh = New-Object -ComObject WScript.Shell
-      $paths = @(
-        [Environment]::GetFolderPath('Desktop'),
-        [Environment]::GetFolderPath('CommonDesktopDirectory'),
-        [Environment]::GetFolderPath('Programs'),
-        [Environment]::GetFolderPath('CommonPrograms')
-      )
-      foreach ($p in $paths) {
-        if (Test-Path $p) {
-          Get-ChildItem -Path $p -Filter "*Antigravity*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            try {
-              $shortcut = $wsh.CreateShortcut($_.FullName)
-              if ($shortcut.TargetPath -and $shortcut.TargetPath.ToLower().Contains("antigravity")) {
-                if ($shortcut.Arguments -notmatch "remote-debugging-port") {
-                  $shortcut.Arguments = ($shortcut.Arguments + " --remote-debugging-port=0").Trim()
-                  $shortcut.Save()
+      console.log('\n[6/6] 正在配置 Windows 快捷方式启动参数...');
+      const psCmd = `
+        $wsh = New-Object -ComObject WScript.Shell
+        $paths = @(
+          [Environment]::GetFolderPath('Desktop'),
+          [Environment]::GetFolderPath('CommonDesktopDirectory'),
+          [Environment]::GetFolderPath('Programs'),
+          [Environment]::GetFolderPath('CommonPrograms')
+        )
+        foreach ($p in $paths) {
+          if (Test-Path $p) {
+            Get-ChildItem -Path $p -Filter "*Antigravity*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+              try {
+                $shortcut = $wsh.CreateShortcut($_.FullName)
+                if ($shortcut.TargetPath -and $shortcut.TargetPath.ToLower().Contains("antigravity")) {
+                  if ($shortcut.Arguments -notmatch "remote-debugging-port") {
+                    $shortcut.Arguments = ($shortcut.Arguments + " --remote-debugging-port=0").Trim()
+                    $shortcut.Save()
+                  }
                 }
-              }
-            } catch (_) {}
+              } catch (_) {}
+            }
           }
         }
-      }
-    `;
-    execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\\r?\\n\\s*/g, ' ')}"`, { stdio: 'ignore' });
-    console.log('  [√] 桌面与开始菜单快捷方式已成功加上 --remote-debugging-port=0 参数。');
-  } catch (_) {}
-}
-
-if (process.platform === 'darwin') {
-  try {
-    console.log('\n[6/6] 正在配置 macOS 专属启动器 (解决从 Dock/聚焦搜索裸跑默认禁用调试端口的问题)...');
-    let appDir = '/Applications';
-    try {
-      fs.accessSync(appDir, fs.constants.W_OK);
-    } catch (_) {
-      appDir = path.join(home, 'Applications');
-      fs.mkdirSync(appDir, { recursive: true });
-    }
-    const launcherApp = path.join(appDir, 'Antigravity (Skin).app');
-    const iconSrc = '/Applications/Antigravity.app/Contents/Resources/icon.icns';
-    const osaCmd = `osacompile -o "${launcherApp}" -e 'do shell script "open -a /Applications/Antigravity.app --args --remote-debugging-port=0"'`;
-    execSync(osaCmd, { stdio: 'ignore' });
-    if (fs.existsSync(iconSrc)) {
-      const destIcon = path.join(launcherApp, 'Contents', 'Resources', 'applet.icns');
-      fs.copyFileSync(iconSrc, destIcon);
-      execSync(`touch "${launcherApp}"`, { stdio: 'ignore' });
-    }
-    console.log(`  [√] 已成功为您生成专属启动器: ${launcherApp}`);
-    console.log(`  👉 推荐：从 Spotlight 启动或将「Antigravity (Skin)」拖入程序坞 (Dock)，即可一键秒级带参唤起！`);
-  } catch (e) {
-    console.log('  ⚠️ 创建启动器出现提示 (可直接使用终端命令 antigravity 启动):', e.message);
+      `;
+      execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\\r?\\n\\s*/g, ' ')}"`, { stdio: 'ignore' });
+      console.log('  [√] 桌面与开始菜单快捷方式已成功加上 --remote-debugging-port=0 参数。');
+    } catch (_) {}
   }
 }
 
 function restartAntigravity() {
   if (isInsideAntigravityHost) {
-    console.log('\n✨ 插件与运行配置已就绪！');
+    console.log('\n✨ 插件、内核补丁与运行配置已全量就绪！');
     console.log('🔔 提示：由于当前运行于 Antigravity 宿主环境内，安装程序未强行关闭当前会话。');
-    console.log('   请您使用快捷键 Cmd+Q 完全退出 Antigravity 后，打开「Antigravity (Skin)」或使用终端命令 antigravity 重新启动即可生效！');
+    console.log('   请您在方便时使用快捷键 Cmd+Q 完全退出 Antigravity，再直接从程序坞 (Dock) 打开官方 Antigravity 即可自动秒级生效！');
     return;
   }
   console.log('\n✨ 正在自动为您重新拉起 Antigravity 客户端...');
@@ -417,12 +392,12 @@ function restartAntigravity() {
       ];
       for (const c of candidates) {
         if (fs.existsSync(c)) {
-          execSync(`open -n -a "${c}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
+          execSync(`open -a "${c}"`, { stdio: 'ignore' });
           console.log('✨ 客户端已成功重新拉起启动！');
           return;
         }
       }
-      execSync('open -n -a Antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
+      execSync('open -a Antigravity', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     } else if (process.platform === 'win32') {
       // 1. 如果客户端已由补丁脚本成功唤醒，避免重复拉起引发冲突

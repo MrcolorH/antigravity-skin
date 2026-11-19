@@ -9,12 +9,11 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 console.log('==================================================');
-console.log('  Antigravity 前置开机动画防闪白补丁 (Windows 专用)');
+console.log('  Antigravity 内核调试端口与开机动效补丁');
 console.log('==================================================');
 
-if (process.platform !== 'win32') {
-  console.log('📌 提示：当前脚本仅适用于 Windows 系统。');
-  console.log('   macOS 平台采用纯净非侵入式架构，无需篡改系统 app.asar。');
+if (process.platform !== 'win32' && process.platform !== 'darwin') {
+  console.log('📌 提示：当前脚本仅适用于 Windows 与 macOS 系统。');
   process.exit(0);
 }
 
@@ -71,9 +70,14 @@ const backupPath = path.join(resourcesDir, 'app.asar.bak');
 console.log(`[1/5] 检测到 Antigravity resources 目录: ${resourcesDir}`);
 
 let detectedExePath = null;
+const isInsideAntigravityHost = !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN || process.env.SKIP_KILL === '1');
 
 // 2. 检查并自动关闭运行中的 Antigravity 客户端（解除文件锁定）
 function ensureProcessClosed() {
+  if (isInsideAntigravityHost) {
+    console.log('📌 检测到当前运行于 Antigravity 宿主会话中，启用无感在线注入模式（跳过强制退出以防止中断会话）。');
+    return;
+  }
   if (process.env.SKIP_KILL === '1') {
     console.log('📌 已启用 SKIP_KILL 模式：跳过进程退出，采用无感在线写入。');
     return;
@@ -249,6 +253,10 @@ try {
 
     // 7. 自动重新启动 Antigravity 客户端
     async function restartAntigravity() {
+      if (isInsideAntigravityHost) {
+        console.log('⚡ 在线热注入完成：app.asar 补丁已就绪！下次直接打开官方 Antigravity（无需任何启动器或参数）即可秒级生效！');
+        return;
+      }
       try {
         console.log('');
         console.log('🚀 正在自动为您启动 Antigravity 客户端...');

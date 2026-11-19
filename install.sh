@@ -143,30 +143,23 @@ os.replace(tmp_file, config_file)
 mkdir -p "$HOME/.local/bin" 2>/dev/null || true
 cat > "$HOME/.local/bin/antigravity" <<'EOF'
 #!/usr/bin/env bash
-open -a Antigravity --args --remote-debugging-port=0 "$@" 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 "$@" 2>/dev/null
+open -a Antigravity "$@" 2>/dev/null || open -b com.google.antigravity "$@" 2>/dev/null
 EOF
 chmod +x "$HOME/.local/bin/antigravity" 2>/dev/null || true
 
-# 配置 macOS 专属启动器应用 (适配 v2.33.0+ 默认禁用 CDP 的问题)
-if command -v osacompile >/dev/null 2>&1; then
-    APP_DIR="/Applications"
-    [ -w "$APP_DIR" ] || APP_DIR="$HOME/Applications"
-    mkdir -p "$APP_DIR" 2>/dev/null || true
-    LAUNCHER_APP="$APP_DIR/Antigravity (Skin).app"
-    osacompile -o "$LAUNCHER_APP" -e 'do shell script "open -a /Applications/Antigravity.app --args --remote-debugging-port=0"' 2>/dev/null || true
-    if [ -f "/Applications/Antigravity.app/Contents/Resources/icon.icns" ]; then
-        cp "/Applications/Antigravity.app/Contents/Resources/icon.icns" "$LAUNCHER_APP/Contents/Resources/applet.icns" 2>/dev/null || true
-        touch "$LAUNCHER_APP" 2>/dev/null || true
-    fi
+# 执行内核补丁注入 (跨平台通用，直接为官方 App 注入 remote-debugging-port，无需更换启动器)
+if [ -f "$TARGET_DIR/scripts/patch-boot-overlay.mjs" ] && command -v node >/dev/null 2>&1; then
+    echo "[4/4] 正在注入内核调试端口与前置动画补丁 (默认开启 remote-debugging-port，直接使用官方 App)..."
+    node "$TARGET_DIR/scripts/patch-boot-overlay.mjs" || true
 fi
 
 if [ "$IS_INSIDE_HOST" -eq 1 ]; then
-    echo "✨ 插件与运行配置已就绪！"
+    echo "✨ 插件、内核补丁与运行配置已全量就绪！"
     echo "🔔 提示：由于当前运行于 Antigravity 宿主会话内，未强行退出当前会话。"
-    echo "   请您使用快捷键 Cmd+Q 完全退出 Antigravity 后，打开「Antigravity (Skin)」或使用终端命令 antigravity 即可完美生效！"
+    echo "   请您在方便时使用快捷键 Cmd+Q 完全退出 Antigravity，再直接从程序坞 (Dock) 打开官方 Antigravity 即可自动秒级生效！"
 else
     echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
-    open -n -a Antigravity --args --remote-debugging-port=0 2>/dev/null || open -b com.google.antigravity --args --remote-debugging-port=0 2>/dev/null || true
+    open -a Antigravity 2>/dev/null || open -b com.google.antigravity 2>/dev/null || true
 fi
 
 echo "=================================================="

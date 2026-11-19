@@ -4,11 +4,11 @@ import os from 'node:os';
 import { execSync, spawn } from 'node:child_process';
 
 console.log('==================================================');
-console.log('  Antigravity 前置开机动画一键还原工具 (Windows 专用)');
+console.log('  Antigravity 前置开机动画与内核补丁一键还原工具');
 console.log('==================================================');
 
-if (process.platform !== 'win32') {
-  console.log('📌 提示：当前脚本仅适用于 Windows 系统。macOS 采用纯非侵入式架构，无需还原。');
+if (process.platform !== 'win32' && process.platform !== 'darwin') {
+  console.log('📌 提示：当前脚本仅适用于 Windows 与 macOS 系统。');
   process.exit(0);
 }
 
@@ -68,10 +68,13 @@ if (!fs.existsSync(backupPath)) {
 }
 
 let detectedExePath = null;
+const isInsideAntigravityHost = !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN || process.env.SKIP_KILL === '1');
 
 // 自动安全关闭运行中的客户端解除文件占用
 try {
-  if (process.platform === 'win32') {
+  if (isInsideAntigravityHost) {
+    console.log('📌 检测到当前运行于 Antigravity 宿主会话中，启用无感在线还原模式（跳过强制退出以防止中断会话）。');
+  } else if (process.platform === 'win32') {
     try {
       const pPath = execSync('powershell.exe -NoProfile -NonInteractive -Command "(Get-Process -Name Antigravity, \'Antigravity IDE\' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -First 1)"', { encoding: 'utf8' }).trim();
       if (pPath && fs.existsSync(pPath)) {

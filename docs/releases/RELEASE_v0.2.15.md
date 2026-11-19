@@ -37,10 +37,17 @@
 ### 3. 安装与热更新脚本进程退出与配置原子防竞态（`install.sh`, `scripts/install.mjs`, `install.ps1`）
 - **双重进程监听**：关闭客户端时同步轮询 `Antigravity` 与 `language_server` 进程，预留充分的优雅退出窗口，杜绝进程析构写盘覆盖。
 - **原子化配置持久化**：使用临时文件与系统级原子重命名（`os.replace` / `renameSync`）写入 `config.json`，确保插件注册 100% 稳定持久化。
+- **宿主环境误杀保护**：检测到运行于反重力宿主会话或内嵌终端时，自动切换为无感在线写入模式，严禁强制退出主进程。
+
+### 4. macOS 官方 App 默认注入与原生启动体验（`patch-boot-overlay.mjs`, `install.sh`, `scripts/install.mjs`）
+- **内核参数默认化**：全面打通 macOS 平台 `app.asar` 补丁通道，自动向 `dist/main.js` 写入 `remote-debugging-port=0` 默认参数（同时安全生成原厂备份 `app.asar.bak`）。
+- **零启动器切换**：彻底废弃外部独立启动器，用户无需更换日常习惯，从程序坞 (Dock)、聚焦搜索 (Spotlight) 或访达直接点击官方原版 Antigravity，即可 100% 默认自动带参拉起并完整生效！
+- **一键原厂还原支持**：随时可通过 `scripts/restore-boot-overlay.mjs` 秒级无损还原官方初始 `app.asar`。
 
 ---
 
 ## ✅ 验证方案
 - [x] 单元测试套件全部通过（包含 `isMainAppTarget` 过滤与流式跳过回归测试）；
 - [x] 验证外部开发服务（`localhost:3005` 等）不被误注入与监听；
-- [x] 验证 `config.json` 在进程关闭后的原子稳定落盘。
+- [x] 验证 `config.json` 在进程关闭后的原子稳定落盘；
+- [x] 验证 macOS 端 `app.asar` 注入成功并生成安全备份 `app.asar.bak`。
