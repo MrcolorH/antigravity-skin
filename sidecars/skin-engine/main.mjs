@@ -1115,8 +1115,6 @@ const server = http.createServer((req, res) => {
     }, 500);
     return;
   }
-    return;
-  }
 
   // API: 检查插件最新版本
   if (url.pathname === '/api/update/check' && req.method === 'GET') {
