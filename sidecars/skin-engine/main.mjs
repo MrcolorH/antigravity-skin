@@ -67,16 +67,31 @@ function readFileRaw(filePath) {
 
 function locateAntigravityResources() {
   const home = os.homedir();
-  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const candidates = [
-    path.join(localAppData, 'Programs', 'antigravity', 'resources'),
-    path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
-    path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources'),
-    path.join(programFiles, 'Antigravity', 'resources'),
-    path.join(programFilesX86, 'Antigravity', 'resources')
-  ];
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push(
+      '/Applications/Antigravity.app/Contents/Resources',
+      path.join(home, 'Applications', 'Antigravity.app', 'Contents', 'Resources')
+    );
+  } else if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    candidates.push(
+      path.join(localAppData, 'Programs', 'antigravity', 'resources'),
+      path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
+      path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources'),
+      path.join(programFiles, 'Antigravity', 'resources'),
+      path.join(programFilesX86, 'Antigravity', 'resources')
+    );
+  } else {
+    candidates.push(
+      '/usr/lib/antigravity/resources',
+      '/opt/Antigravity/resources',
+      '/opt/antigravity/resources',
+      path.join(home, '.local', 'share', 'antigravity', 'resources')
+    );
+  }
   for (const dir of candidates) {
     try {
       if (fs.existsSync(path.join(dir, 'app.asar'))) return dir;
@@ -700,6 +715,21 @@ async function extractAndDeploy(zipFilePath) {
     }
 
     console.log('[Skin Engine] Core plugin files successfully updated on disk.');
+
+    // 4. 自动检查并合入内核补丁（确保在线升级后 remote-debugging-port 始终保持生效）
+    try {
+      const patchScript = path.join(PLUGIN_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+      if (fs.existsSync(patchScript)) {
+        execSync(`"${process.execPath || 'node'}" "${patchScript}"`, {
+          cwd: PLUGIN_ROOT,
+          env: { ...process.env, SKIP_KILL: '1', SKIP_RELAUNCH: '1' },
+          stdio: 'ignore'
+        });
+        console.log('[Skin Engine] Auto-applied boot patch during online update.');
+      }
+    } catch (patchErr) {
+      console.warn('[Skin Engine] Failed to auto-apply boot patch after update:', patchErr.message);
+    }
   } finally {
     // 清理临时解压目录
     try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (_) {}
@@ -997,16 +1027,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: Windows 开机动画补丁健康状态（外观设置实时展示 + 引导一键修复）
+  // API: 开机动画与内核调试端口补丁健康状态（外观设置实时展示 + 引导一键修复）
   if (url.pathname === '/api/boot-patch/status' && req.method === 'GET') {
-    if (process.platform !== 'win32') {
+    if (process.platform !== 'win32' && process.platform !== 'darwin') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, isWindows: false, supported: false, installed: false, patched: false }));
+      res.end(JSON.stringify({ ok: true, isWindows: false, isDarwin: false, supported: false, installed: false, patched: false }));
       return;
     }
     const status = getBootPatchStatus(url.searchParams.get('force') === '1');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, isWindows: true, supported: true, ...status }));
+    res.end(JSON.stringify({
+      ok: true,
+      isWindows: process.platform === 'win32',
+      isDarwin: process.platform === 'darwin',
+      supported: true,
+      ...status
+    }));
     return;
   }
 
@@ -1028,26 +1064,24 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: Windows 平台专属 - 一键重新合入开机动效补丁
+  // API: 平台专属 - 一键重新合入开机动效与内核调试端口补丁
   if (url.pathname === '/api/patch-boot' && req.method === 'POST') {
-    if (process.platform !== 'win32') {
+    if (process.platform !== 'win32' && process.platform !== 'darwin') {
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: '开机动效引擎补丁仅适用于 Windows 平台，macOS 无需合入。' }));
+      res.end(JSON.stringify({ ok: false, error: '开机动效引擎补丁仅适用于 Windows 与 macOS 平台。' }));
       return;
     }
 
-    const batPath = path.join(PLUGIN_ROOT, 'patch-loading.bat');
-    if (!fs.existsSync(batPath)) {
+    const scriptPath = path.join(PLUGIN_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+    if (!fs.existsSync(scriptPath)) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: `未在插件安装目录下找到修复脚本: ${batPath}` }));
+      res.end(JSON.stringify({ ok: false, error: `未在插件安装目录下找到修复脚本: ${scriptPath}` }));
       return;
     }
 
-    // 立即响应前端，确保 HTTP 报文顺利送达，避免因客户端退出引发网络中断报错
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, message: '已成功启动开机动效修复引擎，客户端即将退出并自动重启。' }));
+    res.end(JSON.stringify({ ok: true, message: '已成功启动开机动效与内核补丁修复引擎，请稍候片刻...' }));
 
-    // 延时 500ms 后脱离当前进程树，拉起独立的 cmd 控制台执行 patch-loading.bat
     setTimeout(() => {
       try {
         const cleanEnv = { ...process.env };
@@ -1057,17 +1091,30 @@ const server = http.createServer((req, res) => {
         delete cleanEnv.NODE_ENV;
         delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
 
-        const child = spawn('cmd.exe', ['/c', 'start', '""', batPath], {
-          cwd: PLUGIN_ROOT,
-          detached: true,
-          stdio: 'ignore',
-          env: cleanEnv
-        });
-        child.unref();
+        if (process.platform === 'win32') {
+          const batPath = path.join(PLUGIN_ROOT, 'patch-loading.bat');
+          const child = spawn('cmd.exe', ['/c', 'start', '""', batPath], {
+            cwd: PLUGIN_ROOT,
+            detached: true,
+            stdio: 'ignore',
+            env: cleanEnv
+          });
+          child.unref();
+        } else {
+          const child = spawn(process.execPath || 'node', [scriptPath], {
+            cwd: PLUGIN_ROOT,
+            detached: true,
+            stdio: 'ignore',
+            env: { ...cleanEnv, SKIP_KILL: '1', SKIP_RELAUNCH: '1' }
+          });
+          child.unref();
+        }
       } catch (err) {
         console.error('[Skin Engine] Failed to spawn patch process:', err);
       }
     }, 500);
+    return;
+  }
     return;
   }
 

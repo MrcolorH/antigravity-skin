@@ -814,25 +814,23 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             </div>
           </div>
 
-          <!-- Windows 平台专属：客户端更新后一键修复补丁入口 -->
-          ${isWin ? `
+          <!-- 跨平台支持：客户端更新后一键修复补丁入口 -->
           <div class="flex items-center justify-between pt-2 border-t border-border/40 mt-1" id="agy-wrap-win-patch" style="display: flex;">
             <div class="flex flex-col gap-0.5">
               <div class="flex items-center gap-1.5">
                 <span class="text-xs font-medium text-foreground flex items-center gap-1">
-                  <span>🛠️ 开机动效引擎修复</span>
+                  <span>🛠️ 内核与动效引擎修复</span>
                 </span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-secondary/60 text-muted-foreground border border-border/60 font-mono">Win 专属</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-secondary/60 text-muted-foreground border border-border/60 font-mono">内核补丁</span>
               </div>
               <span class="text-[11px] text-muted-foreground opacity-75" id="agy-win-patch-tip">
-                客户端版本更新后开机动效失效？点击一键重新合入补丁（将自动重启客户端生效）
+                客户端版本更新后开机动效或调试端口失效？点击一键重新合入补丁
               </span>
             </div>
             <button type="button" id="agy-btn-fix-boot-overlay" class="text-xs px-2.5 py-1 rounded border border-border bg-secondary/40 hover:bg-secondary/70 text-foreground cursor-pointer flex items-center gap-1 font-medium shrink-0">
               <span>⚡ 一键修复</span>
             </button>
           </div>
-          ` : ''}
         </div>
 
 
@@ -2593,47 +2591,32 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       }
     };
 
-    // Windows 平台专属：一键修复开机动效引擎补丁
+    // 跨平台通用：一键修复开机动效与内核调试端口补丁
     const wrapWinPatch = customOptions.querySelector('#agy-wrap-win-patch');
     const btnFixBoot = customOptions.querySelector('#agy-btn-fix-boot-overlay');
     const tipWinPatch = customOptions.querySelector('#agy-win-patch-tip');
 
     if (wrapWinPatch) {
-      wrapWinPatch.style.display = isWin ? 'flex' : 'none';
+      wrapWinPatch.style.display = 'flex';
     }
 
-    // 尝试向 sidecar 异步确认一次实际平台（避免某些环境 UA 被重写）
-    if (typeof fetch === 'function' && typeof window.__AGY_IS_WINDOWS__ === 'undefined') {
-      fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/system-info`)
-        .then(res => res.json())
-        .then(info => {
-          if (info && info.ok) {
-            window.__AGY_IS_WINDOWS__ = !!info.isWindows;
-            if (wrapWinPatch) {
-              wrapWinPatch.style.display = info.isWindows ? 'flex' : 'none';
-            }
-          }
-        })
-        .catch(() => {});
-    }
-
-    if (btnFixBoot && isWin) {
+    if (btnFixBoot) {
       btnFixBoot.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
 
         const confirmed = confirm(
-          '⚠️ 即将执行开机动效引擎修复：\n\n' +
-          '• 原理：Antigravity 客户端升级会覆盖官方资源文件，此操作将重新合入开机动效引擎补丁。\n' +
-          '• 提示：执行时需要自动退出客户端以解除文件锁定，并在约 3 秒后自动重新启动客户端。\n\n' +
+          '⚠️ 即将执行开机动效与内核补丁修复：\n\n' +
+          '• 原理：Antigravity 客户端升级会覆盖官方资源文件，此操作将重新合入开机动效与调试端口补丁。\n' +
+          '• 效果：合入后无需任何特殊启动器，任何方式打开客户端均默认支持全量皮肤与毛玻璃动效。\n\n' +
           '是否立即开始修复？'
         );
         if (!confirmed) return;
 
         btnFixBoot.disabled = true;
-        btnFixBoot.innerHTML = '<span>⏳ 正在启动修复并重启...</span>';
+        btnFixBoot.innerHTML = '<span>⏳ 正在启动修复...</span>';
         if (tipWinPatch) {
-          tipWinPatch.textContent = '🚀 正在启动修复引擎并安全退出客户端，请稍候片刻...';
+          tipWinPatch.textContent = '🚀 正在启动修复引擎，请稍候片刻...';
           tipWinPatch.className = 'text-[11px] text-amber-400 font-medium';
         }
 
@@ -2646,12 +2629,17 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           if (!data.ok) {
             throw new Error(data.error || '调用修复接口失败');
           }
+          btnFixBoot.innerHTML = '<span>✅ 补丁已就绪</span>';
+          if (tipWinPatch) {
+            tipWinPatch.textContent = '✅ 补丁已成功合入！下次打开客户端即可自动生效。';
+            tipWinPatch.className = 'text-[11px] text-emerald-500 font-medium';
+          }
         } catch (err) {
           alert('修复调用失败：' + err.message);
           btnFixBoot.disabled = false;
           btnFixBoot.innerHTML = '<span>⚡ 一键修复</span>';
           if (tipWinPatch) {
-            tipWinPatch.textContent = '客户端版本更新后开机动效失效？点击一键重新合入补丁（将自动重启客户端生效）';
+            tipWinPatch.textContent = '客户端版本更新后动效失效？点击一键重新合入补丁';
             tipWinPatch.className = 'text-[11px] text-muted-foreground opacity-75';
           }
         }
@@ -2659,7 +2647,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     }
 
     // 实时展示开机动画补丁健康状态：客户端更新覆盖 app.asar 后立刻可见并引导修复
-    if (isWin && tipWinPatch) {
+    if (tipWinPatch) {
       fetch(`http://127.0.0.1:${window.__AG_SKIN_PORT__ || 59288}/api/boot-patch/status`)
         .then(res => res.json())
         .then(info => {
@@ -2669,12 +2657,12 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             return;
           }
           if (info.patched) {
-            tipWinPatch.textContent = '✅ 补丁已就绪 · 开机自愈守护已开启（客户端更新后下次登录自动恢复）';
+            tipWinPatch.textContent = '✅ 补丁已就绪 · 开机动效与内核调试端口已启用';
             tipWinPatch.className = 'text-[11px] text-emerald-500 font-medium';
           } else {
             tipWinPatch.textContent = info.pending
-              ? '⚠️ 客户端更新已覆盖补丁，当前为官方原版开机动效，将在下次登录自动恢复；也可点击右侧立即修复'
-              : '⚠️ 开机动画补丁缺失，当前为官方原版开机动效，点击右侧一键修复';
+              ? '⚠️ 客户端更新已覆盖补丁，将在下次登录自动恢复；也可点击右侧立即修复'
+              : '⚠️ 未检测到内核动效补丁，点击右侧一键修复';
             tipWinPatch.className = 'text-[11px] text-amber-400 font-medium';
             if (btnFixBoot) {
               btnFixBoot.className = btnFixBoot.className.replace('bg-secondary/40', 'bg-amber-500/20 border-amber-500/40');
