@@ -328,7 +328,7 @@
         if (isAlreadyApplied) toRevert.push(el);
         continue;
       }
-      if (el.closest('#agy-dynamic-iframe,#agy-wallpaper-backdrop,#agy-video-boot-host,#agy-custom-code-boot-host,#agy-scene-boot-host,[data-agy-no-cg]')) continue;
+      if (el.closest('#agy-dynamic-iframe,#agy-wallpaper-backdrop,#agy-video-boot-host,#agy-custom-code-boot-host,#agy-scene-boot-host,[data-agy-no-cg],.monaco-editor,.xterm,.overflow-guard,[data-testid="agent-response"],[data-testid="user-input-step"]')) continue;
 
       const rect = el.getBoundingClientRect();
       if (!rect.width || !rect.height) continue;

@@ -20,7 +20,7 @@ console.log('==================================================');
 
 let detectedExePath = null;
 
-// 0. 自动退出运行中的客户端以解除文件锁定并准备部署
+// 0. 自动退出运行中的客户端及后台语言服务以解除文件锁定并杜绝配置覆写竞态
 function ensureProcessClosed() {
   try {
     if (process.platform === 'win32') {
@@ -32,20 +32,23 @@ function ensureProcessClosed() {
       } catch (_) {}
 
       const out = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
-      const isRunning = out.includes('antigravity.exe') || out.includes('antigravity ide.exe');
+      const isRunning = out.includes('antigravity.exe') || out.includes('antigravity ide.exe') || out.includes('language_server');
       if (isRunning) {
-        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动退出以解除文件锁定...');
-        try { execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' }); } catch (_) {}
-        try { execSync('taskkill /F /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' }); } catch (_) {}
+        console.log('⚠️ 检测到 Antigravity 客户端或后台服务正在运行，正在自动退出以解除文件锁定...');
+        try { execSync('taskkill /IM Antigravity.exe /T', { stdio: 'ignore' }); } catch (_) {}
+        try { execSync('taskkill /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' }); } catch (_) {}
         const start = Date.now();
-        while (Date.now() - start < 3000) {
+        while (Date.now() - start < 3500) {
           try {
             const chk = execSync('tasklist /NH', { encoding: 'utf8' }).toLowerCase();
             if (!chk.includes('antigravity.exe') && !chk.includes('antigravity ide.exe')) break;
           } catch (_) { break; }
           const t = Date.now(); while (Date.now() - t < 150) {}
         }
-        console.log('     ✅ Antigravity 客户端已成功退出。');
+        try { execSync('taskkill /F /IM Antigravity.exe /T', { stdio: 'ignore' }); } catch (_) {}
+        try { execSync('taskkill /F /IM "Antigravity IDE.exe" /T', { stdio: 'ignore' }); } catch (_) {}
+        try { execSync('taskkill /F /IM language_server*.exe /T', { stdio: 'ignore' }); } catch (_) {}
+        console.log('     ✅ Antigravity 客户端及后台语言服务已成功退出。');
       }
     } else if (process.platform === 'darwin') {
       let isRunning = false;
@@ -53,23 +56,36 @@ function ensureProcessClosed() {
         const out = execSync('pgrep -i antigravity', { encoding: 'utf8' });
         if (out && out.trim()) isRunning = true;
       } catch (_) {}
+      try {
+        const outLs = execSync('pgrep -f "language_server.*antigravity"', { encoding: 'utf8' });
+        if (outLs && outLs.trim()) isRunning = true;
+      } catch (_) {}
 
       if (isRunning) {
-        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以应用新配置...');
+        console.log('⚠️ 检测到 Antigravity 客户端或后台语言服务正在运行，正在执行安全优雅退出...');
         try { execSync('osascript -e \'quit app "Antigravity"\'', { stdio: 'ignore' }); } catch (_) {}
         const start = Date.now();
-        while (Date.now() - start < 2000) {
+        while (Date.now() - start < 4500) {
+          let alive = false;
           try {
             const chk = execSync('pgrep -i antigravity', { encoding: 'utf8' });
-            if (!chk || !chk.trim()) break;
-          } catch (_) { break; }
+            if (chk && chk.trim()) alive = true;
+          } catch (_) {}
+          try {
+            const chkLs = execSync('pgrep -f "language_server.*antigravity"', { encoding: 'utf8' });
+            if (chkLs && chkLs.trim()) alive = true;
+          } catch (_) {}
+          if (!alive) break;
           const t = Date.now(); while (Date.now() - t < 200) {}
         }
         try { execSync('pkill -i antigravity', { stdio: 'ignore' }); } catch (_) {}
-        console.log('     ✅ Antigravity 客户端已成功退出。');
+        try { execSync('pkill -f "language_server.*antigravity"', { stdio: 'ignore' }); } catch (_) {}
+        const t = Date.now(); while (Date.now() - t < 300) {}
+        console.log('     ✅ Antigravity 客户端及后台语言服务已安全就绪。');
       }
     } else {
       try { execSync('pkill -f antigravity', { stdio: 'ignore' }); } catch (_) {}
+      try { execSync('pkill -f language_server', { stdio: 'ignore' }); } catch (_) {}
     }
   } catch (_) {}
 }

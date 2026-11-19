@@ -18,11 +18,21 @@ if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/scripts/install.mjs" ]; then
 fi
 
 # 模式 B：通过管道远程一行命令执行 (curl ... | bash)，或者系统无 Node.js 环境
-if pgrep -i antigravity >/dev/null 2>&1; then
-    echo "⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以应用新配置..."
+if pgrep -i antigravity >/dev/null 2>&1 || pgrep -f "language_server.*antigravity" >/dev/null 2>&1; then
+    echo "⚠️ 检测到 Antigravity 客户端或后台语言服务正在运行，正在执行安全优雅退出..."
     osascript -e 'quit app "Antigravity"' 2>/dev/null || true
-    sleep 1
+    COUNT=0
+    while [ $COUNT -lt 25 ]; do
+        if ! pgrep -i antigravity >/dev/null 2>&1 && ! pgrep -f "language_server.*antigravity" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.2
+        COUNT=$((COUNT + 1))
+    done
     pkill -i antigravity 2>/dev/null || true
+    pkill -f "language_server.*antigravity" 2>/dev/null || true
+    sleep 0.3
+    echo "     ✅ Antigravity 客户端及后台语言服务已安全就绪。"
 fi
 
 TARGET_DIR="$HOME/.gemini/config/plugins/antigravity-skin"
@@ -116,8 +126,10 @@ if os.path.exists(config_file):
 plugins = data.setdefault('plugins', {})
 plugins['antigravity-skin'] = {'enabled': True}
 
-with open(config_file, 'w', encoding='utf-8') as f:
+tmp_file = f'{config_file}.tmp.{os.getpid()}'
+with open(tmp_file, 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+os.replace(tmp_file, config_file)
 " 2>/dev/null || true
 
 # 在用户本地 bin 目录写入快速启动命令（适配 macOS 终端唤起）

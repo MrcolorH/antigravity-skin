@@ -2796,30 +2796,46 @@ function createCdpSession(target, port) {
   return session;
 }
 
-// 6.5 精准主窗口 Target 判定（坚决剔除临时原生遮罩、嵌入插件 iframe、DevTools 等死靶）
+// 6.5 精准主窗口 Target 判定（坚决剔除临时原生遮罩、嵌入插件 iframe、DevTools 及外部开发服务）
 function isMainAppTarget(target) {
   if (!target) return false;
   if (target.type && target.type !== 'page') return false;
   const url = (target.url || '').trim();
-  // 必须排除原生临时 loadingOverlay、嵌入式 iframe、DevTools、扩展及空白页
+  const title = (target.title || '').trim();
+
+  // 1. 必须排除原生临时 loadingOverlay、嵌入式 iframe、DevTools、扩展、关于页、Blob 及特定插件页
   if (!url ||
       url.startsWith('data:') ||
       url.startsWith('plugin://') ||
       url.startsWith('devtools://') ||
       url.startsWith('chrome-extension://') ||
       url.startsWith('about:') ||
-      url.includes('provisionSplash')) {
+      url.startsWith('blob:') ||
+      url.includes('provisionSplash') ||
+      url.includes('/webview/') ||
+      url.includes('vscode-webview://')) {
     return false;
   }
-  // 必须为主应用实际工作区 URL (HTTP/HTTPS 或 vscode-file)
-  if (url.startsWith('http://127.0.0.1') ||
-      url.startsWith('https://127.0.0.1') ||
-      url.startsWith('http://localhost') ||
-      url.startsWith('https://localhost') ||
-      url.startsWith('vscode-file://')) {
-    return true;
+
+  // 2. 严禁误劫持用户本地起的服务 (如 localhost:3000, localhost:3005, 127.0.0.1:8080 等非 IDE 页面)
+  if (url.includes('localhost') || /127\.0\.0\.1:(?!0\b)\d+\/(?:admin|api|debug|test|app|dashboard)/i.test(url)) {
+    return false;
   }
-  return false;
+
+  // 3. 必须为主应用实际工作区官方 URL 规范 (主窗口回环动态端口根路径或 vscode-file)
+  const isWorkbenchHost = /^https?:\/\/127\.0\.0\.1:\d+\/?(?:[?#].*)?$/i.test(url);
+  const isVscodeFile = url.startsWith('vscode-file://vscode-app/');
+  if (!isWorkbenchHost && !isVscodeFile) {
+    return false;
+  }
+
+  // 4. 标题有效时二次校验官方 IDE 标识，坚决杜绝第三方 Tab 注入
+  if (title) {
+    const isAgyTitle = /(?:^|[\s\-—•·])Antigravity(?:\s|$)/i.test(title);
+    if (!isAgyTitle) return false;
+  }
+
+  return true;
 }
 
 // 6.6 原生 Loading 遮罩静默纯黑守护：

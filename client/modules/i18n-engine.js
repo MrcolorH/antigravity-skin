@@ -206,22 +206,41 @@
     return next;
   }
 
-  // 高性能子树快速跳过判定
+  // 高性能子树快速跳过判定（严格阻断代码区、编辑器与 AI 流式生成消息体，消除主线程卡顿）
   function isPrunableSubtree(element) {
     if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
     const tag = element.tagName;
-    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'CODE' || tag === 'PRE') {
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'CODE' || tag === 'PRE' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'AUDIO') {
       return true;
     }
     const cls = element.className;
-    if (typeof cls === 'string' && (cls.includes('xterm') || cls.includes('monaco-editor') || cls.includes('md-code-block'))) {
+    if (typeof cls === 'string' && (
+      cls.includes('xterm') ||
+      cls.includes('monaco-editor') ||
+      cls.includes('md-code-block') ||
+      cls.includes('rendered-markdown') ||
+      cls.includes('markdown-body') ||
+      cls.includes('agent-response') ||
+      cls.includes('model-turn') ||
+      cls.includes('cascade-step')
+    )) {
       return true;
     }
     if (element.hasAttribute('contenteditable')) {
       const ce = element.getAttribute('contenteditable');
       if (ce === '' || ce === 'true') return true;
     }
-    if (element.getAttribute('data-testid') === 'user-input-step' || element.getAttribute('aria-label') === 'User message') {
+    const testId = element.getAttribute('data-testid');
+    if (testId && (
+      testId === 'user-input-step' ||
+      testId === 'agent-response' ||
+      testId.includes('model-turn') ||
+      testId.includes('cascade-step')
+    )) {
+      return true;
+    }
+    const aria = element.getAttribute('aria-label');
+    if (aria === 'User message' || aria === '用户消息' || aria === 'Agent response' || aria === '智能体回复') {
       return true;
     }
     return false;
@@ -234,7 +253,7 @@
     if (isPrunableSubtree(element)) return true;
 
     // 跳过代码与编辑区祖先
-    if (element.closest('script, style, textarea, code, pre, .xterm, .monaco-editor, [contenteditable="true"]')) {
+    if (element.closest('script, style, textarea, code, pre, .xterm, .monaco-editor, [contenteditable="true"], .rendered-markdown, .markdown-body')) {
       return true;
     }
 
@@ -245,15 +264,10 @@
       if (!isActionBtn) return true;
     }
 
-    // 跳过用户输入
-    if (element.closest('[data-testid="user-input-step"], [aria-label="User message"], [aria-label="用户消息"]')) {
-      return true;
-    }
-
-    // 跳过回复正文（保留控件操作按钮）
-    const agentResponse = element.closest('[aria-label="Agent response"], [aria-label="智能体回复"]');
-    if (agentResponse) {
-      const isInteractive = element.closest('button, [role="button"], [class*="action"], [class*="button-container"]');
+    // 跳过用户输入与智能体回复正文（保留交互性操作按钮）
+    const msgContainer = element.closest('[data-testid="user-input-step"], [data-testid="agent-response"], [aria-label="User message"], [aria-label="用户消息"], [aria-label="Agent response"], [aria-label="智能体回复"], .model-turn, .cascade-step');
+    if (msgContainer) {
+      const isInteractive = element.closest('button, [role="button"], [class*="action"], [class*="button-container"], [data-testid*="button"]');
       if (!isInteractive) return true;
     }
 
@@ -556,7 +570,10 @@
   function scheduleIncrementalTranslation(node) {
     if (!node) return;
     if (node.nodeType === Node.ELEMENT_NODE && isPrunableSubtree(node)) return;
-    if (node.nodeType === Node.TEXT_NODE && node.__zh_patched && node.nodeValue === node.__zh_lastValue) return;
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.__zh_patched && node.nodeValue === node.__zh_lastValue) return;
+      if (node.parentElement && shouldSkip(node.parentElement)) return;
+    }
     if (isUrgentNode(node)) {
       translateNode(node);
       return;
@@ -584,6 +601,7 @@
         } else if (m.type === 'characterData') {
           const t = m.target;
           if (t.__zh_patched && t.nodeValue === t.__zh_lastValue) continue;
+          if (t.parentElement && shouldSkip(t.parentElement)) continue;
           t.__zh_patched = false;
           scheduleIncrementalTranslation(t);
         } else if (m.type === 'attributes') {

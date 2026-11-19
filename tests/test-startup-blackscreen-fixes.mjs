@@ -383,7 +383,7 @@ test('2.1 wallpaper.js 视频模式在开屏期延后解码、不阻断就绪检
     ensureCalled.push(url);
     return { ok: true, json: async () => ({ ok: true }) };
   };
-  globalThis.navigator = {};
+  Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
 
   const { initWallpaper } = await import(`../client/modules/wallpaper.js?t=${Date.now()}`);
   const handle = initWallpaper({
@@ -697,6 +697,35 @@ test('6.3 main.mjs 覆盖小写 doctype 白底页降黑及 streamVideoFile 流�
   assert.ok(mainSrc.includes("lowerUrl.includes('doctype')"), 'handleNativeLoadingOverlay 应不区分大小写匹配 <!doctype html> 白底页面');
   assert.ok(mainSrc.includes('const hadLogo = !!oldLogo;'), '纯白背景页无 Logo 时只置黑背景，不叠加载旋转胶囊');
   assert.ok(mainSrc.includes("req.on('close', destroyStream)") && mainSrc.includes("res.on('close', destroyStream)"), 'streamVideoFile 应在请求/响应中断时销毁 fileStream');
+});
+
+test('7.1 isMainAppTarget 严格隔离外部开发服务与内部临时 Webview', async () => {
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'sidecars/skin-engine/main.mjs'), 'utf8');
+  const match = mainSrc.match(/function isMainAppTarget\(target\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(match, '必须在 main.mjs 中找到 isMainAppTarget 函数实现');
+
+  const isMainAppTarget = new Function('target', match[1]);
+
+  // 1. 外部开发服务严禁误判
+  assert.equal(isMainAppTarget({ type: 'page', url: 'http://localhost:3005/admin?token=test#/audit', title: 'Admin' }), false);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'http://localhost:3000/', title: 'React App' }), false);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'http://127.0.0.1:8080/api/status', title: 'Server' }), false);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'vscode-webview://webview-id/index.html', title: 'Webview' }), false);
+
+  // 2. 官方主工作区窗口正常识别
+  assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:57233/', title: 'Antigravity' }), true);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:57233/', title: 'my-project - Antigravity' }), true);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:64237/', title: '' }), true);
+});
+
+test('7.2 i18n-engine 与 ContrastGuard 阻断 AI 流式输出与编辑器高频 DOM 监听', () => {
+  const i18nSrc = fs.readFileSync(path.join(ROOT, 'client/modules/i18n-engine.js'), 'utf8');
+  assert.ok(i18nSrc.includes("cls.includes('agent-response')") || i18nSrc.includes("testId === 'agent-response'"), 'isPrunableSubtree 应跳过 agent-response 容器');
+  assert.ok(i18nSrc.includes("cls.includes('rendered-markdown')"), 'isPrunableSubtree 应跳过 rendered-markdown');
+  assert.ok(i18nSrc.includes("t.parentElement && shouldSkip(t.parentElement)"), 'characterData 变更应在父级为可跳过容器时直接跳过');
+
+  const indexSrc = fs.readFileSync(path.join(ROOT, 'client/index.js'), 'utf8');
+  assert.ok(indexSrc.includes('.monaco-editor') && indexSrc.includes('[data-testid="agent-response"]'), 'ContrastGuard 应避开编辑器与 AI 回复流式容器');
 });
 
 // Run queue cleanly

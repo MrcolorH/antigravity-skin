@@ -16,6 +16,15 @@ if ($scriptDir -and (Test-Path (Join-Path $scriptDir "scripts\install.mjs"))) {
 }
 
 # 模式 B：通过管道远程一行命令执行 (irm ... | iex)，或者机器上无可用 node 环境
+try {
+    $running = Get-Process -Name Antigravity, "Antigravity IDE", language_server -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Host "⚠️ 检测到 Antigravity 客户端或后台服务正在运行，正在自动安全退出以解除锁定..." -ForegroundColor Yellow
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 800
+    }
+} catch {}
+
 $homeDir = [System.Environment]::GetFolderPath('UserProfile')
 $targetDir = Join-Path $homeDir ".gemini\config\plugins\antigravity-skin"
 $configFile = Join-Path $homeDir ".gemini\config\config.json"
