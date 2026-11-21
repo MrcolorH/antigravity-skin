@@ -8,6 +8,27 @@
   <img src="https://img.shields.io/badge/License-MIT-orange?style=flat-square" alt="License">
 </p>
 
+> [!IMPORTANT]
+> ### 📢 【置顶公告】关于 Antigravity (反重力) 更新后插件失效与一键修补指引
+>
+> 1. **核心原因与启动项配置**：
+>    - 由于 Antigravity 官方在近期更新后**默认不开启插件模式**（官方底层默认禁用了 CDP 调试端口 `remote-debugging-port` 并在启动时自动清理端口句柄），导致换肤插件、汉化/翻译插件等所有依赖该机制的外部扩展无法挂载。
+>    - **启动项要求**：客户端必须携带启动参数 `--remote-debugging-port=0` 启动，才能正常激活插件模式。
+>
+> 2. **脚本一键修补（推荐，省时省心）**：
+>    本插件的安装脚本中已全面支持**一键配置启动项与内核修补**，无需手动配置：
+>    - **🍎 macOS**：使用 `.sh` 安装脚本，终端进入目录运行 `./install.sh`（或通过在线命令 `curl -fsSL https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.sh | bash`）
+>    - **🪟 Windows**：使用 `.ps1` 安装脚本（PowerShell 执行 `.\install.ps1`）或双击 `install.bat`（或通过在线命令 `irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.ps1 | iex`）
+>    - 脚本会自动为快捷方式或客户端注入 `--remote-debugging-port=0` 启动项及必要内核补丁，直接完成修补。
+>    - *(注：若习惯手动配置启动项，Windows 可右键 Antigravity 快捷方式并在「目标」末尾追加 ` --remote-debugging-port=0`；macOS 可通过终端执行 `open -a Antigravity --args --remote-debugging-port=0`)*
+>
+> 3. **⚠️ 特别注意：每次反重力更新后，均需重新执行一次脚本修补**：
+>    - **为什么无法在 App 内通过设置修复？**：修补功能原本内嵌在插件界面的「设置」-「外观」中（支持一键修复与状态检测）。但由于**官方更新后默认直接屏蔽了插件**，插件在未修补状态下根本无法加载，导致无法打开外观设置菜单去点击修补，**因此无法通过插件内完成修补，只能重新通过外部脚本安装**。
+>    - **应对方式**：后续只要 Antigravity 客户端自动升级后，重新运行一次安装脚本（Mac 执行 `install.sh` / Win 执行 `install.ps1` 或 `install.bat`）即可秒级恢复。
+>
+> 4. **可用性说明**：
+>    **换肤、动态壁纸与汉化/翻译插件均依然可以正常使用**，核心功能未受影响，只是每次客户端更新后需要重新执行脚本完成修补，稍有繁琐，感谢大家的理解与支持！
+
 > **无缝集成、体验极致** 的 Google Antigravity 主题、动态视频壁纸、自定义开机引导动效与原生外观设置菜单集成插件。（**macOS 平台保持 100% 纯净零改包免侵入**；**Windows 平台提供专属开机防白闪深度增强，并支持一键无损还原**）
 
 ---
