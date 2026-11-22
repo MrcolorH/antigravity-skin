@@ -1,0 +1,126 @@
+{
+  "name": "vscode-dynamic-skin",
+  "displayName": "VS Code 动态皮肤 (Dynamic Skin)",
+  "description": "极简高效的 VS Code 动态视频壁纸插件：支持指定本地素材目录自动载入、全屏动态视频渲染与毛玻璃半透明穿透效果。",
+  "version": "0.1.0",
+  "publisher": "dynamic-skin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrcolorH/antigravity-skin.git",
+    "directory": "vscode-dynamic-skin"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "dynamicSkin.chooseDirectory",
+        "title": "动态皮肤: 📁 选择视频素材目录",
+        "category": "Dynamic Skin"
+      },
+      {
+        "command": "dynamicSkin.selectVideo",
+        "title": "动态皮肤: 🎬 选择当前播放视频",
+        "category": "Dynamic Skin"
+      },
+      {
+        "command": "dynamicSkin.apply",
+        "title": "动态皮肤: ✨ 应用/刷新动态皮肤 (重新注入渲染)",
+        "category": "Dynamic Skin"
+      },
+      {
+        "command": "dynamicSkin.remove",
+        "title": "动态皮肤: 🧹 卸载/恢复原生界面",
+        "category": "Dynamic Skin"
+      },
+      {
+        "command": "dynamicSkin.openConfig",
+        "title": "动态皮肤: ⚙️ 打开个性化配置",
+        "category": "Dynamic Skin"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "动态皮肤设置 (Dynamic Skin)",
+      "properties": {
+        "dynamicSkin.directory": {
+          "type": "string",
+          "default": "",
+          "description": "视频壁纸所在目录的绝对路径（留空则可通过命令快速选择）。"
+        },
+        "dynamicSkin.currentVideo": {
+          "type": "string",
+          "default": "",
+          "description": "当前播放的视频文件名称（留空默认自动使用目录中第一个视频）。"
+        },
+        "dynamicSkin.opacity": {
+          "type": "number",
+          "default": 0.85,
+          "minimum": 0.1,
+          "maximum": 1.0,
+          "description": "代码编辑区背景不透明度 (0.1 ~ 1.0，数值越小越通透，默认 0.85)。"
+        },
+        "dynamicSkin.blur": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0,
+          "maximum": 30,
+          "description": "代码编辑区底层背景毛玻璃模糊半径 (px，默认 5px)。"
+        },
+        "dynamicSkin.videoFit": {
+          "type": "string",
+          "default": "cover",
+          "enum": [
+            "cover",
+            "contain",
+            "fill"
+          ],
+          "enumDescriptions": [
+            "等比铺满并裁切边缘（无黑边，推荐）",
+            "等比缩放完整保留（若宽高比不一致两边可能有黑边）",
+            "拉伸铺满窗口"
+          ],
+          "description": "视频在窗口背景中的填充策略。"
+        },
+        "dynamicSkin.brightness": {
+          "type": "number",
+          "default": 0.9,
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "description": "视频画面亮度调节 (0.1 ~ 2.0，默认 0.9，微调以避免背景刺眼影响阅读代码)。"
+        },
+        "dynamicSkin.contrast": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.1,
+          "maximum": 2.0,
+          "description": "视频画面对比度调节 (0.1 ~ 2.0，默认 1.0)。"
+        },
+        "dynamicSkin.playbackRate": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.25,
+          "maximum": 2.0,
+          "description": "视频播放倍速 (0.25 ~ 2.0，默认 1.0)。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "npx vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0"
+  }
+}
