@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.2.17** | 修复侧边栏打开网页时主会话区壁纸黑屏遮挡、辅助侧边栏浏览器视口清晰穿透与免模糊、主窗口会话路由 CDP 守护加固 | [RELEASE_v0.2.17.md](docs/releases/RELEASE_v0.2.17.md) |
 | **v0.2.16** | 新增 AI 对话双模样式自由切换（气泡卡片 / 模拟原版无外框排版）、正文与表格直透壁纸、独立代码块磨砂底衬与高对比度保护 | [RELEASE_v0.2.16.md](docs/releases/RELEASE_v0.2.16.md) |
 | **v0.2.15** | 修复语言服务超时崩溃与重启后插件脱落隐患（精准隔离外部开发服务 CDP 劫持、阻断 AI 流式输出与 Monaco 编辑器 DOM 监听风暴、安装脚本进程优雅退出与配置写入防竞态、macOS 官方 App 默认注入调试端口实现 Dock 原生秒级启动） | [RELEASE_v0.2.15.md](docs/releases/RELEASE_v0.2.15.md) |
 | **v0.2.14** | 适配 Antigravity v2.33.0+ 默认禁用 CDP 调试端口变更，安装脚本自动注入 remote-debugging-port 启动参数与快捷方式全量自愈 | [RELEASE_v0.2.14.md](docs/releases/RELEASE_v0.2.14.md) |
