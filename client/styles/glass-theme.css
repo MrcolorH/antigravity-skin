@@ -166,6 +166,51 @@
           background-image: none !important;
         }
 
+        /* 2.1 穿透修复：官方侧边栏/分栏开启网页（data-has-browser-hole="true"）时，
+           官方编译样式会强制在 body[data-has-browser-hole="true"] [data-pane-id] 上涂刷 var(--background) 实色黑底与线性渐变。
+           此处强制提升优先级将其置为 100% 纯透明，彻底消除开启侧边栏网页时主会话区壁纸被遮挡成纯黑屏的问题。 */
+        [data-pane-id],
+        [data-tiling-pane],
+        div.border-border[data-pane-id],
+        div.border-border[data-tiling-pane],
+        .browser-hole-opaque,
+        body[data-has-browser-hole="true"] [data-pane-id],
+        body[data-has-browser-hole="true"] [data-tiling-pane],
+        body[data-has-browser-hole="true"] [data-split-panes] .agy-sheet[data-sheet-inset] :is([data-tiling-pane], [data-tiling-pane] > [data-pane-id]),
+        body[data-has-browser-hole="true"] [data-split-panes] .agy-sheet[data-sheet-inset] [data-tiling-pane] > [data-pane-id] > :first-child,
+        body[data-has-browser-hole="true"] .agy-inset-shell .agy-sheet[data-sheet-inset] .browser-hole-opaque,
+        body[data-has-browser-hole="true"] .agy-inset-shell .agy-sheet[data-sheet-inset] [data-side-panel-strip],
+        body[data-has-browser-hole="true"] .agy-inset-shell .agy-sheet[data-sheet-inset] [data-main-content-header],
+        body[data-has-browser-hole="true"] [data-split-sash] {
+          background-color: transparent !important;
+          background: transparent !important;
+          background-image: none !important;
+        }
+
+        /* 2.2 内置浏览器视口（Browser Hole）与辅助侧边栏免模糊免遮挡穿透：
+           当辅助侧边栏展示网页或作为浏览器视口时，移除暗色背景与高斯模糊，让底层 WebContentsView 清晰直通 */
+        body[data-has-browser-hole="true"] [data-aux-pane-open],
+        body[data-has-browser-hole="true"] div[data-aux-pane-open],
+        .dark [data-aux-pane-open][data-has-browser-hole="true"],
+        .theme-dark [data-aux-pane-open][data-has-browser-hole="true"],
+        .dark div[data-aux-pane-open][data-has-browser-hole="true"],
+        .theme-dark div[data-aux-pane-open][data-has-browser-hole="true"],
+        [data-aux-pane-open][data-has-browser-hole="true"],
+        [data-aux-pane-open]:has([data-has-browser-hole="true"]),
+        [data-aux-pane-open]:has([data-browser-hole="true"]),
+        [data-side-panel-body][data-has-browser-hole="true"],
+        [data-side-panel-body]:has([data-has-browser-hole="true"]),
+        [data-side-panel-body]:has([data-browser-hole="true"]),
+        [data-testid="builtin-browser-placeholder"],
+        [data-testid="builtin-browser-pane"],
+        [data-browser-hole="true"],
+        [data-has-browser-hole="true"] div:has(> form[data-testid="browser-url-bar"]) {
+          background-color: transparent !important;
+          background: transparent !important;
+          backdrop-filter: none !important;
+          -webkit-backdrop-filter: none !important;
+        }
+
 
 
         /* 2.5 Windows 顶部窗口栏 / 标题菜单栏 (Title Menu Bar) 100% 纯透明沉浸式 */
@@ -2366,7 +2411,7 @@
         div[class*="bg-card-border"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
         div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has([contenteditable]),
         div[class*="rounded-2xl"]:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(textarea),
-        div:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):has(> form),
+        div:not([role="dialog"]):not([role="dialog"] *):not(.settings-modal-container):not(.settings-modal-container *):not([data-testid*="browser"]):not([data-testid*="browser"] *):has(> form:not([data-testid*="browser"])),
         [data-testid="queued-messages-card"],
         div[role="region"][aria-label*="队列消息"],
         div[role="region"][aria-label*="Queued messages"] {

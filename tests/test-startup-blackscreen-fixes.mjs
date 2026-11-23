@@ -716,6 +716,9 @@ test('7.1 isMainAppTarget 严格隔离外部开发服务与内部临时 Webview'
   assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:57233/', title: 'Antigravity' }), true);
   assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:57233/', title: 'my-project - Antigravity' }), true);
   assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:64237/', title: '' }), true);
+  // 3. 官方会话与内置浏览器分栏/子路径窗口必须正常识别
+  assert.equal(isMainAppTarget({ type: 'page', url: 'https://127.0.0.1:59307/c/3c59b57e-982b-47d9-85d9-68faf2381399?project=e24f34c2&tab=browser__1', title: 'Antigravity' }), true);
+  assert.equal(isMainAppTarget({ type: 'page', url: 'http://127.0.0.1:59301/c/abcdef12-3456?mode=split', title: 'Antigravity' }), true);
 });
 
 test('7.2 i18n-engine 与 ContrastGuard 阻断 AI 流式输出与编辑器高频 DOM 监听', () => {
@@ -726,6 +729,15 @@ test('7.2 i18n-engine 与 ContrastGuard 阻断 AI 流式输出与编辑器高频
 
   const indexSrc = fs.readFileSync(path.join(ROOT, 'client/index.js'), 'utf8');
   assert.ok(indexSrc.includes('.monaco-editor') && indexSrc.includes('[data-testid="agent-response"]'), 'ContrastGuard 应避开编辑器与 AI 回复流式容器');
+});
+
+test('7.3 glass-theme.css 覆盖官方 browser-hole 涂刷的实黑底板与渐变', () => {
+  const cssSrc = fs.readFileSync(path.join(ROOT, 'client/styles/glass-theme.css'), 'utf8');
+  assert.ok(cssSrc.includes('body[data-has-browser-hole="true"] [data-pane-id]'), '必须强制覆盖 body[data-has-browser-hole="true"] [data-pane-id]');
+  assert.ok(cssSrc.includes('[data-pane-id]'), '必须声明 [data-pane-id] 透明穿透');
+  assert.ok(cssSrc.includes('[data-tiling-pane]'), '必须声明 [data-tiling-pane] 透明穿透');
+  assert.ok(cssSrc.includes('[data-aux-pane-open][data-has-browser-hole="true"]'), '必须移除浏览器视口辅助侧边栏的 backdrop-filter 与实色底');
+  assert.ok(cssSrc.includes('browser-url-bar'), '底部输入框样式必须避开浏览器地址栏 form');
 });
 
 // Run queue cleanly

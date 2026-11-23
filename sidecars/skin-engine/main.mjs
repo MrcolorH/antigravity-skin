@@ -2869,7 +2869,7 @@ function isMainAppTarget(target) {
   }
 
   // 3. 必须为主应用实际工作区官方 URL 规范 (主窗口回环动态端口根路径或 vscode-file)
-  const isWorkbenchHost = /^https?:\/\/127\.0\.0\.1:\d+\/?(?:[?#].*)?$/i.test(url);
+  const isWorkbenchHost = /^https?:\/\/127\.0\.0\.1:\d+(?:\/.*)?$/i.test(url);
   const isVscodeFile = url.startsWith('vscode-file://vscode-app/');
   if (!isWorkbenchHost && !isVscodeFile) {
     return false;
