@@ -22,7 +22,3 @@ assets/videos/*/*.webm
 assets/videos/*/*.mov
 assets/videos/*/*.mkv
 !assets/videos/**/.gitkeep
-
-# VS Code 插件构建产物
-*.vsix
-
