@@ -197,6 +197,7 @@ function buildDefaultConfig() {
         autoEnterDelay: 3
       },
       themeStyles: false,
+      chatStyleMode: 'bubble',
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {

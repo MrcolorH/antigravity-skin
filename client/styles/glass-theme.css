@@ -111,9 +111,18 @@
           margin-bottom: 8px !important;
         }
 
-        /* 消除原生截断渐变遮罩，高度与视窗保护统一由智能折叠系统精准接管 */
+        /* 消除原生截断渐变遮罩与主聊天滚动区的动态顶底渐隐 mask-image：
+           防止未滚到顶时 mask-image 创建 Chromium Backdrop Root 截断气泡 backdrop-filter，
+           从而彻底杜绝会话拉到顶部时所有气泡不透明度突然集体增高的跳变现象 */
         [data-testid="user-input-step"] div[style*="mask-image"],
-        [class*="user-input-step"] div[style*="mask-image"] {
+        [class*="user-input-step"] div[style*="mask-image"],
+        div.overflow-y-auto:has([data-testid="agent-response"]),
+        div.overflow-y-auto:has([data-testid="turn-cards-container"]),
+        div.overflow-y-auto:has([data-testid="user-input-step"]),
+        [class*="overflow-y-auto"]:has([data-testid="agent-response"]),
+        [class*="overflow-y-auto"]:has([data-testid="turn-cards-container"]),
+        [class*="overflow-y-auto"]:has([data-testid="user-input-step"]),
+        [data-main-content-body] div[style*="mask-image"] {
           mask-image: none !important;
           -webkit-mask-image: none !important;
         }
@@ -2083,10 +2092,24 @@
           border: 1px solid rgba(255, 255, 255, 0.50) !important;
           border-radius: 18px !important;
           padding: 16px 22px !important;
+          box-sizing: border-box !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
           box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03) !important;
           margin-top: 8px !important;
           margin-bottom: 12px !important;
           transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+        }
+        /* 方案 A 宽表格防撑爆防线：确保 AI 回复内部 Flex 子链收敛在气泡宽度内，使表格外层容器可触发横向滚动 */
+        [data-testid="agent-response"] > *,
+        div[data-testid="agent-response"] > *,
+        div[aria-label="Agent response"] > *,
+        div[aria-label="智能体回复"] > *,
+        [data-testid="turn-cards-container"],
+        [data-testid="turn-cards-container"] > * {
+          min-width: 0 !important;
+          max-width: 100% !important;
+          box-sizing: border-box !important;
         }
         .dark [data-testid="agent-response"],
         .dark div[data-testid="agent-response"],
@@ -2215,15 +2238,67 @@
           flex-shrink: 0 !important;
         }
 
-        /* 6. HTML/Markdown 表格与代码透明轻量化 */
+        /* 6. HTML/Markdown 表格与代码透明轻量化 + 宽表格平滑横向滚动修复 */
+        div:has(> table) {
+          display: block !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          overflow-x: auto !important;
+          overflow-y: visible !important;
+          -webkit-overflow-scrolling: touch !important;
+          box-sizing: border-box !important;
+          border-radius: 8px !important;
+          scrollbar-width: thin !important;
+          padding-bottom: 2px !important;
+        }
+        div:has(> table)::-webkit-scrollbar {
+          height: 6px !important;
+        }
+        div:has(> table)::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        div:has(> table)::-webkit-scrollbar-thumb {
+          background: rgba(15, 23, 42, 0.22) !important;
+          border-radius: 9999px !important;
+        }
+        div:has(> table)::-webkit-scrollbar-thumb:hover {
+          background: rgba(15, 23, 42, 0.40) !important;
+        }
+        .dark div:has(> table)::-webkit-scrollbar-thumb,
+        .theme-dark div:has(> table)::-webkit-scrollbar-thumb,
+        html.agy-native-dark div:has(> table)::-webkit-scrollbar-thumb {
+          background: rgba(226, 232, 240, 0.25) !important;
+        }
+        .dark div:has(> table)::-webkit-scrollbar-thumb:hover,
+        .theme-dark div:has(> table)::-webkit-scrollbar-thumb:hover,
+        html.agy-native-dark div:has(> table)::-webkit-scrollbar-thumb:hover {
+          background: rgba(226, 232, 240, 0.45) !important;
+        }
         table {
           background: transparent !important;
           background-color: transparent !important;
           border-collapse: separate !important;
           border-spacing: 0 !important;
           border-radius: 8px !important;
-          overflow: hidden !important;
+          width: max-content !important;
+          min-width: 100% !important;
+          max-width: none !important;
           border: 1px solid rgba(0, 0, 0, 0.08) !important;
+        }
+        table tr:first-child th:first-child,
+        table tr:first-child td:first-child {
+          border-top-left-radius: 7px !important;
+        }
+        table tr:first-child th:last-child,
+        table tr:first-child td:last-child {
+          border-top-right-radius: 7px !important;
+        }
+        table tr:last-child td:first-child {
+          border-bottom-left-radius: 7px !important;
+        }
+        table tr:last-child td:last-child {
+          border-bottom-right-radius: 7px !important;
         }
         table th {
           background-color: rgba(240, 242, 245, 0.5) !important;
@@ -2236,14 +2311,20 @@
         table tr:nth-child(even) td {
           background-color: rgba(255, 255, 255, 0.3) !important;
         }
-        .theme-dark table {
+        .dark table,
+        .theme-dark table,
+        html.agy-native-dark table {
           border-color: rgba(255, 255, 255, 0.1) !important;
         }
-        .theme-dark table th {
+        .dark table th,
+        .theme-dark table th,
+        html.agy-native-dark table th {
           background-color: rgba(255, 255, 255, 0.08) !important;
           border-color: rgba(255, 255, 255, 0.08) !important;
         }
-        .theme-dark table td {
+        .dark table td,
+        .theme-dark table td,
+        html.agy-native-dark table td {
           background-color: rgba(255, 255, 255, 0.04) !important;
           border-color: rgba(255, 255, 255, 0.06) !important;
         }
@@ -5077,20 +5158,20 @@ body:not(.dark):not(.theme-dark) .agy-inspector-control-row:hover {
    ========================================================================== */
 
 :root {
-  /* —— 浅色主题底噪：精致浅白磨砂玻璃，高对比度 —— */
-  --agy-input-light-bg:  rgba(255, 255, 255, 0.68);
-  --agy-bubble-light-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.75) 0%, rgba(240, 246, 255, 0.62) 100%);
-  --agy-agent-light-bg:   rgba(255, 255, 255, 0.65);
+  /* —— 浅色主题底噪：水晶高透无雾气泡（清晰透出壁纸细节） —— */
+  --agy-input-light-bg:  rgba(255, 255, 255, 0.62);
+  --agy-bubble-light-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.44) 0%, rgba(240, 246, 255, 0.32) 100%);
+  --agy-agent-light-bg:   rgba(255, 255, 255, 0.36);
 
-  /* —— 深色主题底噪：深色黑曜石磨砂玻璃 —— */
-  --agy-input-dark-bg:   rgba(10, 14, 24, 0.45);
-  --agy-bubble-dark-bg:  linear-gradient(135deg, rgba(38, 46, 70, 0.42) 0%, rgba(16, 21, 34, 0.35) 100%);
-  --agy-agent-dark-bg:    rgba(11, 16, 27, 0.45);
+  /* —— 深色主题底噪：水晶高透黑曜石气泡（零模糊云雾，清晰透出壁纸） —— */
+  --agy-input-dark-bg:   rgba(10, 14, 24, 0.42);
+  --agy-bubble-dark-bg:  linear-gradient(135deg, rgba(32, 40, 62, 0.36) 0%, rgba(16, 21, 34, 0.30) 100%);
+  --agy-agent-dark-bg:    rgba(11, 16, 27, 0.34);
 
-  /* —— 背景模糊半径 —— */
-  --agy-blur-input:  26px;
-  --agy-blur-bubble: 24px;
-  --agy-blur-agent:  28px;
+  /* —— 背景模糊半径（气泡设为 0px 无模糊，彻底消除云雾厚重感与顶部跳变） —— */
+  --agy-blur-input:  24px;
+  --agy-blur-bubble: 0px;
+  --agy-blur-agent:  0px;
 
   /* —— 文字反差 —— */
   --agy-text-on-dark:  #ffffff;   /* 深色壁纸/深色主题文字 */
@@ -5150,10 +5231,10 @@ html.agy-native-light [data-testid="user-input-step"] [data-testid="lifted-conte
 html.agy-native-light [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
 html.agy-native-light [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border:not([class*="user-input-step"] div[class*="max-w-"][class*="80%"] div) {
   background: var(--agy-bubble-light-bg) !important;
-  backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(1.12) !important;
-  -webkit-backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(1.12) !important;
-  border: 1px solid rgba(255, 255, 255, 0.85) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04) !important;
 }
 
 /* 深色主题 */
@@ -5172,10 +5253,10 @@ html.agy-native-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-
 .dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border:not([class*="user-input-step"] div[class*="max-w-"][class*="80%"] div),
 .theme-dark [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border:not([class*="user-input-step"] div[class*="max-w-"][class*="80%"] div) {
   background: var(--agy-bubble-dark-bg) !important;
-  backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(0.70) !important;
-  -webkit-backdrop-filter: blur(var(--agy-blur-bubble)) saturate(160%) brightness(0.70) !important;
-  border: 1px solid rgba(165, 180, 252, 0.24) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(165, 180, 252, 0.22) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22) !important;
 }
 
 /* ==========================================================================
@@ -5197,13 +5278,13 @@ html.agy-native-light div[role="article"][aria-label="智能体回复"],
 html.agy-native-light div[aria-label="智能体回复"],
 html.agy-native-light div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
   background-color: var(--agy-agent-light-bg) !important;
-  backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(1.12) !important;
-  -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(1.12) !important;
-  border: 1px solid rgba(255, 255, 255, 0.75) !important;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.05) !important;
 }
 
-/* 深色主题：深黑曜石玻璃 */
+/* 深色主题：水晶高透黑曜石气泡 */
 html.agy-native-dark [data-testid="agent-response"],
 html.agy-native-dark div[data-testid="agent-response"],
 html.agy-native-dark div[role="article"][aria-label="Agent response"],
@@ -5226,10 +5307,10 @@ html.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"
 .theme-dark div[aria-label="智能体回复"],
 .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
   background-color: var(--agy-agent-dark-bg) !important;
-  backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(0.70) !important;
-  -webkit-backdrop-filter: blur(var(--agy-blur-agent)) saturate(150%) brightness(0.70) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.40) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22) !important;
 }
 
 /* ==========================================================================
@@ -5585,4 +5666,341 @@ html.agy-native-dark .text-red-500,
 html.agy-dark-wallpaper .text-red-500 {
   color: #f87171 !important;
   font-weight: 600 !important;
+}
+
+/* ==========================================================================
+   19. 方案 C：模拟原版对话模式 (html.agy-chat-native)
+   --------------------------------------------------------------------------
+   高度还原原版无框文档流排版，同时深度适配动态壁纸：
+   1) 彻底清除 AI 回复、工具折叠条、状态胶囊与原生隐藏卡片的零碎底色/边框，
+      杜绝原版黑白底色下藏着的模块在壁纸上露馅割裂；
+   2) 用户消息去掉厚重蓝紫毛玻璃大框，改为贴近原版的极轻无边框微透底衬；
+   3) 全对话流正文、表格与次级小字（如 5/5 steps、时间戳、图标）按壁纸/主题
+      统一高对比字色与双层抗干扰阴影；仅代码块与行内代码保留轻量语义底衬。
+   ========================================================================== */
+
+/* 19.1 AI 回复外层、工具折叠条、状态胶囊与隐形原生色块：统一全透明无框 */
+html.agy-chat-native [data-testid="agent-response"],
+html.agy-chat-native div[data-testid="agent-response"],
+html.agy-chat-native div[role="article"][aria-label="Agent response"],
+html.agy-chat-native div[aria-label="Agent response"],
+html.agy-chat-native div[role="article"][aria-label="智能体回复"],
+html.agy-chat-native div[aria-label="智能体回复"],
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native.agy-native-light [data-testid="agent-response"],
+html.agy-chat-native.agy-native-light div[data-testid="agent-response"],
+html.agy-chat-native.agy-native-light div[role="article"][aria-label="Agent response"],
+html.agy-chat-native.agy-native-light div[aria-label="Agent response"],
+html.agy-chat-native.agy-native-light div[role="article"][aria-label="智能体回复"],
+html.agy-chat-native.agy-native-light div[aria-label="智能体回复"],
+html.agy-chat-native.agy-native-light div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"],
+html.agy-chat-native.agy-native-dark div[data-testid="agent-response"],
+html.agy-chat-native.agy-native-dark div[role="article"][aria-label="Agent response"],
+html.agy-chat-native.agy-native-dark div[aria-label="Agent response"],
+html.agy-chat-native.agy-native-dark div[role="article"][aria-label="智能体回复"],
+html.agy-chat-native.agy-native-dark div[aria-label="智能体回复"],
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native .dark [data-testid="agent-response"],
+html.agy-chat-native .dark div[data-testid="agent-response"],
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native .theme-dark [data-testid="agent-response"],
+html.agy-chat-native .theme-dark div[data-testid="agent-response"],
+html.agy-chat-native .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 6px 2px !important;
+  margin-top: 4px !important;
+  margin-bottom: 10px !important;
+}
+
+/* 彻底剥离“已运行 X 分钟”、思考过程、工具组、执行状态小胶囊的盒子底色与边框，消除“一半有框一半没框” */
+html.agy-chat-native [data-testid="tool-group-collapsible"],
+html.agy-chat-native [data-testid="worked-for-collapsible"],
+html.agy-chat-native [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native .dark [data-testid="tool-group-collapsible"],
+html.agy-chat-native .dark [data-testid="worked-for-collapsible"],
+html.agy-chat-native .dark [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native .theme-dark [data-testid="tool-group-collapsible"],
+html.agy-chat-native .theme-dark [data-testid="worked-for-collapsible"],
+html.agy-chat-native .theme-dark [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native div.whitespace-nowrap.text-secondary-foreground:not(:has([data-testid="breadcrumb-segment"])),
+html.agy-chat-native div[class*="text-secondary-foreground"][class*="tabular-nums"]:not(:has([data-testid="breadcrumb-segment"])),
+html.agy-chat-native .dark div.whitespace-nowrap.text-secondary-foreground:not(:has([data-testid="breadcrumb-segment"])),
+html.agy-chat-native .theme-dark div.whitespace-nowrap.text-secondary-foreground:not(:has([data-testid="breadcrumb-segment"])),
+html.agy-chat-native .dark div[class*="text-secondary-foreground"][class*="tabular-nums"]:not(:has([data-testid="breadcrumb-segment"])),
+html.agy-chat-native .theme-dark div[class*="text-secondary-foreground"][class*="tabular-nums"]:not(:has([data-testid="breadcrumb-segment"])) {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 2px 0 !important;
+}
+
+/* 清除原版藏在黑白底色下、在壁纸上会意外露馅的内部色块容器（排除代码块 pre、行内 code 与按钮） */
+html.agy-chat-native [data-testid="agent-response"] .bg-card:not(pre):not(code):not(button),
+html.agy-chat-native [data-testid="agent-response"] .bg-muted:not(pre):not(code):not(button),
+html.agy-chat-native [data-testid="agent-response"] .bg-secondary:not(pre):not(code):not(button),
+html.agy-chat-native [data-testid="turn-cards-container"] .bg-card:not(pre):not(code):not(button),
+html.agy-chat-native [data-testid="turn-cards-container"] .bg-muted:not(pre):not(code):not(button),
+html.agy-chat-native [data-testid="turn-cards-container"] .bg-secondary:not(pre):not(code):not(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 19.2 用户消息：告别厚重蓝紫毛玻璃大气泡，还原原版极轻无边框微透底衬 */
+html.agy-chat-native .user-bubble-card,
+html.agy-chat-native [data-testid="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native [class*="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-chat-native [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-chat-native [class*="user-input-step"] div.relative.p-px.rounded-xl.bg-card-border:not([class*="user-input-step"] div[class*="max-w-"][class*="80%"] div),
+html.agy-chat-native.agy-native-light .user-bubble-card,
+html.agy-chat-native.agy-native-light [data-testid="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native.agy-native-light [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"] {
+  background: rgba(255, 255, 255, 0.36) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+  padding: 10px 14px !important;
+}
+html.agy-chat-native.agy-native-dark .user-bubble-card,
+html.agy-chat-native.agy-native-dark [data-testid="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native.agy-native-dark [class*="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native.agy-native-dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-chat-native.agy-native-dark [class*="group/user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-chat-native .dark .user-bubble-card,
+html.agy-chat-native .theme-dark .user-bubble-card,
+html.agy-chat-native .dark [data-testid="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native .theme-dark [data-testid="user-input-step"] div[class*="max-w-"][class*="80%"],
+html.agy-chat-native .dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"],
+html.agy-chat-native .theme-dark [data-testid="user-input-step"] [data-testid="lifted-context-menu-trigger"] {
+  background: rgba(15, 20, 32, 0.32) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+/* 用户消息右上角折叠按钮与操作胶囊同步极简去重边框 */
+html.agy-chat-native .user-bubble-toggle-btn,
+html.agy-chat-native .agy-user-collapse-btn,
+html.agy-chat-native .user-input-buttons-container,
+html.agy-chat-native [class*="user-input-buttons"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.agy-chat-native .user-bubble-toggle-btn:hover,
+html.agy-chat-native .agy-user-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* 19.3 全对话流文字反差与次级小字提亮（消灭 5/5 steps、时间戳、图标发灰看不清） */
+/* 浅色原生 + 浅色壁纸 */
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div[aria-label="Agent response"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div[aria-label="智能体回复"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="tool-group-collapsible"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="worked-for-collapsible"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native:not(.agy-dark-wallpaper).agy-native-light [data-testid="agent-response"],
+html.agy-chat-native:not(.agy-dark-wallpaper).agy-native-light [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native:not(.agy-dark-wallpaper).agy-native-light div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed {
+  color: #060a14 !important;
+  font-weight: 550 !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.85) !important;
+}
+
+/* 深色原生主题或深色壁纸：全对话流统一亮白字 + 双层深色柔和阴影 */
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"],
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native.agy-dark-wallpaper div[aria-label="Agent response"],
+html.agy-chat-native.agy-dark-wallpaper div[aria-label="智能体回复"],
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"],
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]),
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) .leading-relaxed,
+html.agy-chat-native .dark [data-testid="agent-response"],
+html.agy-chat-native .dark [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native .theme-dark [data-testid="agent-response"],
+html.agy-chat-native .theme-dark [data-testid="agent-response"] .leading-relaxed,
+html.agy-chat-native.agy-dark-wallpaper [data-testid="tool-group-collapsible"],
+html.agy-chat-native.agy-dark-wallpaper [data-testid="worked-for-collapsible"],
+html.agy-chat-native.agy-dark-wallpaper [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native.agy-native-dark [data-testid="tool-group-collapsible"],
+html.agy-chat-native.agy-native-dark [data-testid="worked-for-collapsible"],
+html.agy-chat-native.agy-native-dark [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native .dark [data-testid="tool-group-collapsible"],
+html.agy-chat-native .dark [data-testid="worked-for-collapsible"],
+html.agy-chat-native .dark [data-testid="thinking-collapsible-trigger"],
+html.agy-chat-native .theme-dark [data-testid="tool-group-collapsible"],
+html.agy-chat-native .theme-dark [data-testid="worked-for-collapsible"],
+html.agy-chat-native .theme-dark [data-testid="thinking-collapsible-trigger"] {
+  color: #f8fafc !important;
+  font-weight: 500 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92), 0 0 12px rgba(0, 0, 0, 0.72) !important;
+}
+
+/* 对话流次级说明文字（如 5/5 steps、时间、弱化提示、操作图标）同步提亮防融入壁纸 */
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] [class*="text-muted-foreground"],
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] [class*="text-secondary-foreground"],
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-muted-foreground"],
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-secondary-foreground"],
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] [class*="text-muted-foreground"],
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] [class*="text-secondary-foreground"],
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-muted-foreground"],
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-secondary-foreground"],
+html.agy-chat-native .dark [data-testid="agent-response"] [class*="text-muted-foreground"],
+html.agy-chat-native .dark [data-testid="agent-response"] [class*="text-secondary-foreground"],
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-muted-foreground"],
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-secondary-foreground"] {
+  color: rgba(241, 245, 249, 0.90) !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92), 0 0 10px rgba(0, 0, 0, 0.70) !important;
+}
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] [class*="text-muted-foreground"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] [class*="text-secondary-foreground"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-muted-foreground"],
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) [class*="text-secondary-foreground"] {
+  color: rgba(15, 23, 42, 0.88) !important;
+  opacity: 1 !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 8px rgba(255, 255, 255, 0.80) !important;
+}
+
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] a,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] a,
+html.agy-chat-native div[aria-label="Agent response"] a,
+html.agy-chat-native div[aria-label="智能体回复"] a {
+  color: #93c5fd !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85) !important;
+}
+
+/* 19.4 表格与引用块：保持无底色通透 + 清晰细线 + 高对比字色 */
+html.agy-chat-native [data-testid="agent-response"] div:has(> table),
+html.agy-chat-native div[aria-label="Agent response"] div:has(> table),
+html.agy-chat-native div[aria-label="智能体回复"] div:has(> table),
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) div:has(> table) {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+html.agy-chat-native [data-testid="agent-response"] table,
+html.agy-chat-native [data-testid="agent-response"] table th,
+html.agy-chat-native [data-testid="agent-response"] table td,
+html.agy-chat-native [data-testid="agent-response"] table tr:nth-child(even) td,
+html.agy-chat-native div[aria-label="Agent response"] table,
+html.agy-chat-native div[aria-label="Agent response"] table th,
+html.agy-chat-native div[aria-label="Agent response"] table td,
+html.agy-chat-native div[aria-label="智能体回复"] table,
+html.agy-chat-native div[aria-label="智能体回复"] table th,
+html.agy-chat-native div[aria-label="智能体回复"] table td,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table tr:nth-child(even) td {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] table,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] table th,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) [data-testid="agent-response"] table td,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native.agy-light-wallpaper:not(.agy-native-dark) div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td {
+  color: #060a14 !important;
+  border-color: rgba(15, 23, 42, 0.20) !important;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.85) !important;
+}
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] table,
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] table th,
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] table td,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] table,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] table th,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] table td,
+html.agy-chat-native .dark [data-testid="agent-response"] table,
+html.agy-chat-native .dark [data-testid="agent-response"] table th,
+html.agy-chat-native .dark [data-testid="agent-response"] table td,
+html.agy-chat-native .theme-dark [data-testid="agent-response"] table,
+html.agy-chat-native .theme-dark [data-testid="agent-response"] table th,
+html.agy-chat-native .theme-dark [data-testid="agent-response"] table td,
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native.agy-dark-wallpaper div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td,
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native .dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td,
+html.agy-chat-native .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table,
+html.agy-chat-native .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table th,
+html.agy-chat-native .theme-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) table td {
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92), 0 0 12px rgba(0, 0, 0, 0.72) !important;
+}
+html.agy-chat-native table code {
+  text-shadow: none !important;
+}
+
+/* 引用块：原版无底色左竖线风格 */
+html.agy-chat-native [data-testid="agent-response"] blockquote,
+html.agy-chat-native div[aria-label="Agent response"] blockquote,
+html.agy-chat-native div[aria-label="智能体回复"] blockquote,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) blockquote {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  border-left: 3px solid rgba(15, 23, 42, 0.35) !important;
+  border-radius: 0 !important;
+  padding: 2px 12px !important;
+}
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] blockquote,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] blockquote,
+html.agy-chat-native .dark [data-testid="agent-response"] blockquote,
+html.agy-chat-native .theme-dark [data-testid="agent-response"] blockquote,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) blockquote {
+  border-left-color: rgba(248, 250, 252, 0.45) !important;
+}
+
+/* 19.5 代码块保留轻量语义磨砂底衬（原版即独立块，保护语法高亮不与壁纸混色） */
+html.agy-chat-native [data-testid="agent-response"] pre,
+html.agy-chat-native div[aria-label="Agent response"] pre,
+html.agy-chat-native div[aria-label="智能体回复"] pre,
+html.agy-chat-native div.flex.flex-col:has(> [data-testid="turn-cards-container"]) pre {
+  backdrop-filter: blur(14px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+html.agy-chat-native.agy-dark-wallpaper [data-testid="agent-response"] pre,
+html.agy-chat-native.agy-native-dark [data-testid="agent-response"] pre,
+html.agy-chat-native .dark [data-testid="agent-response"] pre,
+html.agy-chat-native .theme-dark [data-testid="agent-response"] pre,
+html.agy-chat-native.agy-native-dark div.flex.flex-col:has(> [data-testid="turn-cards-container"]) pre {
+  background-color: rgba(10, 14, 24, 0.68) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }

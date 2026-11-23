@@ -15,6 +15,7 @@
         videoPath: ''
       },
       themeStyles: false,
+      chatStyleMode: 'bubble',
       crtScanlines: false,
       chineseLocalization: true,
       dynamicWallpaper: {
@@ -608,6 +609,10 @@
 
     // A. 背景素材（视频 / 网页 / 场景）与毛玻璃增量细粒度更新
     const isCustomTheme = f.themeStyles !== false;
+    const chatStyleMode = f.chatStyleMode === 'native' ? 'native' : 'bubble';
+    if (document.documentElement) {
+      document.documentElement.classList.toggle('agy-chat-native', isCustomTheme && chatStyleMode === 'native');
+    }
     if (isCustomTheme) {
       const isVideoOn = dw.enabled === true;
       const videoPath = dw.videoPath || '';

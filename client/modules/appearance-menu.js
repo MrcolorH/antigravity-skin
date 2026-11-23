@@ -447,6 +447,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const currentLang = f.language || (window.__agyI18n ? window.__agyI18n.getLanguage() : 'zh-CN');
     let isZh = currentLang !== 'en';
     let isCustomThemeEnabled = f.themeStyles !== false;
+    let chatStyleMode = f.chatStyleMode === 'native' ? 'native' : 'bubble';
     const hasWallVal = !!(dw.videoPath && dw.videoPath.trim());
     const hasBootVal = !!(bootCfg.videoPath && bootCfg.videoPath.trim());
 
@@ -528,7 +529,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-group-chat-style') || !customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -538,6 +539,27 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       customOptions.className = 'divide-y divide-border bg-transparent';
       customOptions.style.display = isCustomThemeEnabled ? 'block' : 'none';
       customOptions.innerHTML = `
+        <!-- AI 对话展示样式切换（气泡卡片 / 模拟原版） -->
+        <div class="py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center" id="agy-chat-style-row">
+          <div class="flex-1 flex flex-col gap-0.5">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-medium">AI 对话样式</span>
+              <span class="text-xs text-muted-foreground opacity-60">Chat Style</span>
+            </div>
+            <span class="text-xs text-muted-foreground opacity-65" id="agy-chat-style-desc">${chatStyleMode === 'native' ? '模拟原版无外框排版，正文与表格直透壁纸，代码块保留独立毛玻璃底衬' : '毛玻璃圆角卡片包裹每条 AI 回复，层次分明且阅读柔和'}</span>
+          </div>
+          <div class="shrink-0">
+            <div role="group" id="agy-group-chat-style" class="agy-seg-group select-none h-8">
+              <button type="button" id="agy-chat-style-bubble" class="agy-seg-btn text-xs px-3 gap-1 ${chatStyleMode !== 'native' ? 'active' : ''}" ${chatStyleMode !== 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
+                <span>💬 气泡卡片</span>
+              </button>
+              <button type="button" id="agy-chat-style-native" class="agy-seg-btn text-xs px-3 gap-1 ${chatStyleMode === 'native' ? 'active' : ''}" ${chatStyleMode === 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
+                <span>✨ 模拟原版</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 全局动态视频壁纸开关 -->
         <div class="py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center">
           <div class="flex-1 flex flex-col gap-0.5">
@@ -1586,6 +1608,41 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
     langBtnZh.onclick = () => switchLanguage('zh-CN');
     langBtnEn.onclick = () => switchLanguage('en');
+
+    // 6.5 AI 对话样式切换（气泡卡片 / 模拟原版）
+    const chatStyleGroup = customOptions.querySelector('#agy-group-chat-style');
+    const chatStyleBtnBubble = customOptions.querySelector('#agy-chat-style-bubble');
+    const chatStyleBtnNative = customOptions.querySelector('#agy-chat-style-native');
+    const chatStyleDesc = customOptions.querySelector('#agy-chat-style-desc');
+
+    function syncChatStyleUI(mode) {
+      const isNative = mode === 'native';
+      if (chatStyleGroup && chatStyleBtnBubble && chatStyleBtnNative) {
+        syncSegmentedState(chatStyleGroup, isNative ? chatStyleBtnNative : chatStyleBtnBubble);
+      }
+      if (chatStyleDesc) {
+        chatStyleDesc.textContent = isNative
+          ? '模拟原版无外框排版，正文与表格直透壁纸，代码块保留独立毛玻璃底衬'
+          : '毛玻璃圆角卡片包裹每条 AI 回复，层次分明且阅读柔和';
+      }
+    }
+
+    function switchChatStyle(mode) {
+      chatStyleMode = mode === 'native' ? 'native' : 'bubble';
+      syncChatStyleUI(chatStyleMode);
+      const activeCfg = getConfig() || config;
+      if (!activeCfg.features) activeCfg.features = {};
+      activeCfg.features.chatStyleMode = chatStyleMode;
+      config.features.chatStyleMode = chatStyleMode;
+      if (document.documentElement) {
+        document.documentElement.classList.toggle('agy-chat-native', isCustomThemeEnabled && chatStyleMode === 'native');
+      }
+      triggerSave();
+    }
+
+    syncChatStyleUI(chatStyleMode);
+    if (chatStyleBtnBubble) chatStyleBtnBubble.onclick = () => switchChatStyle('bubble');
+    if (chatStyleBtnNative) chatStyleBtnNative.onclick = () => switchChatStyle('native');
 
     // 7. 自定义配置项表单事件
     const optWallpaper = customOptions.querySelector('#agy-opt-wallpaper');

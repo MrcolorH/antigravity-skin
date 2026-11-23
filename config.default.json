@@ -17,6 +17,7 @@
       "autoEnterDelay": 3
     },
     "themeStyles": false,
+    "chatStyleMode": "bubble",
     "chineseLocalization": true,
     "dynamicWallpaper": {
       "enabled": false,
