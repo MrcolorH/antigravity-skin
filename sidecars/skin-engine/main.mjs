@@ -111,19 +111,28 @@ function getBootPatchStatus(force = false) {
 
   const resourcesDir = locateAntigravityResources();
   let patched = false;
+  let hasRemoteDebugSwitch = false;
   let asarPath = '';
   if (resourcesDir) {
     asarPath = path.join(resourcesDir, 'app.asar');
     try {
-      patched = readFileRaw(asarPath).includes(BOOT_PATCH_MARKER);
+      const rawAsar = readFileRaw(asarPath);
+      patched = rawAsar.includes(BOOT_PATCH_MARKER);
+      hasRemoteDebugSwitch = rawAsar.includes("appendSwitch('remote-debugging-port'");
     } catch (_) {
       patched = false;
     }
   }
+  const cdpAvailable = fs.existsSync(getDevToolsPortPath());
+  const fullyPatched = patched && (hasRemoteDebugSwitch || cdpAvailable);
 
   const value = {
     installed: !!resourcesDir,
-    patched,
+    patched: fullyPatched,
+    bootMarkerPresent: patched,
+    hasRemoteDebugSwitch,
+    cdpAvailable,
+    state: !resourcesDir ? 'not_installed' : (fullyPatched ? 'ok' : 'patch_missing'),
     asarPath,
     hasBackup: !!resourcesDir && fs.existsSync(path.join(resourcesDir, 'app.asar.bak')),
     pending: !!(healState && healState.pending),
@@ -132,6 +141,96 @@ function getBootPatchStatus(force = false) {
   };
   __bootPatchCache = { at: now, value };
   return value;
+}
+
+let __sentinelNotifiedThisSession = false;
+function runBootPatchSentinel(httpPort) {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  const status = getBootPatchStatus(true);
+  const sentinelFile = path.join(PLUGIN_ROOT, 'state', 'patch-sentinel.json');
+  let prev = {};
+  try {
+    if (fs.existsSync(sentinelFile)) prev = JSON.parse(fs.readFileSync(sentinelFile, 'utf8'));
+  } catch (_) {}
+
+  const nextState = {
+    ...prev,
+    state: status.state,
+    patched: status.patched,
+    cdpAvailable: status.cdpAvailable,
+    detectedAt: new Date().toISOString()
+  };
+  try {
+    fs.mkdirSync(path.dirname(sentinelFile), { recursive: true });
+    fs.writeFileSync(sentinelFile, JSON.stringify(nextState, null, 2), 'utf8');
+  } catch (_) {}
+
+  if (status.state !== 'patch_missing') return;
+
+  // 1. 派生退出静默守望进程（用户正常退出客户端后 2 秒内静默重注 app.asar，不自动重启）
+  try {
+    const watcherScript = path.join(PLUGIN_ROOT, 'scripts', 'exit-heal-watcher.mjs');
+    if (fs.existsSync(watcherScript)) {
+      const { nodeBin, env: cleanEnv } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
+      const child = spawn(nodeBin, [watcherScript], {
+        cwd: PLUGIN_ROOT,
+        detached: true,
+        stdio: 'ignore',
+        env: cleanEnv
+      });
+      child.unref();
+    }
+  } catch (_) {}
+
+  // 2. 一次性系统原生轻提醒（用户可勾选不再提醒）
+  if (!__sentinelNotifiedThisSession && !prev.noticeDismissed) {
+    __sentinelNotifiedThisSession = true;
+    const cfg = readConfig();
+    const zh = cfg?.features?.chineseLocalization !== false;
+    if (process.platform === 'darwin') {
+      const msg = zh
+        ? '检测到 Antigravity 已更新或首次安装，插件注入通道尚未激活。您可立即修复并重启，或在正常退出后自动静默修复。'
+        : 'Antigravity was updated or newly installed and the plugin channel is not active yet. Repair & restart now, or auto-repair silently on exit.';
+      const btnDismiss = zh ? '不再提醒' : "Don't Remind";
+      const btnExit = zh ? '退出时自动修复' : 'Fix on Exit';
+      const btnNow = zh ? '立即修复并重启' : 'Repair & Restart';
+      const osa = `
+        try
+          set r to display dialog "${msg}" with title "Antigravity Skin" buttons {"${btnDismiss}", "${btnExit}", "${btnNow}"} default button "${btnNow}"
+          set b to button returned of r
+          if b is "${btnNow}" then
+            do shell script "curl -s -X POST http://127.0.0.1:${httpPort}/api/boot-patch/repair >/dev/null 2>&1"
+          else if b is "${btnDismiss}" then
+            do shell script "curl -s -X POST http://127.0.0.1:${httpPort}/api/boot-patch/dismiss-notice >/dev/null 2>&1"
+          end if
+        end try
+      `;
+      try {
+        const child = spawn('osascript', ['-e', osa], { detached: true, stdio: 'ignore' });
+        child.unref();
+      } catch (_) {}
+    } else if (process.platform === 'win32') {
+      const title = 'Antigravity Skin';
+      const body = zh
+        ? '检测到客户端已更新，插件将在您退出后自动静默修复；或打开右侧 Extensions -> Antigrative Dashboard 一键修复并重启。'
+        : 'Client updated. Auto-repair will run silently on exit, or click Repair in Extensions -> Antigrative Dashboard.';
+      const ps = `
+        Add-Type -AssemblyName System.Windows.Forms;
+        $r = [System.Windows.Forms.MessageBox]::Show('${body}', '${title}', 'YesNoCancel', 'Information');
+        if ($r -eq 'Yes') { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:${httpPort}/api/boot-patch/repair' | Out-Null }
+        elseif ($r -eq 'Cancel') { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:${httpPort}/api/boot-patch/dismiss-notice' | Out-Null }
+      `.replace(/\r?\n/g, ' ');
+      try {
+        const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], { detached: true, stdio: 'ignore' });
+        child.unref();
+      } catch (_) {}
+    }
+  }
+}
+
+function isHostBootOverlayPatched(force = false) {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return false;
+  return !!getBootPatchStatus(force).patched;
 }
 
 // 确保素材目录完备就绪
@@ -230,6 +329,10 @@ function buildDefaultConfig() {
         libraryPath: '',
         autoScan: true,
         mountedFolders: []
+      },
+      dashboard: {
+        enabled: true,
+        inlineEnabled: true
       }
     }
   };
@@ -256,6 +359,11 @@ function normalizeConfig(raw) {
     ...base.features.externalWallpaperLibrary,
     ...lib,
     mountedFolders: Array.isArray(lib.mountedFolders) ? lib.mountedFolders.filter(Boolean) : []
+  };
+  const dash = raw.features?.dashboard || {};
+  out.features.dashboard = {
+    enabled: dash.enabled !== false,
+    inlineEnabled: dash.inlineEnabled !== false
   };
   // 路径归一化：容忍用户手填 E:////foo 或正反斜杠混写
   try {
@@ -402,6 +510,64 @@ function resolveScriptPath(scriptPath) {
     if (fs.existsSync(inScripts)) return inScripts;
   }
   return path.join(SCRIPTS_DIR, 'default-boot.js');
+}
+
+function resolvePatchNodeAndEnv({ skipKill = false, skipRelaunch = false } = {}) {
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.ELECTRON_RUN_AS_NODE;
+  delete cleanEnv.ELECTRON_NO_ASAR;
+  delete cleanEnv.NODE_OPTIONS;
+  delete cleanEnv.NODE_ENV;
+  delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+  delete cleanEnv.ANTIGRAVITY_LS_ADDRESS;
+  delete cleanEnv.ANTIGRAVITY_CSRF_TOKEN;
+  delete cleanEnv.SKIP_KILL;
+  delete cleanEnv.SKIP_RELAUNCH;
+
+  if (skipKill) cleanEnv.SKIP_KILL = '1';
+  if (skipRelaunch) cleanEnv.SKIP_RELAUNCH = '1';
+
+  const home = os.homedir();
+  const extraPaths = [];
+  if (process.platform === 'darwin') {
+    extraPaths.push('/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', path.join(home, '.local', 'bin'));
+    try {
+      const nvmDir = path.join(home, '.nvm', 'versions', 'node');
+      if (fs.existsSync(nvmDir)) {
+        const versions = fs.readdirSync(nvmDir).sort().reverse();
+        for (const v of versions) {
+          const binDir = path.join(nvmDir, v, 'bin');
+          if (fs.existsSync(binDir)) extraPaths.push(binDir);
+        }
+      }
+    } catch (_) {}
+    extraPaths.push(path.join(home, '.volta', 'bin'), path.join(home, '.fnm', 'current', 'bin'));
+  }
+
+  const currentPathParts = String(cleanEnv.PATH || '').split(path.delimiter).filter(Boolean);
+  const mergedPath = Array.from(new Set([...extraPaths, ...currentPathParts])).join(path.delimiter);
+  if (mergedPath) cleanEnv.PATH = mergedPath;
+
+  const execName = process.platform === 'win32' ? 'node.exe' : 'node';
+  let nodeBin = '';
+  for (const dir of mergedPath.split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(dir, execName);
+    try {
+      if (fs.existsSync(candidate)) {
+        nodeBin = candidate;
+        break;
+      }
+    } catch (_) {}
+  }
+
+  if (!nodeBin) {
+    nodeBin = process.execPath || 'node';
+    if (nodeBin !== 'node' && !path.basename(nodeBin).toLowerCase().startsWith('node')) {
+      cleanEnv.ELECTRON_RUN_AS_NODE = '1';
+    }
+  }
+
+  return { nodeBin, env: cleanEnv };
 }
 
 // 自动检测并无损前置 MP4 moov atom（实现 Web 极速秒开，无需等待全量缓冲）
@@ -717,13 +883,14 @@ async function extractAndDeploy(zipFilePath) {
 
     console.log('[Skin Engine] Core plugin files successfully updated on disk.');
 
-    // 4. 自动检查并合入内核补丁（确保在线升级后 remote-debugging-port 始终保持生效）
+    // 4. 自动检查并合入内核补丁（确保在线升级后 remote-debugging-port 始终保持生效；热更新保持免重启）
     try {
       const patchScript = path.join(PLUGIN_ROOT, 'scripts', 'patch-boot-overlay.mjs');
       if (fs.existsSync(patchScript)) {
-        execSync(`"${process.execPath || 'node'}" "${patchScript}"`, {
+        const { nodeBin, env } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
+        execSync(`"${nodeBin}" "${patchScript}"`, {
           cwd: PLUGIN_ROOT,
-          env: { ...process.env, SKIP_KILL: '1', SKIP_RELAUNCH: '1' },
+          env,
           stdio: 'ignore'
         });
         console.log('[Skin Engine] Auto-applied boot patch during online update.');
@@ -869,11 +1036,35 @@ function persistLibraryConfig(mutator) {
 function shouldInlineWebWallGL(cfg) {
   if (!cfg || cfg.enabled === false) return false;
   const f = cfg.features || {};
+  if (f.themeStyles === false) return false;
   const dw = f.dynamicWallpaper || {};
   const dwSource = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
-  const needsSceneDw = dw.enabled !== false && dwSource === 'scene';
-  const needsSceneBoot = !!(f.bootAnimation && f.bootAnimationConfig && f.bootAnimationConfig.mode === 'scene');
+  const needsSceneDw = dw.enabled === true && dwSource === 'scene' && !!(dw.wallpaperDir && String(dw.wallpaperDir).trim());
+  const needsSceneBoot = !!(f.bootAnimation && f.bootAnimationConfig && (f.bootAnimationConfig.type === 'scene' || f.bootAnimationConfig.mode === 'scene'));
   return needsSceneDw || needsSceneBoot;
+}
+
+function hasValidWallpaperSource(dw) {
+  if (!dw || typeof dw !== 'object') return false;
+  const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+  if (sourceType === 'video') {
+    return !!(dw.videoPath && String(dw.videoPath).trim());
+  }
+  return !!(dw.wallpaperDir && String(dw.wallpaperDir).trim());
+}
+
+function isWallpaperSkinActive(cfg) {
+  if (!cfg || cfg.enabled === false) return false;
+  const f = cfg.features || {};
+  if (f.themeStyles === false) return false;
+  const dw = f.dynamicWallpaper || {};
+  return dw.enabled === true && hasValidWallpaperSource(dw);
+}
+
+function isBootActiveEffective(cfg) {
+  if (!cfg || cfg.enabled === false) return false;
+  const f = cfg.features || {};
+  return f.themeStyles !== false && f.bootAnimation === true;
 }
 
 /** Fast non-cryptographic hash tag (length + FNV-1a) for bundle deduplication. */
@@ -1005,6 +1196,15 @@ const server = http.createServer((req, res) => {
         if (shouldInlineWebWallGL(parsed)) {
           ensureWebWallGLOnActiveSessions().catch(() => {});
         }
+        // 统一语言实时联动：推送给已挂载的内嵌看板控件
+        const nextLang = parsed?.features?.chineseLocalization === false ? 'en' : 'zh-CN';
+        for (const session of activeSessions.values()) {
+          try {
+            session.send('Runtime.evaluate', {
+              expression: `try { window.__agPulseSetLanguage && window.__agPulseSetLanguage(${JSON.stringify(nextLang)}); } catch (_) {}`
+            }).catch(() => {});
+          } catch (_) {}
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -1012,6 +1212,52 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: e.message }));
       }
     });
+    return;
+  }
+
+  // API: 获取反重力看板运行状态（读取 integration-state.json + 配置状态）
+  if (url.pathname === '/api/dashboard/status' && req.method === 'GET') {
+    const cfg = readConfig();
+    const dash = cfg.features?.dashboard || { enabled: true, inlineEnabled: true };
+    const enabled = cfg.enabled !== false && dash.enabled !== false;
+    const inlineEnabled = enabled && dash.inlineEnabled !== false;
+    const candidates = [
+      path.join(os.homedir(), '.gemini', 'antigravity', 'sidecar_data', 'antigravity-skin', 'panel', 'data', 'integration-state.json'),
+      path.join(os.homedir(), '.gemini', 'antigravity', 'sidecar_data', 'antigravity-pulse', 'panel', 'data', 'integration-state.json')
+    ];
+    let health = null;
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) {
+          health = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+          break;
+        }
+      } catch (_) {}
+    }
+    let state = 'offline';
+    let windows = 0;
+    let message = '';
+    if (!enabled) {
+      state = 'disabled';
+    } else if (health && typeof health === 'object') {
+      state = health.state || 'waiting';
+      windows = Number(health.windows) || 0;
+      message = health.message || '';
+      if (state === 'attached' || (windows > 0 && state !== 'error')) {
+        state = 'mounted';
+      } else if (state === 'waiting') {
+        state = 'waiting-for-composer';
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      enabled,
+      inlineEnabled,
+      state,
+      windows,
+      message
+    }));
     return;
   }
 
@@ -1047,6 +1293,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/boot-patch/dismiss-notice' && req.method === 'POST') {
+    try {
+      const sentinelFile = path.join(PLUGIN_ROOT, 'state', 'patch-sentinel.json');
+      fs.mkdirSync(path.dirname(sentinelFile), { recursive: true });
+      let cur = {};
+      if (fs.existsSync(sentinelFile)) cur = JSON.parse(fs.readFileSync(sentinelFile, 'utf8'));
+      fs.writeFileSync(sentinelFile, JSON.stringify({ ...cur, noticeDismissed: true }, null, 2), 'utf8');
+    } catch (_) {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   // API: 跨平台开屏动画完成通知（macOS 解除底层 CDP 视口置黑覆盖）
   if (url.pathname === '/api/boot-finished' && req.method === 'POST') {
     if (process.platform === 'darwin') {
@@ -1066,7 +1325,7 @@ const server = http.createServer((req, res) => {
   }
 
   // API: 平台专属 - 一键重新合入开机动效与内核调试端口补丁
-  if (url.pathname === '/api/patch-boot' && req.method === 'POST') {
+  if ((url.pathname === '/api/patch-boot' || url.pathname === '/api/boot-patch/repair') && req.method === 'POST') {
     if (process.platform !== 'win32' && process.platform !== 'darwin') {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: '开机动效引擎补丁仅适用于 Windows 与 macOS 平台。' }));
@@ -1081,32 +1340,37 @@ const server = http.createServer((req, res) => {
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, message: '已成功启动开机动效与内核补丁修复引擎，请稍候片刻...' }));
+    res.end(JSON.stringify({ ok: true, autoRestart: true, message: '已启动开机动效与内核补丁修复引擎，完成后将自动安全重启 Antigravity...' }));
 
     setTimeout(() => {
       try {
-        const cleanEnv = { ...process.env };
-        delete cleanEnv.ELECTRON_RUN_AS_NODE;
-        delete cleanEnv.ELECTRON_NO_ASAR;
-        delete cleanEnv.NODE_OPTIONS;
-        delete cleanEnv.NODE_ENV;
-        delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+        const { nodeBin, env: cleanEnv } = resolvePatchNodeAndEnv();
 
         if (process.platform === 'win32') {
           const batPath = path.join(PLUGIN_ROOT, 'patch-loading.bat');
-          const child = spawn('cmd.exe', ['/c', 'start', '""', batPath], {
+          if (fs.existsSync(batPath)) {
+            const child = spawn('cmd.exe', ['/c', 'start', '""', batPath], {
+              cwd: PLUGIN_ROOT,
+              detached: true,
+              stdio: 'ignore',
+              env: cleanEnv
+            });
+            child.unref();
+          } else {
+            const child = spawn(nodeBin, [scriptPath, '--detached-worker', '--delay-ms=800'], {
+              cwd: PLUGIN_ROOT,
+              detached: true,
+              stdio: 'ignore',
+              env: { ...cleanEnv, __AGY_DETACHED_PATCHER: '1' }
+            });
+            child.unref();
+          }
+        } else {
+          const child = spawn(nodeBin, [scriptPath, '--from-host'], {
             cwd: PLUGIN_ROOT,
             detached: true,
             stdio: 'ignore',
             env: cleanEnv
-          });
-          child.unref();
-        } else {
-          const child = spawn(process.execPath || 'node', [scriptPath], {
-            cwd: PLUGIN_ROOT,
-            detached: true,
-            stdio: 'ignore',
-            env: { ...cleanEnv, SKIP_KILL: '1', SKIP_RELAUNCH: '1' }
           });
           child.unref();
         }
@@ -2355,6 +2619,7 @@ function startServer(targetPort = HTTP_PORT, retries = 5) {
     HTTP_PORT = typeof addr === 'object' && addr ? addr.port : targetPort;
     console.log(`[Skin Engine] Local media & config server running on http://127.0.0.1:${HTTP_PORT}`);
     try { optimizeVideoAssets(); } catch (_) {}
+    setTimeout(() => { try { runBootPatchSentinel(HTTP_PORT); } catch (_) {} }, 100);
   });
 
   try {
@@ -2408,6 +2673,7 @@ function buildClientBundle() {
   const crtMod = readClientModule('client/modules/crt-theme.js');
   const libraryUiMod = readClientModule('client/modules/wallpaper-library-ui.js');
   const appearanceMenuMod = readClientModule('client/modules/appearance-menu.js');
+  const dashboardSettingsMod = readClientModule('client/modules/dashboard-settings.js');
   const indexMod = readClientModule('client/index.js');
 
   let bundleParts = [];
@@ -2427,30 +2693,49 @@ function buildClientBundle() {
   }
 
   // 0. 最先置顶：第 0 毫秒强力实施视口防白闪与标题栏完全透明
-  // 🍎 macOS 专属零闪白防线：官方遮罩移走与前端动效挂载之间，绝对不漏白底
-  bundleParts.push(`(() => {
-    try {
-      if (typeof document !== 'undefined') {
-        const cfg = ${JSON.stringify(config)};
-        if (cfg?.enabled && cfg?.features?.bootAnimation && !sessionStorage.getItem('__agy_booted__')) {
-          document.documentElement.style.background = '#000000';
-          if (document.body) document.body.style.background = '#000000';
-          if (!document.getElementById('agy-macos-anti-flash')) {
-            const st = document.createElement('style');
-            st.id = 'agy-macos-anti-flash';
-            st.textContent = 'html, body { background: #000000 !important; }';
-            (document.head || document.documentElement).appendChild(st);
+  // 若宿主已注入 loadingOverlay.js（Windows 或 macOS），主进程原生 WebContentsView 已独占遮罩，严禁在页面注入纯黑 html/body 防白闪样式
+  const isHostBootPatched = isHostBootOverlayPatched();
+  if (isHostBootPatched) {
+    bundleParts.push(`(() => {
+      try {
+        if (typeof document !== 'undefined') {
+          const st = document.getElementById('agy-macos-anti-flash');
+          if (st) st.remove();
+          if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+            document.documentElement.style.background = '';
+          }
+          if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+            document.body.style.background = '';
           }
         }
-      }
-    } catch (_) {}
-  })();`);
+      } catch (_) {}
+    })();`);
+  } else {
+    // 🍎 macOS/未打补丁宿主专属零闪白防线：官方遮罩移走与前端动效挂载之间，绝对不漏白底
+    bundleParts.push(`(() => {
+      try {
+        if (typeof document !== 'undefined') {
+          const cfg = ${JSON.stringify(config)};
+          if (cfg?.enabled !== false && cfg?.features?.themeStyles !== false && cfg?.features?.bootAnimation && !window.__agyMasterBootHandled && !window.__agyHostOverlayActive && !sessionStorage.getItem('__agy_booted__')) {
+            document.documentElement.style.background = '#000000';
+            if (document.body) document.body.style.background = '#000000';
+            if (!document.getElementById('agy-macos-anti-flash')) {
+              const st = document.createElement('style');
+              st.id = 'agy-macos-anti-flash';
+              st.textContent = 'html, body { background: #000000 !important; }';
+              (document.head || document.documentElement).appendChild(st);
+            }
+          }
+        }
+      } catch (_) {}
+    })();`);
+  }
 
   bundleParts.push(`(() => {
     try {
       if (typeof window !== 'undefined' && window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
-        const isCustom = (${JSON.stringify(config)}?.features?.themeStyles !== false);
-        if (isCustom) {
+        const shouldTransparent = ${isBootActiveEffective(config) || isWallpaperSkinActive(config)};
+        if (shouldTransparent) {
           window.electronNative.setTitleBarOverlay({
             color: 'rgba(0, 0, 0, 0)',
             symbolColor: '#f8fafc',
@@ -2468,12 +2753,11 @@ function buildClientBundle() {
   bundleParts.push(`window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(glassCss)};`);
   bundleParts.push(`window.__AG_SKIN_CRT_CSS__ = ${JSON.stringify(crtCss)};`);
 
-  // Windows 开机动画补丁第 0 毫秒确定性互斥防线 (BUG-024)：
-  // 仅当 Windows 宿主已注入 loadingOverlay.js 补丁时，由主进程原生 WebContentsView 独占接管，
-  // 在文档初始化的第 0 毫秒同步立下 __agyMasterBootHandled 铁锁，从源头彻底杜绝前端 DOM 容器并行偷跑导致闪屏穿帮。
-  // 在 macOS 或未打补丁的 Windows 上，开机动效由主窗口 DOM (boot-animation.js) 全程平滑承载，绝不提前压制！
-  const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
-  if (isWindowsPatched && config?.enabled && config?.features?.bootAnimation) {
+  // 宿主开机动画补丁第 0 毫秒确定性互斥防线 (BUG-024)：
+  // 只要 Windows 或 macOS 宿主已注入 loadingOverlay.js 补丁，由主进程原生 WebContentsView 独占接管，
+  // 在文档初始化的第 0 毫秒同步立下 __agyMasterBootHandled 铁锁，从源头彻底杜绝前端 DOM 容器并行偷跑与延后壁纸错乱。
+  // 在未打补丁的宿主上，开机动效由主窗口 DOM (boot-animation.js) 全程平滑承载，绝不提前压制！
+  if (isHostBootPatched && isBootActiveEffective(config)) {
     bundleParts.push(`(() => {
       try {
         window.__agyMasterBootHandled = true;
@@ -2499,6 +2783,7 @@ function buildClientBundle() {
   // 3. CRT 及设置菜单模块
   bundleParts.push(crtMod);
   bundleParts.push(appearanceMenuMod);
+  bundleParts.push(dashboardSettingsMod);
 
   // 4. 汉化与多语言模块（由 window.__agyI18n 动态控制语言切换）
   const hansCode = readClientModule('client/modules/i18n-engine.js');
@@ -2663,24 +2948,27 @@ function createCdpSession(target, port) {
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
 
-    // 🍎 macOS 专属视口零闪白防线：先校验是否已过开屏阶段，绝不将已完成启动的首页长期锁死在纯黑底板下
+    // 🍎 macOS 专属视口零闪白防线：仅在未打 loadingOverlay.js 补丁且尚未过开屏阶段时激活，绝不将已接管或已完成启动的首页锁死在纯黑底板下
     if (process.platform === 'darwin') {
       try {
         const cfg = readConfig();
-        let alreadyBooted = false;
-        try {
-          const bootCheck = await send('Runtime.evaluate', {
-            expression: `(() => {
-              try {
-                return !!(window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__'));
-              } catch (_) { return false; }
-            })()`,
-            returnByValue: true
-          });
-          alreadyBooted = !!bootCheck?.result?.value;
-        } catch (_) {}
+        const hostPatched = isHostBootOverlayPatched();
+        let alreadyBooted = hostPatched;
+        if (!alreadyBooted) {
+          try {
+            const bootCheck = await send('Runtime.evaluate', {
+              expression: `(() => {
+                try {
+                  return !!(window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__'));
+                } catch (_) { return false; }
+              })()`,
+              returnByValue: true
+            });
+            alreadyBooted = !!bootCheck?.result?.value;
+          } catch (_) {}
+        }
 
-        if (cfg?.enabled && cfg?.features?.bootAnimation && !alreadyBooted) {
+        if (!hostPatched && isBootActiveEffective(cfg) && !alreadyBooted) {
           await send('Emulation.setDefaultBackgroundColorOverride', {
             color: { r: 0, g: 0, b: 0, a: 1 }
           });
@@ -2726,15 +3014,18 @@ function createCdpSession(target, port) {
       } catch (_) {}
     }
 
-    // 关键优化：WebSocket 握手就绪时同步标题栏属性，绝不向 DOM 预埋多余全屏容器
+    // 关键优化：WebSocket 握手就绪时按需同步标题栏属性（仅开屏有效或壁纸皮肤激活时透明），绝不向 DOM 预埋多余全屏容器
     try {
-      await send('Runtime.evaluate', {
-        expression: `(() => {
-          if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
-            window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
-          }
-        })()`
-      });
+      const handshakeCfg = readConfig();
+      if (isBootActiveEffective(handshakeCfg) || isWallpaperSkinActive(handshakeCfg)) {
+        await send('Runtime.evaluate', {
+          expression: `(() => {
+            if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
+              window.electronNative.setTitleBarOverlay({ color: 'rgba(0, 0, 0, 0)', symbolColor: '#f8fafc', height: 35 }).catch(() => {});
+            }
+          })()`
+        });
+      }
     } catch (_) {}
     await executeInjection();
   };
@@ -2804,18 +3095,26 @@ function createCdpSession(target, port) {
               document.getElementById('agy-scene-boot-host')) {
             return true;
           }
-          const needStyle = cfg?.features?.themeStyles !== false;
           const wallCfg = cfg?.features?.dynamicWallpaper;
           const wallType = wallCfg?.sourceType || (wallCfg?.wallpaperDir ? 'scene' : 'video');
           const wallHasSource = wallType === 'video'
             ? !!(wallCfg?.videoPath && String(wallCfg.videoPath).trim())
             : !!(wallCfg?.wallpaperDir && String(wallCfg.wallpaperDir).trim());
-          const needWall = needStyle && wallCfg?.enabled === true && wallHasSource;
+          const needWall = cfg?.enabled !== false && cfg?.features?.themeStyles !== false && wallCfg?.enabled === true && wallHasSource;
+          const needStyle = needWall;
           if (needWall) {
             const wallElId = wallType === 'web' ? 'agy-dynamic-iframe' : (wallType === 'scene' ? 'agy-dynamic-scene' : 'agy-dynamic-video');
             if (!document.getElementById(wallElId)) return false;
           }
           if (needStyle && !document.getElementById("agy-dynamic-wallpaper-style")) return false;
+          if (!needStyle && (document.getElementById("agy-dynamic-wallpaper-style") || document.getElementById("agy-wallpaper-backdrop"))) {
+            if (typeof window.__agyApplyFeatures === 'function') {
+              try { window.__agyApplyFeatures(cfg); } catch (_) {}
+            }
+            if (document.getElementById("agy-dynamic-wallpaper-style") || document.getElementById("agy-wallpaper-backdrop")) {
+              return false;
+            }
+          }
           return true;
         })()`,
         returnByValue: true
@@ -2896,9 +3195,9 @@ function handleNativeLoadingOverlay(target, port) {
   if (!targetId || neutralizedLoadingTargets.has(targetId)) return;
   neutralizedLoadingTargets.add(targetId);
 
-  // 若 Windows 平台已打入自研 loadingOverlay 补丁，主进程原生接管，绝不重复介入
-  const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
-  if (isWindowsPatched) return;
+  // 若宿主已打入自研 loadingOverlay 补丁（Windows 或 macOS），主进程原生接管，绝不重复介入
+  const isHostPatched = isHostBootOverlayPatched();
+  if (isHostPatched) return;
 
   const wsUrl = target.webSocketDebuggerUrl || (port ? `ws://127.0.0.1:${port}/devtools/page/${targetId}` : null);
   if (!wsUrl) return;
@@ -3010,10 +3309,10 @@ async function connectBrowserTarget(port) {
           const info = msg.params?.targetInfo;
           if (info) {
             const url = (info.url || '').trim();
-            // 动态接管原生 loadingOverlay 遮罩（若 Windows 宿主已注入 loadingOverlay.js 补丁，由主进程独占管理，严禁外部重复介入）
-            const isWindowsPatched = process.platform === 'win32' && !!getBootPatchStatus().patched;
+            // 动态接管原生 loadingOverlay 遮罩（若 Windows 或 macOS 宿主已注入 loadingOverlay.js 补丁，由主进程独占管理，严禁外部重复介入）
+            const isHostPatched = isHostBootOverlayPatched();
             const lowerUrl = url.toLowerCase();
-            if (!isWindowsPatched && url.startsWith('data:') && (lowerUrl.includes('logo') || lowerUrl.includes('svg') || lowerUrl.includes('doctype') || lowerUrl.includes('%3c') || lowerUrl.includes('%23ffffff') || lowerUrl.includes('%23fafafa'))) {
+            if (!isHostPatched && url.startsWith('data:') && (lowerUrl.includes('logo') || lowerUrl.includes('svg') || lowerUrl.includes('doctype') || lowerUrl.includes('%3c') || lowerUrl.includes('%23ffffff') || lowerUrl.includes('%23fafafa'))) {
               handleNativeLoadingOverlay(info, port);
             } else if (isMainAppTarget(info)) {
               const targetId = info.targetId;

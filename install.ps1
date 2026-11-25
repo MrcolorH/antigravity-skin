@@ -62,6 +62,24 @@ if (-not $sourceRoot -or -not (Test-Path (Join-Path $sourceRoot "plugin.json")))
 
 try {
     Write-Host "[2/3] 部署插件运行环境至 $targetDir..." -ForegroundColor Green
+
+    # 存量 antigravity-pulse 无损迁移与清理（回退分支）
+    $pulseDir = Join-Path $pluginsDir "antigravity-pulse"
+    $pulseData = Join-Path $homeDir ".gemini\antigravity\sidecar_data\antigravity-pulse\panel\data"
+    $skinData = Join-Path $homeDir ".gemini\antigravity\sidecar_data\antigravity-skin\panel\data"
+    if (Test-Path $pulseData) {
+        if (-not (Test-Path $skinData)) { New-Item -ItemType Directory -Force -Path $skinData | Out-Null }
+        foreach ($sub in @("history-v1", "usage-v1")) {
+            $srcSub = Join-Path $pulseData $sub
+            $dstSub = Join-Path $skinData $sub
+            if ((Test-Path $srcSub) -and -not (Test-Path $dstSub)) {
+                Copy-Item -Path $srcSub -Destination $dstSub -Recurse -Force
+            }
+        }
+    }
+    if ((Test-Path $pulseDir) -and -not ((Get-Item $pulseDir).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        Remove-Item -Path $pulseDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if (-not (Test-Path $targetDir)) {
         New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
     }
@@ -111,6 +129,12 @@ try {
         $configObj["plugins"] = @{}
     }
     $configObj["plugins"]["antigravity-skin"] = @{ "enabled" = $true }
+    if ($configObj["plugins"].ContainsKey("antigravity-pulse")) {
+        $configObj["plugins"].Remove("antigravity-pulse")
+    }
+    if ($configObj.ContainsKey("sidecars") -and $configObj["sidecars"].ContainsKey("antigravity-pulse/panel")) {
+        $configObj["sidecars"].Remove("antigravity-pulse/panel")
+    }
     $updatedJson = $configObj | ConvertTo-Json -Depth 10
     Set-Content -Path $configFile -Value $updatedJson -Encoding UTF8
 

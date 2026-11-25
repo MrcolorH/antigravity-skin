@@ -4,6 +4,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { migrateLegacyPulse } from './migrate-pulse.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,6 +97,23 @@ function ensureProcessClosed() {
 }
 
 ensureProcessClosed();
+
+// 0.5 检测并平滑替换存量独立版 antigravity-pulse（必须在部署和 patch-boot-overlay 之前还原旧版 app.asar 补丁）
+try {
+  const pulseMigration = await migrateLegacyPulse({
+    home,
+    pluginsDir,
+    configFile,
+    targetPluginDir,
+    isInsideHost: isInsideAntigravityHost
+  });
+  if (pulseMigration.detected || pulseMigration.asarResult?.restored || pulseMigration.dataResult?.copied?.length) {
+    console.log('🔄 检测到存量独立版反重力看板 (antigravity-pulse)，已完成无损数据迁移与平滑替换。');
+  }
+} catch (migErr) {
+  console.error('❌ 存量反重力看板替换检查失败:', migErr.message);
+  process.exit(1);
+}
 
 // 1. 确保全局 plugins 目录存在
 if (!fs.existsSync(pluginsDir)) {
@@ -299,6 +317,8 @@ async function cleanRunningHost() {
               if (window.__agyWallpaperObserver) { try { window.__agyWallpaperObserver.disconnect(); } catch(e){} window.__agyWallpaperObserver = null; }
               if (window.__agyBubbleObserver) { try { window.__agyBubbleObserver.disconnect(); } catch(e){} window.__agyBubbleObserver = null; }
               if (window.__agyMenuObserver) { try { window.__agyMenuObserver.disconnect(); } catch(e){} window.__agyMenuObserver = null; }
+              if (typeof window.__agPulseDispose === 'function') { try { window.__agPulseDispose(); } catch(e){} }
+              if (window.__agPulseRuntimeBridge && typeof window.__agPulseRuntimeBridge.dispose === 'function') { try { window.__agPulseRuntimeBridge.dispose(); } catch(e){} }
               const oldVid = document.getElementById('agy-dynamic-video');
               if (oldVid) { oldVid.pause(); oldVid.remove(); }
               window.__AG_SKIN_ATTACHED__ = false;
@@ -316,27 +336,14 @@ async function cleanRunningHost() {
 
 await cleanRunningHost();
 
-// 5. 跨平台支持：自动执行内核调试端口与前置动效补丁
-// 直接注入 main.js 开启 remote-debugging-port，无需更换启动器，任何姿势打开客户端均默认带参生效！
+// 5. 跨平台支持：先完成自愈与快捷方式注册，最后执行内核调试端口与前置动效补丁（支持任意环境自动安全重启）
 if (process.platform === 'win32' || process.platform === 'darwin') {
-  console.log('\n[4/4] 正在配置客户端内核调试端口与开机动效补丁 (写入默认开启参数，无需外部启动器)...');
-  const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
-  const patchScript = fs.existsSync(deployedPatchScript) ? deployedPatchScript : path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
-  if (fs.existsSync(patchScript)) {
-    try {
-      execSync(`"${process.execPath}" "${patchScript}"`, { stdio: 'inherit' });
-    } catch (e) {
-      console.log('  ⚠️ 开机动画与内核补丁执行出现异常:', e.message);
-      console.log('     👉 您可随时在外观设置中点击「一键修复」重新合入！');
-    }
-  }
-
   // 注册开机自愈守护 (Windows)：客户端更新覆盖 app.asar 后，下次登录自动静默重打补丁
   if (process.platform === 'win32') {
     const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
     if (fs.existsSync(registerScript)) {
       try {
-        console.log('\n[5/5] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
+        console.log('\n[4/6] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
         execSync(`"${process.execPath}" "${registerScript}"`, { stdio: 'inherit' });
       } catch (e) {
         console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
@@ -345,7 +352,7 @@ if (process.platform === 'win32' || process.platform === 'darwin') {
 
     // 配置桌面与开始菜单快捷方式启动参数
     try {
-      console.log('\n[6/6] 正在配置 Windows 快捷方式启动参数...');
+      console.log('\n[5/6] 正在配置 Windows 快捷方式启动参数...');
       const psCmd = `
         $wsh = New-Object -ComObject WScript.Shell
         $paths = @(
@@ -370,17 +377,27 @@ if (process.platform === 'win32' || process.platform === 'darwin') {
           }
         }
       `;
-      execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\\r?\\n\\s*/g, ' ')}"`, { stdio: 'ignore' });
+      execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n\s*/g, ' ')}"`, { stdio: 'ignore' });
       console.log('  [√] 桌面与开始菜单快捷方式已成功加上 --remote-debugging-port=0 参数。');
     } catch (_) {}
+  }
+
+  console.log('\n[6/6] 正在配置客户端内核调试端口与开机动效补丁 (支持全场景自动安全重启)...');
+  const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
+  const patchScript = fs.existsSync(deployedPatchScript) ? deployedPatchScript : path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+  if (fs.existsSync(patchScript)) {
+    try {
+      execSync(`"${process.execPath}" "${patchScript}"`, { stdio: 'inherit' });
+    } catch (e) {
+      console.log('  ⚠️ 开机动画与内核补丁执行出现异常:', e.message);
+      console.log('     👉 您可随时在外观设置中点击「一键修复」重新合入！');
+    }
   }
 }
 
 function restartAntigravity() {
   if (isInsideAntigravityHost) {
-    console.log('\n✨ 插件、内核补丁与运行配置已全量就绪！');
-    console.log('🔔 提示：由于当前运行于 Antigravity 宿主环境内，安装程序未强行关闭当前会话。');
-    console.log('   请您在方便时使用快捷键 Cmd+Q 完全退出 Antigravity，再直接从程序坞 (Dock) 打开官方 Antigravity 即可自动秒级生效！');
+    console.log('\n✨ 插件、内核补丁与运行配置已全量就绪，Antigravity 即将在后台自动安全重启生效！');
     return;
   }
   console.log('\n✨ 正在自动为您重新拉起 Antigravity 客户端...');

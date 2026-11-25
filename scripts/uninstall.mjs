@@ -107,4 +107,14 @@ if (process.platform === 'win32') {
 
 console.log('==================================================');
 console.log(' [√] 卸载成功！已安全还原为官方初始状态。');
+const purgeData = process.argv.includes('--purge-data');
+if (purgeData) {
+  const sidecarDataDir = path.join(home, '.gemini', 'antigravity', 'sidecar_data', 'antigravity-skin');
+  if (fs.existsSync(sidecarDataDir)) {
+    try { fs.rmSync(sidecarDataDir, { recursive: true, force: true }); } catch (_) {}
+    console.log(' 🧹 已根据 --purge-data 参数清理看板历史统计数据。');
+  }
+} else {
+  console.log(' 💾 看板历史统计数据 (history-v1 / usage-v1) 已保留，如需彻底清理请附加 --purge-data。');
+}
 console.log('==================================================');

@@ -8,6 +8,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
+// 确保 npx 与当前 node 同目录优先级最高，避免 GUI 启动环境 PATH 精简导致找不到 npx
+try {
+  const execDir = path.dirname(process.execPath || '');
+  if (execDir && !String(process.env.PATH || '').split(path.delimiter).includes(execDir)) {
+    process.env.PATH = `${execDir}${path.delimiter}${process.env.PATH || ''}`;
+  }
+} catch (_) {}
+
 console.log('==================================================');
 console.log('  Antigravity 内核调试端口与开机动效补丁');
 console.log('==================================================');
@@ -70,16 +78,140 @@ const backupPath = path.join(resourcesDir, 'app.asar.bak');
 console.log(`[1/5] 检测到 Antigravity resources 目录: ${resourcesDir}`);
 
 let detectedExePath = null;
-const isInsideAntigravityHost = !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN || process.env.SKIP_KILL === '1');
+const isDetachedWorker = process.env.__AGY_DETACHED_PATCHER === '1' || process.argv.includes('--detached-worker');
+const skipRelaunch = process.env.SKIP_RELAUNCH === '1' || process.argv.includes('--no-restart');
+const skipKill = process.env.SKIP_KILL === '1' || process.argv.includes('--from-host');
+const isInsideAntigravityHost = !isDetachedWorker && !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN || skipKill);
+
+function getArgDelayMs() {
+  const arg = process.argv.find(a => a.startsWith('--delay-ms='));
+  if (!arg) return 0;
+  const n = parseInt(arg.split('=')[1], 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 10000) : 0;
+}
+
+const startupDelayMs = getArgDelayMs();
+if (startupDelayMs > 0) {
+  await new Promise(resolve => setTimeout(resolve, startupDelayMs));
+}
+
+function resolveMacAppBundlePath(resDir) {
+  if (resDir) {
+    const candidate = path.resolve(resDir, '..', '..');
+    if (candidate.endsWith('.app') && fs.existsSync(candidate)) return candidate;
+  }
+  const home = os.homedir();
+  const candidates = [
+    '/Applications/Antigravity.app',
+    path.join(home, 'Applications', 'Antigravity.app')
+  ];
+  return candidates.find(c => fs.existsSync(c)) || '';
+}
+
+function scheduleDetachedMacRestart(resDir) {
+  const appBundle = resolveMacAppBundlePath(resDir);
+  const restartScript = [
+    'sleep 1.2',
+    'osascript -e \'tell application "Antigravity" to quit\' >/dev/null 2>&1 || true',
+    'i=0',
+    'while [ $i -lt 30 ]; do',
+    '  if ! pgrep -f "/[A]ntigravity\\.app/Contents/" >/dev/null 2>&1; then break; fi',
+    '  sleep 0.2',
+    '  i=$((i + 1))',
+    'done',
+    'if pgrep -f "/[A]ntigravity\\.app/Contents/" >/dev/null 2>&1; then',
+    '  pkill -f "/[A]ntigravity\\.app/Contents/" >/dev/null 2>&1 || true',
+    '  j=0',
+    '  while [ $j -lt 15 ]; do',
+    '    if ! pgrep -f "/[A]ntigravity\\.app/Contents/" >/dev/null 2>&1; then break; fi',
+    '    sleep 0.2',
+    '    j=$((j + 1))',
+    '  done',
+    'fi',
+    'sleep 0.4',
+    'if [ -n "$AGY_APP_BUNDLE" ] && [ -d "$AGY_APP_BUNDLE" ]; then',
+    '  open -a "$AGY_APP_BUNDLE" --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
+    'else',
+    '  open -b com.google.antigravity --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
+    'fi'
+  ].join('\n');
+
+  const child = spawn('/bin/sh', ['-c', restartScript], {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, AGY_APP_BUNDLE: appBundle }
+  });
+  child.unref();
+}
+
+function spawnDetachedWindowsWorker() {
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.ANTIGRAVITY_LS_ADDRESS;
+  delete cleanEnv.ANTIGRAVITY_CSRF_TOKEN;
+  delete cleanEnv.SKIP_KILL;
+  delete cleanEnv.SKIP_RELAUNCH;
+  delete cleanEnv.ELECTRON_RUN_AS_NODE;
+  delete cleanEnv.ELECTRON_NO_ASAR;
+  delete cleanEnv.NODE_OPTIONS;
+  delete cleanEnv.NODE_ENV;
+  delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+  cleanEnv.__AGY_DETACHED_PATCHER = '1';
+
+  const nodeExe = process.execPath || 'node';
+  const needRunAsNode = path.basename(nodeExe).toLowerCase() !== 'node.exe';
+  const tmpCmd = path.join(os.tmpdir(), `agy-patch-worker-${Date.now()}.cmd`);
+  const cmdContent = [
+    '@echo off',
+    'chcp 65001 >nul 2>&1',
+    `cd /d "${PROJECT_ROOT}"`,
+    'set "ANTIGRAVITY_LS_ADDRESS="',
+    'set "ANTIGRAVITY_CSRF_TOKEN="',
+    'set "SKIP_KILL="',
+    'set "SKIP_RELAUNCH="',
+    needRunAsNode ? 'set "ELECTRON_RUN_AS_NODE=1"' : 'set "ELECTRON_RUN_AS_NODE="',
+    `"${nodeExe}" "${__filename}" --detached-worker --delay-ms=1200`,
+    'del "%~f0" >nul 2>&1'
+  ].join('\r\n');
+  fs.writeFileSync(tmpCmd, cmdContent, 'utf8');
+
+  try {
+    const psCmd = `Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','"${tmpCmd}"' -WindowStyle Hidden`;
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', psCmd], {
+      cwd: PROJECT_ROOT,
+      detached: true,
+      stdio: 'ignore',
+      env: cleanEnv
+    });
+    child.unref();
+    return true;
+  } catch (_) {
+    try {
+      const child = spawn('cmd.exe', ['/c', 'start', '""', '/min', tmpCmd], {
+        cwd: PROJECT_ROOT,
+        detached: true,
+        stdio: 'ignore',
+        env: cleanEnv
+      });
+      child.unref();
+      return true;
+    } catch (__) {
+      return false;
+    }
+  }
+}
+
+// Windows 锁文件特殊性：如果在 Antigravity 宿主内部且需要重启，必须先脱离父进程树再关闭宿主并覆盖 app.asar
+if (process.platform === 'win32' && isInsideAntigravityHost && !skipRelaunch) {
+  if (spawnDetachedWindowsWorker()) {
+    console.log('🚀 已派生独立后台修复守护进程，即将安全退出 Antigravity、写入补丁并自动重新启动...');
+    process.exit(0);
+  }
+}
 
 // 2. 检查并自动关闭运行中的 Antigravity 客户端（解除文件锁定）
 function ensureProcessClosed() {
-  if (isInsideAntigravityHost) {
-    console.log('📌 检测到当前运行于 Antigravity 宿主会话中，启用无感在线注入模式（跳过强制退出以防止中断会话）。');
-    return;
-  }
-  if (process.env.SKIP_KILL === '1') {
-    console.log('📌 已启用 SKIP_KILL 模式：跳过进程退出，采用无感在线写入。');
+  if (isInsideAntigravityHost || skipKill) {
+    console.log('📌 检测到当前运行于 Antigravity 宿主会话中，先完成补丁写入，稍后通过脱离进程自动安全重启。');
     return;
   }
   try {
@@ -121,26 +253,47 @@ function ensureProcessClosed() {
     } else if (process.platform === 'darwin') {
       let isRunning = false;
       try {
-        const out = execSync('pgrep -i antigravity', { encoding: 'utf8' });
+        const out = execSync('pgrep -f "/[A]ntigravity\\.app/Contents/"', { encoding: 'utf8' });
         if (out && out.trim()) isRunning = true;
       } catch (_) {}
 
       if (isRunning) {
-        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在自动安全退出以解除文件锁定...');
+        console.log('⚠️ 检测到 Antigravity 客户端正在运行，正在执行安全优雅退出...');
         try {
-          execSync('pkill -i antigravity', { stdio: 'ignore' });
+          execSync('osascript -e \'tell application "Antigravity" to quit\'', { stdio: 'ignore' });
         } catch (_) {}
 
         const start = Date.now();
-        while (Date.now() - start < 3000) {
+        let exited = false;
+        while (Date.now() - start < 4000) {
           try {
-            const chk = execSync('pgrep -i antigravity', { encoding: 'utf8' });
-            if (!chk || !chk.trim()) break;
+            const chk = execSync('pgrep -f "/[A]ntigravity\\.app/Contents/"', { encoding: 'utf8' });
+            if (!chk || !chk.trim()) {
+              exited = true;
+              break;
+            }
           } catch (_) {
+            exited = true;
             break;
           }
           const t = Date.now();
           while (Date.now() - t < 150) {}
+        }
+        if (!exited) {
+          try {
+            execSync('pkill -f "/[A]ntigravity\\.app/Contents/"', { stdio: 'ignore' });
+          } catch (_) {}
+          const forceStart = Date.now();
+          while (Date.now() - forceStart < 2000) {
+            try {
+              const chk = execSync('pgrep -f "/[A]ntigravity\\.app/Contents/"', { encoding: 'utf8' });
+              if (!chk || !chk.trim()) break;
+            } catch (_) {
+              break;
+            }
+            const t = Date.now();
+            while (Date.now() - t < 150) {}
+          }
         }
         console.log('     ✅ Antigravity 客户端已成功退出，文件句柄已完全释放。');
       }
@@ -243,6 +396,14 @@ try {
       fs.copyFileSync(tempAsarOut, asarPath);
       try { fs.unlinkSync(tempAsarOut); } catch (_) {}
     }
+    if (process.platform === 'darwin') {
+      try {
+        const appBundle = resolveMacAppBundlePath(resourcesDir);
+        if (appBundle && fs.existsSync(appBundle)) {
+          execSync(`codesign --force --deep --sign - "${appBundle}"`, { stdio: 'ignore' });
+        }
+      } catch (_) {}
+    }
     console.log('🎉 恭喜！前置开机动画已成功完成动态联动升级！');
     console.log('');
     console.log('📌 本次真·零闪白终极升级：');
@@ -253,6 +414,11 @@ try {
 
     // 7. 自动重新启动 Antigravity 客户端
     async function restartAntigravity() {
+      if (process.platform === 'darwin' && isInsideAntigravityHost) {
+        scheduleDetachedMacRestart(resourcesDir);
+        console.log('🚀 补丁已写入！独立后台进程将在约 1 秒后自动优雅退出并重启 Antigravity 生效...');
+        return;
+      }
       if (isInsideAntigravityHost) {
         console.log('⚡ 在线热注入完成：app.asar 补丁已就绪！下次直接打开官方 Antigravity（无需任何启动器或参数）即可秒级生效！');
         return;
@@ -261,20 +427,15 @@ try {
         console.log('');
         console.log('🚀 正在自动为您启动 Antigravity 客户端...');
         if (process.platform === 'darwin') {
-          const home = os.homedir();
-          const candidates = [
-            '/Applications/Antigravity.app',
-            path.join(home, 'Applications', 'Antigravity.app')
-          ];
-          for (const app of candidates) {
-            if (fs.existsSync(app)) {
-              execSync(`open -a "${app}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
-              console.log('✨ 客户端已成功拉起启动！');
-              return;
-            }
+          const appBundle = resolveMacAppBundlePath(resourcesDir);
+          if (appBundle && fs.existsSync(appBundle)) {
+            execSync(`open -a "${appBundle}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
+            console.log('✨ 客户端已成功拉起启动！');
+            return;
           }
           execSync('open -b com.google.antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
           console.log('✨ 客户端已成功拉起启动！');
+          return;
         } else if (process.platform === 'win32') {
           function findAntigravityExe() {
             // 1. 优先使用关闭前检测到的运行路径
@@ -406,10 +567,10 @@ try {
       }
     }
 
-    if (process.env.SKIP_KILL !== '1' && process.env.SKIP_RELAUNCH !== '1') {
+    if (!skipRelaunch) {
       await restartAntigravity();
 
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' && !isDetachedWorker && !isInsideAntigravityHost) {
         console.log('');
         console.log('==================================================');
         console.log('🎉 恭喜！前置开机动画已成功完成动态联动升级！');
@@ -417,8 +578,8 @@ try {
         console.log('💡 补丁已全部就绪，本窗口将在 3 秒后自动关闭...');
         await new Promise(r => setTimeout(r, 3000));
       }
-    } else if (process.env.SKIP_RELAUNCH === '1') {
-      console.log('🩺 自愈模式完成：补丁已就绪，客户端保持关闭状态，下次启动即生效。');
+    } else if (skipRelaunch) {
+      console.log('🩺 自愈/免重启模式完成：补丁已就绪，下次启动或按需重启后生效。');
     } else {
       console.log('⚡ 在线热注入完成：app.asar 已直接更新就绪，无需中断当前工作会话！');
     }

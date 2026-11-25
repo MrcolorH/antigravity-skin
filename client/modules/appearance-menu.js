@@ -515,7 +515,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
             </span>
             <span class="text-sm font-medium">自定义皮肤与动效增强</span>
           </div>
-          <span class="text-xs text-muted-foreground opacity-65">开启后启用毛玻璃穿透、动态壁纸与自定义动效，原生浅色/深色均可自由搭配</span>
+          <span class="text-xs text-muted-foreground opacity-65">开启后可独立配置动态壁纸（含毛玻璃界面美化）与开机引导动画，原生浅色/深色均可自由搭配</span>
         </div>
         <div class="shrink-0">
           ${createSwitchHtml('agy-opt-custom-theme', isCustomThemeEnabled)}
@@ -529,7 +529,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
-    if (customOptions && (!customOptions.querySelector('#agy-group-chat-style') || !customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || (isWin && !customOptions.querySelector('#agy-btn-fix-boot-overlay')) || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
+    if (customOptions && (!customOptions.querySelector('#agy-group-chat-style') || !customOptions.querySelector('#agy-wrap-video-path #agy-chat-style-row') || !customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || !customOptions.querySelector('#agy-btn-fix-boot-overlay') || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
       customOptions.remove();
       customOptions = null;
     }
@@ -539,34 +539,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       customOptions.className = 'divide-y divide-border bg-transparent';
       customOptions.style.display = isCustomThemeEnabled ? 'block' : 'none';
       customOptions.innerHTML = `
-        <!-- AI 对话展示样式切换（气泡卡片 / 模拟原版） -->
-        <div class="py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center" id="agy-chat-style-row">
-          <div class="flex-1 flex flex-col gap-0.5">
-            <div class="flex items-center gap-1.5">
-              <span class="text-sm font-medium">AI 对话样式</span>
-              <span class="text-xs text-muted-foreground opacity-60">Chat Style</span>
-            </div>
-            <span class="text-xs text-muted-foreground opacity-65" id="agy-chat-style-desc">${chatStyleMode === 'native' ? '模拟原版无外框排版，正文与表格直透壁纸，代码块保留独立毛玻璃底衬' : '毛玻璃圆角卡片包裹每条 AI 回复，层次分明且阅读柔和'}</span>
-          </div>
-          <div class="shrink-0">
-            <div role="group" id="agy-group-chat-style" class="agy-seg-group select-none h-8">
-              <button type="button" id="agy-chat-style-bubble" class="agy-seg-btn text-xs px-3 gap-1 ${chatStyleMode !== 'native' ? 'active' : ''}" ${chatStyleMode !== 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
-                <span>💬 气泡卡片</span>
-              </button>
-              <button type="button" id="agy-chat-style-native" class="agy-seg-btn text-xs px-3 gap-1 ${chatStyleMode === 'native' ? 'active' : ''}" ${chatStyleMode === 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
-                <span>✨ 模拟原版</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- 全局动态视频壁纸开关 -->
         <div class="py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center">
           <div class="flex-1 flex flex-col gap-0.5">
             <div class="flex items-center gap-1.5">
               <span class="text-sm font-medium">全局动态视频壁纸</span>
             </div>
-            <span class="text-xs text-muted-foreground opacity-65">在底层循环播放流媒体壁纸（关闭时仅保留毛玻璃穿透）</span>
+            <span class="text-xs text-muted-foreground opacity-65">开启后呈现动态壁纸并启用全局毛玻璃与气泡美化；关闭后主界面保持官方原版</span>
           </div>
           <div class="shrink-0">
             ${createSwitchHtml('agy-opt-wallpaper', dw.enabled === true)}
@@ -575,6 +554,27 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
 
         <!-- 动态壁纸展开子区域 -->
         <div class="py-2.5 px-3 w-full bg-transparent flex flex-col gap-2.5" id="agy-wrap-video-path" style="display: ${dw.enabled === true ? 'flex' : 'none'}; background: rgba(0,0,0,0.08); border-radius: 8px; margin: 4px 0 8px 0;">
+          <!-- AI 对话展示样式切换（气泡卡片 / 模拟原版，跟随动态壁纸开关显隐） -->
+          <div class="flex justify-between gap-4 items-center pb-2 border-b border-border/40" id="agy-chat-style-row">
+            <div class="flex-1 flex flex-col gap-0.5">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-medium">AI 对话样式</span>
+                <span class="text-[11px] text-muted-foreground opacity-60">Chat Style</span>
+              </div>
+              <span class="text-[11px] text-muted-foreground opacity-65" id="agy-chat-style-desc">${chatStyleMode === 'native' ? '模拟原版无外框排版，正文与表格直透壁纸，代码块保留独立毛玻璃底衬' : '毛玻璃圆角卡片包裹每条 AI 回复，层次分明且阅读柔和'}</span>
+            </div>
+            <div class="shrink-0">
+              <div role="group" id="agy-group-chat-style" class="agy-seg-group select-none h-7">
+                <button type="button" id="agy-chat-style-bubble" class="agy-seg-btn text-xs px-2.5 gap-1 ${chatStyleMode !== 'native' ? 'active' : ''}" ${chatStyleMode !== 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
+                  <span>💬 气泡卡片</span>
+                </button>
+                <button type="button" id="agy-chat-style-native" class="agy-seg-btn text-xs px-2.5 gap-1 ${chatStyleMode === 'native' ? 'active' : ''}" ${chatStyleMode === 'native' ? 'data-pressed="" aria-pressed="true"' : 'aria-pressed="false"'}>
+                  <span>✨ 模拟原版</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- 素材库开关（动态壁纸维度） -->
           <div class="flex justify-between gap-4 items-center pb-1.5 border-b border-border/40" id="agy-wallpaper-lib-row">
             <div class="flex-1 flex flex-col gap-0.5">
@@ -1525,6 +1525,21 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         if (wrapV.style.display !== d) wrapV.style.display = d;
       }
 
+      // 同步 AI 对话样式状态
+      const liveChatMode = f.chatStyleMode === 'native' ? 'native' : 'bubble';
+      const gChat = customOptions.querySelector('#agy-group-chat-style');
+      const bBubble = customOptions.querySelector('#agy-chat-style-bubble');
+      const bNative = customOptions.querySelector('#agy-chat-style-native');
+      const dChat = customOptions.querySelector('#agy-chat-style-desc');
+      if (gChat && bBubble && bNative) {
+        syncSegmentedState(gChat, liveChatMode === 'native' ? bNative : bBubble);
+      }
+      if (dChat) {
+        dChat.textContent = liveChatMode === 'native'
+          ? '模拟原版无外框排版，正文与表格直透壁纸，代码块保留独立毛玻璃底衬'
+          : '毛玻璃圆角卡片包裹每条 AI 回复，层次分明且阅读柔和';
+      }
+
       // 同步壁纸交互穿透开关及修饰键状态
       const optInteract = customOptions.querySelector('#agy-opt-wallpaper-interact');
       const selInteractKey = customOptions.querySelector('#agy-select-interact-key');
@@ -1635,7 +1650,11 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       activeCfg.features.chatStyleMode = chatStyleMode;
       config.features.chatStyleMode = chatStyleMode;
       if (document.documentElement) {
-        document.documentElement.classList.toggle('agy-chat-native', isCustomThemeEnabled && chatStyleMode === 'native');
+        const dwCfg = activeCfg.features.dynamicWallpaper || {};
+        const isWallActive = typeof window.__agyIsWallpaperSkinActive === 'function'
+          ? window.__agyIsWallpaperSkinActive(activeCfg)
+          : (activeCfg.enabled !== false && activeCfg.features.themeStyles !== false && dwCfg.enabled === true && !!(dwCfg.videoPath || dwCfg.wallpaperDir));
+        document.documentElement.classList.toggle('agy-chat-native', isWallActive && chatStyleMode === 'native');
       }
       triggerSave();
     }
@@ -2665,15 +2684,15 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
         const confirmed = confirm(
           '⚠️ 即将执行开机动效与内核补丁修复：\n\n' +
           '• 原理：Antigravity 客户端升级会覆盖官方资源文件，此操作将重新合入开机动效与调试端口补丁。\n' +
-          '• 效果：合入后无需任何特殊启动器，任何方式打开客户端均默认支持全量皮肤与毛玻璃动效。\n\n' +
-          '是否立即开始修复？'
+          '• 重启提示：补丁写入完成后将自动安全关闭并重启 Antigravity，请先确认无未保存工作。\n\n' +
+          '是否立即开始修复并自动重启？'
         );
         if (!confirmed) return;
 
         btnFixBoot.disabled = true;
         btnFixBoot.innerHTML = '<span>⏳ 正在启动修复...</span>';
         if (tipWinPatch) {
-          tipWinPatch.textContent = '🚀 正在启动修复引擎，请稍候片刻...';
+          tipWinPatch.textContent = '🚀 正在启动修复引擎，完成后将自动重启客户端...';
           tipWinPatch.className = 'text-[11px] text-amber-400 font-medium';
         }
 
@@ -2686,9 +2705,11 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           if (!data.ok) {
             throw new Error(data.error || '调用修复接口失败');
           }
-          btnFixBoot.innerHTML = '<span>✅ 补丁已就绪</span>';
+          btnFixBoot.innerHTML = data.autoRestart === false ? '<span>✅ 补丁已就绪</span>' : '<span>🔄 正在自动重启...</span>';
           if (tipWinPatch) {
-            tipWinPatch.textContent = '✅ 补丁已成功合入！下次打开客户端即可自动生效。';
+            tipWinPatch.textContent = data.autoRestart === false
+              ? '✅ 补丁已成功合入！下次打开客户端即可自动生效。'
+              : '✅ 补丁修复引擎已触发，客户端即将自动安全重启生效...';
             tipWinPatch.className = 'text-[11px] text-emerald-500 font-medium';
           }
         } catch (err) {
@@ -3051,6 +3072,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           return false;
         }
         if (target.id === 'ag-pulse-status-bar' || (target.closest && target.closest('#ag-pulse-status-bar'))) return false;
+        if (target.id === 'agy-dashboard-settings-card' || (target.closest && target.closest('#agy-dashboard-settings-card'))) return false;
         return true;
       });
       if (!hasHostMutation) return;

@@ -9,7 +9,7 @@ $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyI
 
 if ($scriptDir -and (Test-Path (Join-Path $scriptDir "scripts\uninstall.mjs"))) {
     if (Get-Command node -ErrorAction SilentlyContinue) {
-        node (Join-Path $scriptDir "scripts\uninstall.mjs")
+        node (Join-Path $scriptDir "scripts\uninstall.mjs") @args
         exit 0
     }
 }

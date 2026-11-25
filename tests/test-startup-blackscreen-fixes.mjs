@@ -168,6 +168,10 @@ function createMockDOM(options = {}) {
       const clean = p.split(':')[0].trim();
       if (clean.startsWith('#') && el.id === clean.slice(1)) return true;
       if (clean.startsWith('.') && el.classList.contains(clean.slice(1))) return true;
+      if (clean.includes('.') && !clean.startsWith('.')) {
+        const [t, cls] = clean.split('.');
+        if (el.tagName === t.toUpperCase() && el.classList.contains(cls)) return true;
+      }
       if (clean.startsWith('[') && clean.endsWith(']')) {
         const attr = clean.slice(1, -1);
         if (el.hasAttribute(attr)) return true;
@@ -738,6 +742,376 @@ test('7.3 glass-theme.css 覆盖官方 browser-hole 涂刷的实黑底板与渐�
   assert.ok(cssSrc.includes('[data-tiling-pane]'), '必须声明 [data-tiling-pane] 透明穿透');
   assert.ok(cssSrc.includes('[data-aux-pane-open][data-has-browser-hole="true"]'), '必须移除浏览器视口辅助侧边栏的 backdrop-filter 与实色底');
   assert.ok(cssSrc.includes('browser-url-bar'), '底部输入框样式必须避开浏览器地址栏 form');
+});
+
+// =========================================================================
+// 8. 自定义样式、动态壁纸与开屏动画解耦及原版还原回归测试
+// =========================================================================
+test('8.1 关闭动态壁纸或未选素材时，不挂载黑底/毛玻璃/ContrastGuard且恢复原生WCO', async () => {
+  const opLog = [];
+  const { Elem, mockWin, mockDoc, sessionStorage, MockMutationObserver } = createMockDOM({ opLog });
+  const wcoCalls = [];
+  mockWin.electronNative = {
+    setTitleBarOverlay: async (opts) => { wcoCalls.push(opts); }
+  };
+  mockWin.__AG_SKIN_GLASS_CSS__ = '#agy-wallpaper-backdrop { background: #000; }';
+  mockWin.__AG_SKIN_CONFIG__ = {
+    enabled: true,
+    features: {
+      themeStyles: true,
+      bootAnimation: true,
+      chineseLocalization: false,
+      chatStyleMode: 'native',
+      dynamicWallpaper: { enabled: false, sourceType: 'video', videoPath: '/fake/wall.mp4' }
+    }
+  };
+
+  // 先放一个普通文本节点，验证 ContrastGuard 不会运行改色
+  const sampleText = new Elem('SPAN', 'plain-txt');
+  sampleText.textContent = 'Native UI text';
+  sampleText._computedColor = 'rgb(15, 15, 15)';
+  mockDoc.body.appendChild(sampleText);
+
+  globalThis.window = mockWin;
+  globalThis.document = mockDoc;
+  globalThis.sessionStorage = sessionStorage;
+  globalThis.history = { pushState() {}, replaceState() {} };
+  globalThis.MutationObserver = MockMutationObserver;
+  globalThis.getComputedStyle = mockWin.getComputedStyle;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+  Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
+
+  await import(`../client/modules/wallpaper.js?decouple=${Date.now()}`);
+  mockWin.__agyInitAppearanceMenu = () => ({ destroy() {} });
+
+  const indexCode = fs.readFileSync(path.join(ROOT, 'client/index.js'), 'utf8');
+  const fn = new Function(
+    'window', 'document', 'sessionStorage', 'MutationObserver', 'getComputedStyle', 'fetch',
+    indexCode
+  );
+  fn(mockWin, mockDoc, sessionStorage, MockMutationObserver, mockWin.getComputedStyle, globalThis.fetch);
+
+  assert.equal(mockWin.__agyIsWallpaperSkinActive(mockWin.__AG_SKIN_CONFIG__), false, '动态壁纸关闭时壁纸皮肤激活态必须为 false');
+  assert.equal(mockDoc.getElementById('agy-wallpaper-backdrop'), null, '动态壁纸关闭时严禁创建纯黑 #agy-wallpaper-backdrop');
+  assert.equal(mockDoc.getElementById('agy-dynamic-wallpaper-style'), null, '动态壁纸关闭时严禁注入毛玻璃样式');
+  assert.equal(mockDoc.documentElement.classList.contains('agy-chat-native'), false, '动态壁纸关闭时严禁挂载 agy-chat-native');
+  assert.equal(mockDoc.documentElement.classList.contains('agy-dark-wallpaper'), false);
+  assert.equal(mockDoc.documentElement.classList.contains('agy-light-wallpaper'), false);
+
+  mockWin.__agyContrastGuard();
+  assert.equal(sampleText.getAttribute('data-agy-cg'), null, '原版模式下 ContrastGuard 不得篡改节点颜色');
+
+  const lastWco = wcoCalls[wcoCalls.length - 1];
+  assert.ok(lastWco && lastWco.color !== 'rgba(0, 0, 0, 0)', '无壁纸且非开屏期，WCO 必须使用原生实色而非透明底');
+
+  // 边界态：打开动态壁纸开关但未选定任何素材
+  mockWin.__agyApplyFeatures({
+    enabled: true,
+    features: {
+      themeStyles: true,
+      bootAnimation: false,
+      chineseLocalization: false,
+      chatStyleMode: 'native',
+      dynamicWallpaper: { enabled: true, sourceType: 'video', videoPath: '' }
+    }
+  });
+  assert.equal(mockDoc.getElementById('agy-wallpaper-backdrop'), null, '空素材边界下严禁提前挂载黑底');
+  assert.equal(mockDoc.getElementById('agy-dynamic-wallpaper-style'), null, '空素材边界下严禁提前注入透明样式');
+});
+
+test('8.2 从壁纸激活态热切换关闭动态壁纸时，完整卸载样式、底板、气泡按钮与对比度属性', async () => {
+  const { Elem, mockWin, mockDoc, sessionStorage, MockMutationObserver } = createMockDOM();
+  const wcoCalls = [];
+  mockWin.electronNative = {
+    setTitleBarOverlay: async (opts) => { wcoCalls.push(opts); }
+  };
+  mockWin.__AG_SKIN_GLASS_CSS__ = '#agy-wallpaper-backdrop { background: #000; }';
+  mockWin.__AG_SKIN_CONFIG__ = {
+    enabled: true,
+    features: {
+      themeStyles: true,
+      bootAnimation: false,
+      chineseLocalization: false,
+      chatStyleMode: 'native',
+      dynamicWallpaper: { enabled: true, sourceType: 'video', videoPath: '/fake/wall.mp4' }
+    }
+  };
+
+  // 模拟已有用户提问气泡折叠按钮与场景样式节点
+  const card = new Elem('DIV');
+  card.classList.add('user-bubble-card');
+  card.setAttribute('data-user-collapsed', 'true');
+  card.setAttribute('data-user-collapsible', 'true');
+  card.setAttribute('data-has-text', 'true');
+  card.setAttribute('data-agy-enhanced', 'true');
+  const collapseBtn = new Elem('BUTTON');
+  collapseBtn.classList.add('agy-user-collapse-btn');
+  card.appendChild(collapseBtn);
+  mockDoc.body.appendChild(card);
+
+  const sceneStyle = new Elem('STYLE', 'agy-scene-style');
+  mockDoc.head.appendChild(sceneStyle);
+  const loaderOverlay = new Elem('DIV', 'agy-session-loader-overlay');
+  mockDoc.body.appendChild(loaderOverlay);
+
+  globalThis.window = mockWin;
+  globalThis.document = mockDoc;
+  globalThis.sessionStorage = sessionStorage;
+  globalThis.history = { pushState() {}, replaceState() {} };
+  globalThis.MutationObserver = MockMutationObserver;
+  globalThis.getComputedStyle = mockWin.getComputedStyle;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+  Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
+
+  await import(`../client/modules/wallpaper.js?rollback=${Date.now()}`);
+  mockWin.__agyInitAppearanceMenu = () => ({ destroy() {} });
+
+  const indexCode = fs.readFileSync(path.join(ROOT, 'client/index.js'), 'utf8');
+  const fn = new Function(
+    'window', 'document', 'sessionStorage', 'MutationObserver', 'getComputedStyle', 'fetch',
+    indexCode
+  );
+  fn(mockWin, mockDoc, sessionStorage, MockMutationObserver, mockWin.getComputedStyle, globalThis.fetch);
+
+  // 激活态验证
+  assert.ok(mockDoc.getElementById('agy-wallpaper-backdrop'), '激活态应存在底板');
+  assert.ok(mockDoc.getElementById('agy-dynamic-wallpaper-style'), '激活态应存在毛玻璃样式');
+  assert.equal(mockDoc.documentElement.classList.contains('agy-chat-native'), true);
+
+  // 热切换关闭动态壁纸
+  wcoCalls.length = 0;
+  mockWin.__agySkinBridge.saveConfig({
+    enabled: true,
+    features: {
+      themeStyles: true,
+      bootAnimation: false,
+      chineseLocalization: false,
+      chatStyleMode: 'native',
+      dynamicWallpaper: { enabled: false, sourceType: 'video', videoPath: '/fake/wall.mp4' }
+    }
+  });
+
+  assert.equal(mockDoc.getElementById('agy-wallpaper-backdrop'), null, '关闭后必须移除 #agy-wallpaper-backdrop');
+  assert.equal(mockDoc.getElementById('agy-dynamic-wallpaper-style'), null, '关闭后必须移除 #agy-dynamic-wallpaper-style');
+  assert.equal(mockDoc.getElementById('agy-scene-style'), null, '关闭后必须移除 #agy-scene-style');
+  assert.equal(mockDoc.getElementById('agy-session-loader-overlay'), null, '关闭后必须移除 #agy-session-loader-overlay');
+  assert.equal(mockDoc.querySelectorAll('.agy-user-collapse-btn').length, 0, '关闭后必须清除用户气泡折叠按钮');
+  assert.equal(card.classList.contains('user-bubble-card'), false, '关闭后必须清除 .user-bubble-card');
+  assert.equal(card.hasAttribute('data-user-collapsed'), false);
+  assert.equal(card.hasAttribute('data-agy-enhanced'), false);
+  assert.equal(mockDoc.documentElement.classList.contains('agy-chat-native'), false);
+  assert.equal(mockDoc.documentElement.classList.contains('agy-dark-wallpaper'), false);
+  assert.equal(mockDoc.documentElement.classList.contains('agy-light-wallpaper'), false);
+  assert.ok(wcoCalls.some(c => c.color !== 'rgba(0, 0, 0, 0)'), '热关闭后必须将 WCO 恢复原生实色');
+});
+
+test('8.3 总开关关闭联动开屏停用；单独开启开屏动画时就绪放行不阻塞', async () => {
+  // A. main.mjs shouldInlineWebWallGL 在 themeStyles:false 时必须返回 false
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'sidecars/skin-engine/main.mjs'), 'utf8');
+  const fnStart = mainSrc.indexOf('function shouldInlineWebWallGL(cfg)');
+  const hashEnd = mainSrc.indexOf('async function ensureWebWallGLOnActiveSessions()');
+  const sandbox = {};
+  vm.runInNewContext(`${mainSrc.slice(fnStart, hashEnd)}\nthis.shouldInlineWebWallGL = shouldInlineWebWallGL;\nthis.isBootActiveEffective = isBootActiveEffective;\nthis.isWallpaperSkinActive = isWallpaperSkinActive;`, sandbox);
+
+  assert.equal(sandbox.isBootActiveEffective({
+    enabled: true,
+    features: { themeStyles: false, bootAnimation: true }
+  }), false, '总开关 themeStyles:false 时必须停用开屏动画');
+  assert.equal(sandbox.shouldInlineWebWallGL({
+    enabled: true,
+    features: { themeStyles: false, bootAnimation: true, bootAnimationConfig: { mode: 'scene' }, dynamicWallpaper: { enabled: true, sourceType: 'scene', wallpaperDir: '/s' } }
+  }), false, '总开关关闭时不得内联 webwallgl');
+
+  // B. boot-animation.js 在 themeStyles:false 时不得锁定 __agyBootPlaying
+  {
+    const { mockWin, mockDoc, sessionStorage } = createMockDOM();
+    mockWin.__AG_SKIN_CONFIG__ = {
+      enabled: true,
+      features: { themeStyles: false, bootAnimation: true, bootAnimationConfig: { type: 'video', videoPath: '/v.mp4' } }
+    };
+    const bootCode = fs.readFileSync(path.join(ROOT, 'client/modules/boot-animation.js'), 'utf8');
+    new Function('window', 'document', 'sessionStorage', 'fetch', bootCode)(
+      mockWin, mockDoc, sessionStorage, async () => ({ ok: true })
+    );
+    assert.notEqual(mockWin.__agyBootPlaying, true, '总开关关闭时冷启动不得锁定 __agyBootPlaying');
+    mockWin.__triggerBootAnimation();
+    assert.equal(mockDoc.getElementById('agy-video-boot-host'), null, '总开关关闭时 __triggerBootAnimation 不得创建开屏遮罩');
+  }
+
+  // C. 只开总开关 + 开屏动画（关闭壁纸），__agyIsHostTrulyReady 在无壁纸 DOM 时应立即放行
+  {
+    const { Elem, mockWin, mockDoc, sessionStorage, MockMutationObserver } = createMockDOM();
+    const rootEl = new Elem('DIV', 'root');
+    rootEl.appendChild(new Elem('MAIN'));
+    mockDoc.body.appendChild(rootEl);
+    mockWin.__AG_SKIN_CONFIG__ = {
+      enabled: true,
+      features: {
+        themeStyles: true,
+        bootAnimation: true,
+        dynamicWallpaper: { enabled: false, sourceType: 'video', videoPath: '' }
+      }
+    };
+    globalThis.window = mockWin;
+    globalThis.document = mockDoc;
+    globalThis.sessionStorage = sessionStorage;
+    globalThis.history = { pushState() {}, replaceState() {} };
+    globalThis.MutationObserver = MockMutationObserver;
+    await import(`../client/modules/wallpaper.js?bootonly=${Date.now()}`);
+    assert.equal(mockWin.__agyIsHostTrulyReady(), true, '仅开启开屏动画时主界面框架就绪即放行');
+  }
+});
+
+test('8.4 Sidecar checkHealthAndHeal 与 loadingOverlay.js 门控对齐检查', () => {
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'sidecars/skin-engine/main.mjs'), 'utf8');
+  assert.ok(
+    mainSrc.includes('const needWall = cfg?.enabled !== false && cfg?.features?.themeStyles !== false && wallCfg?.enabled === true && wallHasSource;') &&
+    mainSrc.includes('const needStyle = needWall;'),
+    'checkHealthAndHeal 必须以壁纸激活态作为 needStyle 判定条件，避免纯原版/仅开屏模式误判重注'
+  );
+
+  const overlaySrc = fs.readFileSync(path.join(ROOT, 'loadingOverlay.js'), 'utf8');
+  assert.ok(overlaySrc.includes('const isBootEnabled = isBootActiveEffective(cfg);'), 'loadingOverlay 必须使用 isBootActiveEffective 判断开屏');
+  assert.ok(overlaySrc.includes('this.__agyBootOverlayActive || isWallpaperSkinActive(cfg)'), 'WCO 原型拦截必须仅在开屏中或壁纸激活时强制透明');
+  assert.ok(overlaySrc.includes('restoreNativeTitleBarAndBg()'), 'loadingOverlay 退场且无壁纸时必须还原原生标题栏与背景');
+});
+
+test('8.5 外观菜单：AI 对话样式移入动态壁纸子配置区并更新引导文案', () => {
+  const menuSrc = fs.readFileSync(path.join(ROOT, 'client/modules/appearance-menu.js'), 'utf8');
+  const videoWrapStart = menuSrc.indexOf('id="agy-wrap-video-path"');
+  const wallLibRowStart = menuSrc.indexOf('id="agy-wallpaper-lib-row"');
+  const bootSectionStart = menuSrc.indexOf("createSwitchHtml('agy-opt-boot'");
+  const chatRowPos = menuSrc.indexOf('id="agy-chat-style-row"');
+  assert.ok(videoWrapStart > 0 && wallLibRowStart > videoWrapStart && bootSectionStart > wallLibRowStart, '必须存在动态壁纸展开区与开屏区块');
+  assert.ok(chatRowPos > videoWrapStart && chatRowPos < wallLibRowStart && chatRowPos < bootSectionStart, 'AI 对话样式必须位于 #agy-wrap-video-path 内部，跟随动态壁纸开关显隐');
+  assert.ok(menuSrc.includes('#agy-wrap-video-path #agy-chat-style-row'), '幂等重建条件必须检测 #agy-chat-style-row 已嵌套在 #agy-wrap-video-path 内');
+  assert.equal(menuSrc.includes('关闭时仅保留毛玻璃穿透'), false, '必须移除误导性的「关闭时仅保留毛玻璃穿透」文案');
+});
+
+test('8.6 跨平台补丁识别（macOS/Windows）与 loadingOverlay 退场抗闪白清理闭环', () => {
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'sidecars/skin-engine/main.mjs'), 'utf8');
+  assert.ok(mainSrc.includes('function isHostBootOverlayPatched('), 'main.mjs 必须抽取跨平台宿主补丁判定 helper');
+  assert.equal(mainSrc.includes('const isWindowsPatched ='), false, '不得再将 loadingOverlay.js 补丁接管硬编码限制在 win32');
+  assert.ok(mainSrc.includes("f.bootAnimationConfig.type === 'scene' || f.bootAnimationConfig.mode === 'scene'"), 'shouldInlineWebWallGL 应兼容 scene 开屏 type 与 mode 字段');
+  assert.ok(mainSrc.includes('if (!hostPatched && isBootActiveEffective(cfg) && !alreadyBooted)'), 'macOS 已打补丁时 ws.onopen 不得注入 #agy-macos-anti-flash');
+
+  const overlaySrc = fs.readFileSync(path.join(ROOT, 'loadingOverlay.js'), 'utf8');
+  assert.ok(overlaySrc.includes('buildRendererBootSyncScript'), 'loadingOverlay.js 应统一构建渲染进程开屏状态同步脚本');
+  assert.ok(
+    overlaySrc.includes('window.__agyHostOverlayActive = ${overlayActive') &&
+    overlaySrc.includes('buildRendererBootSyncScript({ overlayActive: false, removeHosts: true, resumeWallpaper: true })') &&
+    overlaySrc.includes('buildRendererBootSyncScript({ overlayActive: false, resumeWallpaper: true })'),
+    'loadingOverlay 淡出与移除时必须释放 __agyHostOverlayActive'
+  );
+  assert.ok(overlaySrc.includes('__agyCleanMacAntiFlash') && overlaySrc.includes('agy-macos-anti-flash'), 'loadingOverlay 必须清理残留的 macOS 防闪白样式并通知 /api/boot-finished');
+});
+
+test('8.7 wallpaper.js document_start 挂载后在 DOMContentLoaded 自动迁入 head/body 末位并清除残留防闪白', async () => {
+  const { Elem, mockWin, mockDoc, sessionStorage, MockMutationObserver } = createMockDOM({ readyState: 'loading' });
+  const docListeners = [];
+  const origAddDocListener = mockDoc.addEventListener.bind(mockDoc);
+  mockDoc.addEventListener = (type, cb, opts) => {
+    docListeners.push({ type, cb, opts });
+    origAddDocListener(type, cb, opts);
+  };
+
+  // 模拟 document_start 时 head 与 body 尚未构建，但 documentElement 已有残留防闪白样式
+  const origHead = mockDoc.head;
+  const origBody = mockDoc.body;
+  mockDoc.documentElement.children.length = 0;
+  mockDoc.documentElement.childNodes.length = 0;
+  mockDoc.head = null;
+  mockDoc.body = null;
+  sessionStorage.setItem('__agy_booted__', 'true');
+  mockWin.__agyBootPlaying = false;
+  mockWin.__agyMasterBootHandled = true;
+  mockWin.__AG_SKIN_PORT__ = 59288;
+  mockWin.__AG_SKIN_CONFIG__ = {
+    enabled: true,
+    features: {
+      themeStyles: true,
+      bootAnimation: true,
+      dynamicWallpaper: { enabled: true, sourceType: 'scene', wallpaperDir: '/fake/scene' }
+    }
+  };
+  const antiFlash = new Elem('STYLE', 'agy-macos-anti-flash');
+  mockDoc.documentElement.appendChild(antiFlash);
+  mockDoc.documentElement.style.background = '#000000';
+
+  globalThis.window = mockWin;
+  globalThis.document = mockDoc;
+  globalThis.sessionStorage = sessionStorage;
+  globalThis.history = { pushState() {}, replaceState() {} };
+  globalThis.MutationObserver = MockMutationObserver;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ ok: true }) });
+  Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true });
+
+  const { initWallpaper } = await import(`../client/modules/wallpaper.js?docstart=${Date.now()}`);
+  const handle = initWallpaper({
+    enableVideo: true,
+    sourceType: 'scene',
+    wallpaperDir: '/fake/scene',
+    previewFile: 'preview.jpg',
+    glassThemeCss: 'html, body { background: transparent !important; }'
+  });
+
+  // document_start 阶段应清理残留黑底样式并先挂到 documentElement 防白屏
+  assert.equal(mockDoc.getElementById('agy-macos-anti-flash'), null, '非开屏播放期必须清理残留 #agy-macos-anti-flash');
+  assert.equal(mockDoc.documentElement.style.background, '', '应清理残留 documentElement 纯黑内联底色');
+  assert.ok(mockDoc.getElementById('agy-dynamic-wallpaper-style'));
+  assert.ok(mockDoc.getElementById('agy-dynamic-scene'));
+
+  // 宿主 head / body 解析完成并追加宿主样式后触发 DOMContentLoaded
+  const hostThemeStyle = new Elem('STYLE', 'host-theme-style');
+  origHead.appendChild(hostThemeStyle);
+  const rootEl = new Elem('DIV', 'root');
+  rootEl.appendChild(new Elem('MAIN'));
+  origBody.appendChild(rootEl);
+  mockDoc.head = origHead;
+  mockDoc.body = origBody;
+  mockDoc.documentElement.appendChild(origHead);
+  mockDoc.documentElement.appendChild(origBody);
+  mockDoc.readyState = 'complete';
+
+  for (const item of docListeners) {
+    if (item.type === 'DOMContentLoaded') item.cb();
+  }
+
+  const glassStyle = mockDoc.getElementById('agy-dynamic-wallpaper-style');
+  const sceneStyle = mockDoc.getElementById('agy-scene-style');
+  const sceneBox = mockDoc.getElementById('agy-dynamic-scene');
+  const backdrop = mockDoc.getElementById('agy-wallpaper-backdrop');
+
+  assert.equal(glassStyle.parentElement, origHead, 'DOMContentLoaded 后毛玻璃样式必须迁入 document.head');
+  assert.equal(sceneStyle.parentElement, origHead, 'DOMContentLoaded 后场景样式必须迁入 document.head');
+  assert.equal(origHead.children[origHead.children.length - 1], glassStyle, '毛玻璃样式必须位于 document.head 末位以覆盖宿主样式');
+  assert.equal(sceneBox.parentElement, origBody, 'DOMContentLoaded 后场景容器必须迁入 document.body');
+  assert.equal(backdrop.parentElement, origBody, 'DOMContentLoaded 后底板必须迁入 document.body');
+
+  // __agyIsHostTrulyReady 在 scene 模式下仍需校验样式与宿主核心容器就绪
+  const poster = sceneBox.querySelector('.agy-scene-poster');
+  assert.ok(poster, '场景模式应挂载封面占位图');
+  poster.complete = true;
+  poster.naturalWidth = 1920;
+  assert.equal(mockWin.__agyIsHostTrulyReady(), true, 'scene 视觉+样式+主框架均就绪时应放行');
+
+  handle.destroy();
+});
+
+test('8.8 补丁脚本与一键修复跨平台脱离重启机制检查', () => {
+  const patchSrc = fs.readFileSync(path.join(ROOT, 'scripts/patch-boot-overlay.mjs'), 'utf8');
+  assert.ok(patchSrc.includes('function scheduleDetachedMacRestart('), 'macOS 宿主内触发时必须通过 detached 独立进程延迟优雅重启');
+  assert.ok(patchSrc.includes('function spawnDetachedWindowsWorker('), 'Windows 宿主内触发时必须先脱离父进程树再杀进程写补丁并重启');
+  assert.ok(patchSrc.includes('[A]ntigravity'), 'macOS pgrep/pkill 模式不得误匹配 helper 脚本自身命令行');
+  assert.ok(patchSrc.includes("SKIP_RELAUNCH === '1'"), '必须保留 SKIP_RELAUNCH=1 供后台自愈与免重启热更新使用');
+
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'sidecars/skin-engine/main.mjs'), 'utf8');
+  assert.ok(mainSrc.includes('function resolvePatchNodeAndEnv('), 'Sidecar 必须正确解析系统 Node 与干净环境变量再派发补丁任务');
+  assert.ok(mainSrc.includes('autoRestart: true'), '/api/patch-boot 响应必须标记自动重启行为');
+  assert.ok(!mainSrc.includes("env: { ...cleanEnv, SKIP_KILL: '1', SKIP_RELAUNCH: '1' }"), '/api/patch-boot macOS 分支不得再硬编码跳过重启');
+
+  const menuSrc = fs.readFileSync(path.join(ROOT, 'client/modules/appearance-menu.js'), 'utf8');
+  assert.ok(menuSrc.includes('自动安全关闭并重启 Antigravity'), '一键修复确认弹窗须明确告知将自动重启');
 });
 
 // Run queue cleanly

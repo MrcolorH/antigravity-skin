@@ -26,8 +26,31 @@ function getPluginConfig() {
   return null;
 }
 
+function hasValidWallpaperSource(dw) {
+  if (!dw || typeof dw !== 'object') return false;
+  const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+  if (sourceType === 'video') {
+    return !!(dw.videoPath && String(dw.videoPath).trim());
+  }
+  return !!(dw.wallpaperDir && String(dw.wallpaperDir).trim());
+}
+
+function isWallpaperSkinActive(cfg) {
+  if (!cfg || cfg.enabled === false) return false;
+  const f = cfg.features || {};
+  if (f.themeStyles === false) return false;
+  const dw = f.dynamicWallpaper || {};
+  return dw.enabled === true && hasValidWallpaperSource(dw);
+}
+
+function isBootActiveEffective(cfg) {
+  if (!cfg || cfg.enabled === false) return false;
+  const f = cfg.features || {};
+  return f.themeStyles !== false && f.bootAnimation === true;
+}
+
 // 全局防御：拦截 BrowserWindow.prototype.setTitleBarOverlay
-// 彻底阻断任何时序（包括宿主主题切换、原生夜间模式等）强行注入实色底块
+// 仅在开屏激活期间或动态壁纸皮肤激活态下保持纯透明底色；原版状态下原样放行原生实色标题栏
 try {
   const BW = electron_1.BrowserWindow;
   if (BW && BW.prototype && typeof BW.prototype.setTitleBarOverlay === 'function' && !BW.__agyWcoProtoHooked) {
@@ -35,10 +58,12 @@ try {
     const rawProtoSetTitleBarOverlay = BW.prototype.setTitleBarOverlay;
     BW.prototype.setTitleBarOverlay = function(options) {
       try {
+        if (options && typeof options === 'object' && options.color && options.color !== 'rgba(0, 0, 0, 0)') {
+          this.__agyLastNativeWcoOptions = Object.assign({}, options);
+        }
         const cfg = getPluginConfig();
-        const isCustomThemeEnabled = cfg?.features?.themeStyles !== false;
-        if (isCustomThemeEnabled && options && typeof options === 'object') {
-          // 强制所有 setTitleBarOverlay 底色保持纯透明，彻底杜绝切换深浅色时的实色闪烁！
+        const shouldForceTransparent = !!(this.__agyBootOverlayActive || isWallpaperSkinActive(cfg));
+        if (shouldForceTransparent && options && typeof options === 'object') {
           options = Object.assign({}, options, {
             color: 'rgba(0, 0, 0, 0)'
           });
@@ -309,7 +334,9 @@ function generateOverlayHtml(cfg, foregroundColor, backgroundColor) {
 function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
   try {
     const cfg = getPluginConfig();
-    const isBootEnabled = !!(cfg?.features?.bootAnimation);
+    const isBootEnabled = isBootActiveEffective(cfg);
+    const isWallActiveAtBoot = isWallpaperSkinActive(cfg);
+    win.__agyBootOverlayActive = isBootEnabled;
 
     // 核心解除：强制关闭 Chromium 对底层主渲染进程的后台节流，确保全速 60fps 初始化与着色器编译！
     try {
@@ -318,18 +345,18 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       }
     } catch (_) {}
 
-    // 主窗口原生底色设为黑色；标题栏(WCO)遮罩保持纯透明！
-    // 规范（BUG-022）：color 设为 'rgba(0, 0, 0, 0)' 与底层壁纸和毛玻璃完美融合，
-    // symbolColor 跟随壁纸顶部明暗自适应（深色顶部 #e8eef7，浅色顶部 #1c2430）。
-    // 实例级防御：拦截 win.setTitleBarOverlay
+    // 主窗口原生底色与标题栏(WCO)：仅在开屏激活或壁纸皮肤激活时设黑与纯透明，否则保留官方原版设置
     if (typeof win.setTitleBarOverlay === 'function' && !win.__agyWcoWinHooked) {
       win.__agyWcoWinHooked = true;
       const rawWinSetTitleBarOverlay = win.setTitleBarOverlay.bind(win);
       win.setTitleBarOverlay = function(options) {
         try {
-          const cfg = getPluginConfig();
-          const isCustomThemeEnabled = cfg?.features?.themeStyles !== false;
-          if (isCustomThemeEnabled && options && typeof options === 'object') {
+          if (options && typeof options === 'object' && options.color && options.color !== 'rgba(0, 0, 0, 0)') {
+            win.__agyLastNativeWcoOptions = Object.assign({}, options);
+          }
+          const liveCfg = getPluginConfig();
+          const shouldForceTransparent = !!(win.__agyBootOverlayActive || isWallpaperSkinActive(liveCfg));
+          if (shouldForceTransparent && options && typeof options === 'object') {
             options = Object.assign({}, options, {
               color: 'rgba(0, 0, 0, 0)'
             });
@@ -352,10 +379,31 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       } catch (_) {}
     };
 
+    const restoreNativeTitleBarAndBg = () => {
+      try {
+        if (!win || win.isDestroyed()) return;
+        const dark = !!(electron_1.nativeTheme && electron_1.nativeTheme.shouldUseDarkColors);
+        const fallbackBg = backgroundColor || (dark ? '#131313' : '#FAFAFA');
+        try { win.setBackgroundColor(fallbackBg); } catch (_) {}
+        if (typeof win.setTitleBarOverlay === 'function') {
+          const nativeOpts = win.__agyLastNativeWcoOptions
+            ? Object.assign({}, win.__agyLastNativeWcoOptions)
+            : {
+                color: backgroundColor || (dark ? '#131313' : '#FFFFFF'),
+                symbolColor: foregroundColor || (dark ? '#FAFAFA' : '#334155'),
+                height: TITLEBAR_H
+              };
+          win.setTitleBarOverlay(nativeOpts);
+        }
+      } catch (_) {}
+    };
+
     let lastTitleBarDark = true;
     const syncTitleBarTone = (force) => {
       try {
         if (!win || win.isDestroyed() || !win.webContents) return;
+        const liveCfg = getPluginConfig();
+        if (!win.__agyBootOverlayActive && !isWallpaperSkinActive(liveCfg)) return;
         win.webContents.executeJavaScript(`(() => {
           const el = document.documentElement;
           const top = parseFloat(el.dataset.agyTopLum || '');
@@ -372,10 +420,12 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       } catch (_) {}
     };
 
-    try {
-      win.setBackgroundColor('#000000');
-      applyTitleBarOverlay(true);
-    } catch (_) {}
+    if (isBootEnabled || isWallActiveAtBoot) {
+      try {
+        win.setBackgroundColor('#000000');
+        applyTitleBarOverlay(true);
+      } catch (_) {}
+    }
 
     // 壁纸切换 / 窗口重新聚焦时自动跟随顶部壁纸明暗，保证按钮始终清晰可见
     if (!win.__agyTitleBarToneHooked) {
@@ -384,16 +434,40 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       try { win.on('restore', () => syncTitleBarTone(false)); } catch (_) {}
     }
 
-    // 从源头杜绝前端渲染进程重复播放开机动画 (BUG-024)
+    const buildRendererBootSyncScript = ({ overlayActive, removeHosts = false, resumeWallpaper = false } = {}) => `(() => {
+      try {
+        window.__agyMasterBootHandled = true;
+        window.__agyHostOverlayActive = ${overlayActive ? 'true' : 'false'};
+        try { sessionStorage.setItem('__agy_booted__', 'true'); } catch (_) {}
+        window.__agyBootPlaying = false;${removeHosts ? `
+        const h1 = document.getElementById('agy-video-boot-host');
+        if (h1) h1.remove();
+        const h2 = document.getElementById('agy-custom-code-boot-host');
+        if (h2) h2.remove();` : ''}
+        try {
+          const st = document.getElementById('agy-macos-anti-flash');
+          if (st) st.remove();
+          if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+            document.documentElement.style.background = '';
+          }
+          if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+            document.body.style.background = '';
+          }
+          if (typeof window.__agyCleanMacAntiFlash === 'function') {
+            window.__agyCleanMacAntiFlash();
+          }
+        } catch (_) {}${resumeWallpaper ? `
+        if (typeof window.__agyResumeBootWallpaper === 'function') {
+          try { window.__agyResumeBootWallpaper(); } catch (_) {}
+        }` : ''}
+      } catch (_) {}
+    })()`;
+
+    // 从源头杜绝前端渲染进程重复播放开机动画与纯黑防闪白残留 (BUG-024)
     if (isBootEnabled && win.webContents) {
       const suppressRendererBoot = () => {
         try {
-          win.webContents.executeJavaScript(`
-            window.__agyMasterBootHandled = true;
-            window.__agyHostOverlayActive = true;
-            try { sessionStorage.setItem('__agy_booted__', 'true'); } catch (_) {}
-            window.__agyBootPlaying = false;
-          `).catch(() => {});
+          win.webContents.executeJavaScript(buildRendererBootSyncScript({ overlayActive: true })).catch(() => {});
         } catch (_) {}
       };
       try {
@@ -439,16 +513,22 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
       removed = true;
 
       const cleanupNativeView = () => {
+        win.__agyBootOverlayActive = false;
         try {
           if (win && !win.isDestroyed()) {
             win.contentView.removeChildView(view);
           }
         } catch (_) {}
-        // 幕布移除后：把原生窗口按钮的配色交还给壁纸（深壁纸→深色底+浅符号）
+        // 幕布移除后：若开启动态壁纸皮肤则交还给壁纸明暗适配；否则还原官方原生实色标题栏与背景
         try {
-          syncTitleBarTone(true);
-          setTimeout(() => syncTitleBarTone(false), 1200);
-          setTimeout(() => syncTitleBarTone(false), 4000);
+          const latestCfg = getPluginConfig();
+          if (isWallpaperSkinActive(latestCfg)) {
+            syncTitleBarTone(true);
+            setTimeout(() => syncTitleBarTone(false), 1200);
+            setTimeout(() => syncTitleBarTone(false), 4000);
+          } else {
+            restoreNativeTitleBarAndBg();
+          }
         } catch (_) {}
         try {
           view.webContents.close();
@@ -473,18 +553,9 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
             cleanupNativeView();
           };
 
-          win.webContents.executeJavaScript(`(() => {
-            window.__agyMasterBootHandled = true;
-            try { sessionStorage.setItem('__agy_booted__', 'true'); } catch(_) {}
-            window.__agyBootPlaying = false;
-            const h1 = document.getElementById('agy-video-boot-host');
-            if (h1) h1.remove();
-            const h2 = document.getElementById('agy-custom-code-boot-host');
-            if (h2) h2.remove();
-            if (typeof window.__agyResumeBootWallpaper === 'function') {
-              try { window.__agyResumeBootWallpaper(); } catch(_) {}
-            }
-          })()`).then(safeCleanup).catch(safeCleanup);
+          win.webContents.executeJavaScript(
+            buildRendererBootSyncScript({ overlayActive: false, removeHosts: true, resumeWallpaper: true })
+          ).then(safeCleanup).catch(safeCleanup);
 
           // 35ms 极限防死锁保底：即使 IPC 阻塞也不阻断主窗口呈现
           setTimeout(safeCleanup, 35);
@@ -521,14 +592,9 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
     // 联动唤醒底层壁纸
     const triggerFadeStart = () => {
       try {
-        win.webContents.executeJavaScript(`(() => {
-          window.__agyMasterBootHandled = true;
-          sessionStorage.setItem('__agy_booted__', 'true');
-          window.__agyBootPlaying = false;
-          if (typeof window.__agyResumeBootWallpaper === 'function') {
-            try { window.__agyResumeBootWallpaper(); } catch(_) {}
-          }
-        })()`).catch(() => {});
+        win.webContents.executeJavaScript(
+          buildRendererBootSyncScript({ overlayActive: false, resumeWallpaper: true })
+        ).catch(() => {});
       } catch (_) {}
     };
 
@@ -600,10 +666,14 @@ function attachLoadingOverlay(win, foregroundColor, backgroundColor) {
             // 4. 插件必须已完成注入
             if (!window.__AG_SKIN_ATTACHED__) return false;
 
-            // 5. 动态壁纸就绪判定（必须等待首帧画面完全绘制并跑通）
+            // 5. 动态壁纸就绪判定（仅当壁纸皮肤激活且存在有效素材时才等待首帧与样式落地）
             const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
             const dw = cfg.features?.dynamicWallpaper;
-            if (cfg.features?.themeStyles !== false && dw?.enabled === true) {
+            const dwSource = dw?.sourceType || (dw?.wallpaperDir ? 'scene' : 'video');
+            const dwHasSource = dwSource === 'video'
+              ? !!(dw?.videoPath && String(dw.videoPath).trim())
+              : !!(dw?.wallpaperDir && String(dw.wallpaperDir).trim());
+            if (cfg.enabled !== false && cfg.features?.themeStyles !== false && dw?.enabled === true && dwHasSource) {
               const isScene = dw.sourceType === 'scene' || (!dw.sourceType && !!dw.wallpaperDir);
               if (isScene) {
                 const s = document.getElementById('agy-dynamic-scene');

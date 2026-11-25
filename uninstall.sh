@@ -10,7 +10,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 
 if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/scripts/uninstall.mjs" ]; then
     if command -v node >/dev/null 2>&1; then
-        node "$PROJECT_DIR/scripts/uninstall.mjs"
+        node "$PROJECT_DIR/scripts/uninstall.mjs" "$@"
         exit 0
     fi
 fi

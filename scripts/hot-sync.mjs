@@ -57,16 +57,9 @@ const bootPath = path.resolve('client', 'modules', 'boot-animation.js');
 const bootContent = fs.readFileSync(bootPath, 'utf8');
 const cleanBoot = bootContent.replace(/^export\s+(function|const|let|var|class)\s+/gm, (m, g1) => g1 + ' ');
 
-// 2. 热更新注入样式
+// 2. 更新玻璃样式缓存（是否注入 DOM 由 index.js 根据动态壁纸激活态全权管理）
 await send('Runtime.evaluate', {
   expression: `(() => {
-    let tag = document.getElementById('agy-dynamic-wallpaper-style');
-    if (!tag) {
-      tag = document.createElement('style');
-      tag.id = 'agy-dynamic-wallpaper-style';
-      (document.head || document.documentElement || document.body).appendChild(tag);
-    }
-    tag.textContent = ${JSON.stringify(cssContent)};
     window.__AG_SKIN_GLASS_CSS__ = ${JSON.stringify(cssContent)};
     return true;
   })()`
@@ -107,11 +100,9 @@ await send('Runtime.evaluate', {
     ${cleanJs}
     if (window.__agyWallpaperInstance && typeof window.__agyWallpaperInstance.destroy === 'function') {
       try { window.__agyWallpaperInstance.destroy(); } catch (e) {}
+      window.__agyWallpaperInstance = null;
     }
-    if (typeof window.__agyInitWallpaper === 'function') {
-      window.__agyWallpaperInstance = window.__agyInitWallpaper();
-    }
-    // 注入新版 index.js
+    // 注入新版 index.js（内部自动依据最新配置挂载或还原原版）
     try {
       eval(${JSON.stringify(indexContent)});
     } catch (e) {

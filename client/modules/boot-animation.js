@@ -154,7 +154,7 @@
       }
     } else {
       const _earlyCfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
-      if (_earlyCfg.features?.bootAnimation) {
+      if (_earlyCfg.enabled !== false && _earlyCfg.features?.themeStyles !== false && _earlyCfg.features?.bootAnimation) {
         const activeEl = document.activeElement;
         const _hasTypedText = activeEl && (
           (activeEl.tagName === 'TEXTAREA' && activeEl.value && activeEl.value.trim().length > 0) ||
@@ -455,9 +455,26 @@
   function checkIsSceneWallpaper() {
     try {
       const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+      if (cfg.enabled === false || cfg.features?.themeStyles === false) return false;
       const dw = cfg.features?.dynamicWallpaper || {};
       if (!dw.enabled) return false;
       return dw.sourceType === 'scene' || (!!dw.wallpaperDir && dw.sourceType !== 'video' && dw.sourceType !== 'web');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hasActiveWallpaperBackdrop() {
+    try {
+      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
+      if (typeof window.__agyIsWallpaperSkinActive === 'function') {
+        return window.__agyIsWallpaperSkinActive(cfg);
+      }
+      if (cfg.enabled === false || cfg.features?.themeStyles === false) return false;
+      const dw = cfg.features?.dynamicWallpaper || {};
+      if (dw.enabled !== true) return false;
+      const st = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+      return st === 'video' ? !!(dw.videoPath && String(dw.videoPath).trim()) : !!(dw.wallpaperDir && String(dw.wallpaperDir).trim());
     } catch (_) {
       return false;
     }
@@ -551,8 +568,9 @@
       hint.className = 'agy-boot-status-pill status-loading';
       if (hint.dataset.shaking) return;
       const isScene = checkIsSceneWallpaper();
+      const hasWall = hasActiveWallpaperBackdrop();
       hint.innerHTML = `<div class="spinner"></div><span class="status-text">${
-        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : '正在载入主界面与动态壁纸...'
+        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : (hasWall ? '正在载入主界面与动态壁纸...' : '正在载入主界面...')
       }</span>`;
     }
 
@@ -620,7 +638,7 @@
           const oldHtml = txt.innerHTML;
           txt.innerHTML = checkIsSceneWallpaper()
             ? '🎬 正在装配 4K 场景着色器与动态图层...'
-            : '正在载入主界面与动态壁纸...';
+            : (hasActiveWallpaperBackdrop() ? '正在载入主界面与动态壁纸...' : '正在载入主界面...');
           setTimeout(() => {
             delete hint.dataset.shaking;
             if (!canSafelyDismissBoot() && txt) txt.innerHTML = oldHtml;
@@ -955,8 +973,9 @@
       hint.className = 'agy-boot-status-pill status-loading';
       if (hint.dataset.shaking) return;
       const isScene = checkIsSceneWallpaper();
+      const hasWall = hasActiveWallpaperBackdrop();
       hint.innerHTML = `<div class="spinner"></div><span class="status-text">${
-        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : '正在载入主界面与动态壁纸...'
+        isScene ? '🎬 正在装配 4K 场景着色器与动态图层...' : (hasWall ? '正在载入主界面与动态壁纸...' : '正在载入主界面...')
       }</span>`;
     }
 
@@ -1135,14 +1154,20 @@
   window.__agyStopBootTitleBarLock = stopBootTitleBarLock;
 
   window.__triggerBootAnimation = function(customType, customPath, customCodePath, customDir, isManualPreview = false) {
+    const config = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     if (!isManualPreview) {
+      if (config.enabled === false || config.features?.themeStyles === false || !config.features?.bootAnimation) {
+        window.__agyBootPlaying = false;
+        cleanMacAntiFlashAndNotify();
+        restoreTitleBarOverlay();
+        return;
+      }
       if (window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__')) {
         console.log('[Boot Animation] Suppressed duplicate __triggerBootAnimation (handled by master).');
         return;
       }
     }
     window.__agyBootPlaying = true;
-    const config = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || {};
     const bootCfg = config.features?.bootAnimationConfig || {};
     const type = customType || bootCfg.type || 'video';
     const videoPath = customPath !== undefined ? customPath : (bootCfg.videoPath || '');

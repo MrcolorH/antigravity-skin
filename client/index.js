@@ -55,6 +55,72 @@
     }
   }
 
+  function getActiveConfigSnapshot() {
+    return (window.__agySkinBridge && typeof window.__agySkinBridge.getConfig === 'function'
+      ? window.__agySkinBridge.getConfig()
+      : null) || window.__AG_SKIN_CONFIG__ || currentConfig || {};
+  }
+
+  function hasValidWallpaperSource(dw) {
+    if (!dw || typeof dw !== 'object') return false;
+    const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+    if (sourceType === 'video') {
+      return !!(dw.videoPath && String(dw.videoPath).trim());
+    }
+    return !!(dw.wallpaperDir && String(dw.wallpaperDir).trim());
+  }
+
+  function isWallpaperSkinActive(cfg) {
+    if (!cfg || cfg.enabled === false) return false;
+    const f = cfg.features || {};
+    if (f.themeStyles === false) return false;
+    const dw = f.dynamicWallpaper || {};
+    return dw.enabled === true && hasValidWallpaperSource(dw);
+  }
+
+  function isBootActiveEffective(cfg) {
+    if (!cfg || cfg.enabled === false) return false;
+    const f = cfg.features || {};
+    return f.themeStyles !== false && f.bootAnimation === true;
+  }
+
+  window.__agyHasValidWallpaperSource = hasValidWallpaperSource;
+  window.__agyIsWallpaperSkinActive = isWallpaperSkinActive;
+  window.__agyIsBootActiveEffective = isBootActiveEffective;
+
+  function clearWallpaperThemeClasses() {
+    const html = document.documentElement;
+    if (!html) return;
+    if (html.classList) {
+      const classes = [
+        'agy-dark-wallpaper',
+        'agy-light-wallpaper',
+        'agy-dark-topbar',
+        'agy-light-topbar',
+        'agy-native-dark',
+        'agy-native-light',
+        'agy-chat-native',
+        'agy-wallpaper-pierce-active'
+      ];
+      for (const cls of classes) {
+        if (html.classList.contains(cls)) html.classList.remove(cls);
+      }
+    }
+    if (html.dataset) {
+      delete html.dataset.agyTopLum;
+      delete html.dataset.agyWallpaperLum;
+      delete html.dataset.agyLumProfile;
+      delete html.dataset.agyHasMeasure;
+      delete html.dataset.agyHasVideo;
+      delete html.dataset.agyFit;
+    }
+    if (html.style) {
+      html.style.removeProperty('--agy-bg-brightness');
+      html.style.removeProperty('--agy-bg-contrast');
+      html.style.removeProperty('--agy-sidebar-right');
+    }
+  }
+
   // ==========================================================================
   // 壁纸明暗自适应引擎（Auto Luminance Probe）
   // 用途：高透明面板下，深色壁纸必须配浅字、浅色壁纸必须配深字，否则字糊在底上。
@@ -290,6 +356,11 @@
     const body = document.body;
     const html = document.documentElement;
     if (!body || !html) return;
+    if (!isWallpaperSkinActive(getActiveConfigSnapshot())) {
+      resetContrastGuard();
+      clearWallpaperThemeClasses();
+      return;
+    }
     if (!html.classList.contains('agy-dark-wallpaper') && !html.classList.contains('agy-light-wallpaper')) return;
     if (cgHasRunningBootOverlay()) {
       scheduleContrastGuard(800);
@@ -409,6 +480,7 @@
     try {
       cgObserver = new MutationObserver(() => {
         if (cgIsMutating || cgHasRunningBootOverlay()) return;
+        if (!isWallpaperSkinActive(getActiveConfigSnapshot())) return;
         clearTimeout(cgWatchTimer);
         cgWatchTimer = setTimeout(() => {
           try { runContrastGuard(); } catch (_) {}
@@ -439,17 +511,28 @@
 
   function syncThemeAdaptation(forceDetect = false) {
     try {
+      const cfg = getActiveConfigSnapshot();
+      const mediaOn = isWallpaperSkinActive(cfg);
+
+      if (!mediaOn) {
+        clearTimeout(cgTimer);
+        clearTimeout(cgWatchTimer);
+        resetContrastGuard();
+        clearWallpaperThemeClasses();
+        if (cgObserver) {
+          try { cgObserver.disconnect(); } catch (_) {}
+          cgObserver = null;
+        }
+        if (typeof window.__agySyncTitleBar === 'function') {
+          try { window.__agySyncTitleBar(true); } catch (_) {}
+        }
+        return;
+      }
+
       syncNativeThemeClass();
       const isDark = nativeThemeIsDark();
-      const cfg = (window.__agySkinBridge && window.__agySkinBridge.getConfig()) || window.__AG_SKIN_CONFIG__ || currentConfig || {};
-      const f = cfg.features || {};
-      const dw = f.dynamicWallpaper || {};
-      const isVideoOn = dw.enabled === true;
-      const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
-      const hasSource = sourceType === 'video' ? !!dw.videoPath : !!dw.wallpaperDir;
-      const mediaOn = (f.themeStyles !== false) && isVideoOn && hasSource;
 
-      if (!mediaOn || forceDetect) {
+      if (forceDetect) {
         applyLuminanceClass(isDark);
         applyTopbarTone(null, false);
       } else {
@@ -607,13 +690,13 @@
     const f = cfg.features || {};
     const dw = f.dynamicWallpaper || {};
 
-    // A. 背景素材（视频 / 网页 / 场景）与毛玻璃增量细粒度更新
-    const isCustomTheme = f.themeStyles !== false;
+    // A. 背景素材（视频 / 网页 / 场景）与毛玻璃增量细粒度更新（严格跟随动态壁纸有效激活态）
+    const wallpaperSkinActive = isWallpaperSkinActive(cfg);
     const chatStyleMode = f.chatStyleMode === 'native' ? 'native' : 'bubble';
     if (document.documentElement) {
-      document.documentElement.classList.toggle('agy-chat-native', isCustomTheme && chatStyleMode === 'native');
+      document.documentElement.classList.toggle('agy-chat-native', wallpaperSkinActive && chatStyleMode === 'native');
     }
-    if (isCustomTheme) {
+    if (wallpaperSkinActive) {
       const isVideoOn = dw.enabled === true;
       const videoPath = dw.videoPath || '';
       const sourceType = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
@@ -685,7 +768,7 @@
               wallpaperInteraction
             });
             window.__agyWallpaperInstance = wallpaperHandle;
-            lastWallpaperState = { isCustomTheme, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey };
+            lastWallpaperState = { isCustomTheme: true, isVideoOn, videoPath, brightness, contrast, mediaKey, fitKey, lumKey: lastWallpaperState.lumKey };
             window.__agyLastWallpaperState = lastWallpaperState;
           }
         } else {
@@ -738,7 +821,7 @@
             lastWallpaperState.mediaKey = mediaKey;
             lastWallpaperState.isVideoOn = isVideoOn;
             lastWallpaperState.videoPath = videoPath;
-            lastWallpaperState.isCustomTheme = isCustomTheme;
+            lastWallpaperState.isCustomTheme = true;
           } else if (mediaOn && sourceType === 'video') {
             // 视频自愈保障：元素丢失或非加载态下处于暂停态时轻量补挂，不触发场景/网页重建
             const vidEl = document.getElementById('agy-dynamic-video');
@@ -758,39 +841,50 @@
         console.warn('[Antigravity Skin] Failed to init/update wallpaper:', err);
       }
     } else {
-      lastWallpaperState = { isCustomTheme: false, isVideoOn: false, videoPath: '', brightness: 0, contrast: 0, mediaKey: '', lumKey: '' };
-      applyLuminanceClass(nativeThemeIsDark());
+      lastWallpaperState = { isCustomTheme: false, isVideoOn: false, videoPath: '', brightness: 0, contrast: 0, mediaKey: '', fitKey: '', lumKey: '' };
+      window.__agyLastWallpaperState = lastWallpaperState;
+      clearTimeout(cgTimer);
+      clearTimeout(cgWatchTimer);
+      if (cgObserver) {
+        try { cgObserver.disconnect(); } catch (_) {}
+        cgObserver = null;
+      }
+      resetContrastGuard();
+      clearWallpaperThemeClasses();
       if (wallpaperHandle) {
         try { wallpaperHandle.destroy(); } catch(e) {}
         wallpaperHandle = null;
         window.__agyWallpaperInstance = null;
       }
       try {
-        const oldVid = document.getElementById('agy-dynamic-video');
-        if (oldVid) {
-          try { oldVid.pause(); } catch(e) {}
-          oldVid.remove();
-        }
-        const oldFrame = document.getElementById('agy-dynamic-iframe');
-        if (oldFrame) { try { oldFrame.setAttribute('src', 'about:blank'); } catch(e) {} oldFrame.remove(); }
-        const oldScene = document.getElementById('agy-dynamic-scene');
-        if (oldScene) oldScene.remove();
-        const oldAudio = document.getElementById('agy-dynamic-audio');
-        if (oldAudio) { try { oldAudio.pause(); } catch(e) {} oldAudio.remove(); }
-        const oldBackdrop = document.getElementById('agy-wallpaper-backdrop');
-        if (oldBackdrop) oldBackdrop.remove();
-        if (document.documentElement && document.documentElement.dataset) {
-          delete document.documentElement.dataset.agyHasVideo;
-        }
-        const oldStyle = document.getElementById('agy-dynamic-wallpaper-style');
-        if (oldStyle) oldStyle.remove();
-        const testStyle = document.getElementById('test-popover-glass-style');
-        if (testStyle) testStyle.remove();
+        [
+          'agy-dynamic-video',
+          'agy-dynamic-video-backdrop',
+          'agy-dynamic-iframe',
+          'agy-dynamic-scene',
+          'agy-dynamic-audio',
+          'agy-wallpaper-backdrop',
+          'agy-dynamic-wallpaper-style',
+          'agy-scene-style',
+          'agy-wallpaper-pierce-style',
+          'agy-interact-hud',
+          'agy-interact-hud-style',
+          'agy-session-loader-overlay',
+          'test-popover-glass-style'
+        ].forEach(id => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          try { if (typeof el.pause === 'function') el.pause(); } catch (_) {}
+          try { if (el.tagName === 'IFRAME') el.setAttribute('src', 'about:blank'); } catch (_) {}
+          el.remove();
+        });
 
         document.querySelectorAll('.user-bubble-toggle-btn, .agy-user-collapse-btn, [data-agy-collapse-btn]').forEach(b => b.remove());
-        document.querySelectorAll('[data-user-collapsed], [data-user-collapsible], [data-agy-enhanced], [data-agy-collapsed]').forEach(el => {
+        document.querySelectorAll('.user-bubble-card').forEach(el => el.classList.remove('user-bubble-card'));
+        document.querySelectorAll('[data-user-collapsed], [data-user-collapsible], [data-has-text], [data-agy-enhanced], [data-agy-collapsed]').forEach(el => {
           el.removeAttribute('data-user-collapsed');
           el.removeAttribute('data-user-collapsible');
+          el.removeAttribute('data-has-text');
           el.removeAttribute('data-agy-enhanced');
           el.removeAttribute('data-agy-collapsed');
           el.style.maxHeight = '';
@@ -809,10 +903,10 @@
         if (typeof window.__agySyncTitleBar === 'function') {
           try { window.__agySyncTitleBar(true); } catch(e) {}
         } else if (window.electronNative && typeof window.electronNative.setTitleBarOverlay === 'function') {
-          const isDark = document.body && (document.body.classList.contains('dark') || document.body.classList.contains('theme-dark'));
+          const isDark = nativeThemeIsDark();
           window.electronNative.setTitleBarOverlay({
-            color: isDark ? '#18181b' : '#f8fafc',
-            symbolColor: isDark ? '#f4f4f5' : '#334155',
+            color: isDark ? '#131313' : '#FFFFFF',
+            symbolColor: isDark ? '#FAFAFA' : '#334155',
             height: 35
           }).catch(() => {});
         }
@@ -867,12 +961,15 @@
     saveConfig: saveConfigRemote
   };
 
-  // 核心时序防护：仅在已播放或用户已在工作区产生实质输入时跳过开机动画
+  // 核心时序防护：仅在已播放、总开关关闭或用户已在工作区产生实质输入时跳过开机动画
   function shouldAbandonBootAnimation(activeCfg) {
     // 1. 若主进程已接管开机引导（Windows 补丁），绝不二次触发 (BUG-024)
     if (window.__agyMasterBootHandled || window.__agyHostOverlayActive) return true;
     if (sessionStorage.getItem('__agy_booted__')) return true;
-    if (!activeCfg.features?.bootAnimation) return true;
+    if (!isBootActiveEffective(activeCfg)) {
+      window.__agyBootPlaying = false;
+      return true;
+    }
     // 关键修正：若开机 DOM 容器已在视口中则不重复创建；但 window.__agyBootPlaying 作为预留锁，绝不反向阻断初次启动
     if (document.getElementById('agy-video-boot-host') || document.getElementById('agy-custom-code-boot-host')) return true;
 
@@ -913,7 +1010,6 @@
 
   if (window.__AG_SKIN_ATTACHED__) {
     console.log('[Antigravity Skin] Re-checking skin active state & DOM attachments...');
-    syncNativeThemeClass();
     wallpaperHandle = wallpaperHandle || window.__agyWallpaperInstance || null;
     if (window.__agyLastWallpaperState) {
       lastWallpaperState = window.__agyLastWallpaperState;
@@ -921,8 +1017,9 @@
     const activeApply = (typeof window.__agyApplyFeatures === 'function' && window.__agyApplyFeatures !== applyFeatures)
       ? window.__agyApplyFeatures
       : applyFeatures;
+    const liveCfg = window.__AG_SKIN_CONFIG__ || currentConfig;
     try {
-      activeApply(window.__AG_SKIN_CONFIG__ || currentConfig);
+      activeApply(liveCfg);
     } catch (e) {}
 
     if (typeof window.__agySyncTitleBar === 'function') {
@@ -939,12 +1036,15 @@
       );
       window.__agyAppearanceMenuHandle = menuHandle;
     }
-    // 关键自愈：如果素材或样式在 DOM 中遗失（例如更新后重载或 SPA 导航），立即补挂（开机动效播放时除外）
-    const needStyle = currentConfig.features?.themeStyles !== false;
-    const dwCfg = currentConfig.features?.dynamicWallpaper || {};
-    const dwSource = dwCfg.sourceType || (dwCfg.wallpaperDir ? 'scene' : 'video');
-    const dwHasSource = dwSource === 'video' ? !!dwCfg.videoPath : !!dwCfg.wallpaperDir;
-    const needWallpaper = needStyle && dwCfg.enabled === true && dwHasSource;
+    if (!window.__agyDashboardSettingsHandle && typeof window.__agyInitDashboardSettings === 'function') {
+      window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
+        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
+        saveConfigRemote
+      );
+    }
+    // 关键自愈：如果素材或样式与壁纸皮肤激活态不一致，立即同步或清理（开机动效播放时除外）
+    const needWallpaper = isWallpaperSkinActive(liveCfg);
+    const needStyle = needWallpaper;
     const isBootPlaying = !!window.__agyBootPlaying ||
                           !!document.getElementById('agy-video-boot-host') ||
                           !!document.getElementById('agy-custom-code-boot-host') ||
@@ -954,19 +1054,14 @@
                      !!document.getElementById('agy-dynamic-iframe') ||
                      !!document.getElementById('agy-dynamic-scene');
     const hasStyle = !!document.getElementById('agy-dynamic-wallpaper-style');
+    const hasBackdrop = !!document.getElementById('agy-wallpaper-backdrop');
+    const hasSceneStyle = !!document.getElementById('agy-scene-style');
     if (!isBootPlaying && !isDeferredVideo) {
-      if (!needWallpaper && hasVideo) {
-        ['agy-dynamic-video', 'agy-dynamic-iframe', 'agy-dynamic-scene', 'agy-dynamic-audio'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) {
-            try { if (el.pause) el.pause(); } catch(e) {}
-            el.remove();
-          }
-        });
-      }
-      if ((needWallpaper && !hasVideo) || (needStyle && !hasStyle)) {
+      if (!needWallpaper && (hasVideo || hasStyle || hasBackdrop || hasSceneStyle)) {
+        activeApply(liveCfg);
+      } else if ((needWallpaper && !hasVideo) || (needStyle && !hasStyle)) {
         console.log('[Antigravity Skin] Missing video or style in DOM, re-applying features immediately...');
-        activeApply(currentConfig);
+        activeApply(liveCfg);
       }
     }
 
@@ -981,7 +1076,9 @@
   window.__AG_SKIN_ATTACHED__ = true;
 
   console.log('[Antigravity Skin] Initializing custom theme and skin...');
-  syncNativeThemeClass();
+  if (isWallpaperSkinActive(currentConfig)) {
+    syncNativeThemeClass();
+  }
 
   // 2.5 启动第零防线：第一时间强力同步标题栏完全透明
   if (typeof window.__agySyncTitleBar === 'function') {
@@ -1068,6 +1165,12 @@
         }
       );
       window.__agyAppearanceMenuHandle = menuHandle;
+    }
+    if (!window.__agyDashboardSettingsHandle && typeof window.__agyInitDashboardSettings === 'function') {
+      window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
+        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
+        saveConfigRemote
+      );
     }
   } catch (err) {
     console.warn('[Antigravity Skin] Error in __agyInitAppearanceMenu:', err);

@@ -53,6 +53,10 @@
       "libraryPath": "",
       "autoScan": true,
       "mountedFolders": []
+    },
+    "dashboard": {
+      "enabled": true,
+      "inlineEnabled": true
     }
   }
 }

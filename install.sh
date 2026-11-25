@@ -84,6 +84,22 @@ trap cleanup EXIT
 
 echo "[2/3] 部署插件运行环境至 $TARGET_DIR..."
 
+# 存量 antigravity-pulse 无损迁移与清理（回退分支）
+PULSE_DIR="$PLUGINS_DIR/antigravity-pulse"
+PULSE_DATA="$HOME/.gemini/antigravity/sidecar_data/antigravity-pulse/panel/data"
+SKIN_DATA="$HOME/.gemini/antigravity/sidecar_data/antigravity-skin/panel/data"
+if [ -d "$PULSE_DATA" ]; then
+    mkdir -p "$SKIN_DATA"
+    for sub in history-v1 usage-v1; do
+        if [ -d "$PULSE_DATA/$sub" ] && [ ! -d "$SKIN_DATA/$sub" ]; then
+            cp -R "$PULSE_DATA/$sub" "$SKIN_DATA/$sub"
+        fi
+    done
+fi
+if [ -d "$PULSE_DIR" ] && [ ! -L "$PULSE_DIR" ]; then
+    rm -rf "$PULSE_DIR"
+fi
+
 # 备份已有个性化配置
 USER_CONFIG_BACKUP=""
 if [ -f "$TARGET_DIR/config/config.json" ]; then
@@ -132,6 +148,9 @@ if os.path.exists(config_file):
 
 plugins = data.setdefault('plugins', {})
 plugins['antigravity-skin'] = {'enabled': True}
+plugins.pop('antigravity-pulse', None)
+if isinstance(data.get('sidecars'), dict):
+    data['sidecars'].pop('antigravity-pulse/panel', None)
 
 tmp_file = f'{config_file}.tmp.{os.getpid()}'
 with open(tmp_file, 'w', encoding='utf-8') as f:
@@ -154,9 +173,7 @@ if [ -f "$TARGET_DIR/scripts/patch-boot-overlay.mjs" ] && command -v node >/dev/
 fi
 
 if [ "$IS_INSIDE_HOST" -eq 1 ]; then
-    echo "✨ 插件、内核补丁与运行配置已全量就绪！"
-    echo "🔔 提示：由于当前运行于 Antigravity 宿主会话内，未强行退出当前会话。"
-    echo "   请您在方便时使用快捷键 Cmd+Q 完全退出 Antigravity，再直接从程序坞 (Dock) 打开官方 Antigravity 即可自动秒级生效！"
+    echo "✨ 插件、内核补丁与运行配置已全量就绪，Antigravity 即将在后台自动安全重启生效！"
 else
     echo "✨ 正在自动为您重新拉起 Antigravity 客户端..."
     open -a Antigravity 2>/dev/null || open -b com.google.antigravity 2>/dev/null || true
