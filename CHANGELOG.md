@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.3.1** | 修复「模型与用量」页面反重力看板设置卡片错位、开关样式与蓝灰状态异常，以及刷新页面后设置项消失与冷启动注入竞态问题 | [RELEASE_v0.3.1.md](docs/releases/RELEASE_v0.3.1.md) |
 | **v0.3.0** | 完整集成反重力看板（`antigrative-dashboard`）、存量 `antigravity-pulse` 无损平滑替换、「模型与用量」原生单开关控制、统一中英文联动、Antigravity 2.35+ 环境变量凭据适配与零命令行更新自愈 | [RELEASE_v0.3.0.md](docs/releases/RELEASE_v0.3.0.md) |
 | **v0.2.17** | 修复侧边栏打开网页时主会话区壁纸黑屏遮挡、辅助侧边栏浏览器视口清晰穿透与免模糊、主窗口会话路由 CDP 守护加固 | [RELEASE_v0.2.17.md](docs/releases/RELEASE_v0.2.17.md) |
 | **v0.2.16** | 新增 AI 对话双模样式自由切换（气泡卡片 / 模拟原版无外框排版）、正文与表格直透壁纸、独立代码块磨砂底衬与高对比度保护 | [RELEASE_v0.2.16.md](docs/releases/RELEASE_v0.2.16.md) |

@@ -21,6 +21,7 @@ const filesToSync = [
   'client/modules/agy-modal.js',
   'client/modules/media-display-modal.js',
   'client/modules/appearance-menu.js',
+  'client/modules/dashboard-settings.js',
   'client/modules/wallpaper-library-ui.js',
   'client/modules/wallpaper.js',
   'client/modules/boot-animation.js',

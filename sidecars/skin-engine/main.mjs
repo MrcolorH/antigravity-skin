@@ -3046,12 +3046,7 @@ function createCdpSession(target, port) {
         if (msg.params?.frame?.parentId) return;
         await executeInjection({ forceEvaluate: false });
       } else if (msg.method === 'Page.loadEventFired') {
-        try {
-          const chk = await send('Runtime.evaluate', { expression: '!!window.__AG_SKIN_ATTACHED__', returnByValue: true });
-          if (!chk?.result?.value) {
-            await executeInjection({ forceEvaluate: false });
-          }
-        } catch (_) {}
+        await executeInjection({ forceEvaluate: false });
       }
     } catch (e) {}
   };

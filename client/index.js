@@ -1036,7 +1036,8 @@
       );
       window.__agyAppearanceMenuHandle = menuHandle;
     }
-    if (!window.__agyDashboardSettingsHandle && typeof window.__agyInitDashboardSettings === 'function') {
+    if (typeof window.__agyInitDashboardSettings === 'function' && (!window.__agyDashboardSettingsHandle || window.__agyDashboardSettingsFn !== window.__agyInitDashboardSettings)) {
+      window.__agyDashboardSettingsFn = window.__agyInitDashboardSettings;
       window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
         () => (window.__AG_SKIN_CONFIG__ || currentConfig),
         saveConfigRemote
@@ -1166,7 +1167,8 @@
       );
       window.__agyAppearanceMenuHandle = menuHandle;
     }
-    if (!window.__agyDashboardSettingsHandle && typeof window.__agyInitDashboardSettings === 'function') {
+    if (typeof window.__agyInitDashboardSettings === 'function' && (!window.__agyDashboardSettingsHandle || window.__agyDashboardSettingsFn !== window.__agyInitDashboardSettings)) {
+      window.__agyDashboardSettingsFn = window.__agyInitDashboardSettings;
       window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
         () => (window.__AG_SKIN_CONFIG__ || currentConfig),
         saveConfigRemote

@@ -13,7 +13,7 @@ import {
   cleanupLegacyPulsePlugin
 } from '../scripts/migrate-pulse.mjs';
 import { acquireWatcherLock, releaseWatcherLock } from '../scripts/exit-heal-watcher.mjs';
-import { findModelsUsagePlanAnchor } from '../client/modules/dashboard-settings.js';
+import { findModelsUsagePlanAnchor, findModelsUsageAnchorInfo, initDashboardSettings } from '../client/modules/dashboard-settings.js';
 import { platformPaths, migrateLegacyPulseData as panelMigrateData } from '../sidecars/panel/compat/platform.mjs';
 import { serverFromDiscovery } from '../sidecars/panel/client.mjs';
 
@@ -184,6 +184,140 @@ test('findModelsUsagePlanAnchor locates Your Plan in EN and ZH modals and ignore
     querySelectorAll: () => [enPlan.h]
   };
   assert.equal(findModelsUsagePlanAnchor(appearanceModal), null);
+});
+
+test('findModelsUsageAnchorInfo prefers Model Credits section over Plan and never escapes to outer scroll pane', () => {
+  const outerScrollPane = {
+    className: 'rounded-xl bg-background overflow-y-auto',
+    textContent: '模型与用量 套餐计划 您的套餐：Google AI Pro 模型积分 启用 AI 积分超额使用 Gemini 模型 剩余周额度',
+    parentElement: null,
+    closest: () => null
+  };
+  const centerCol = {
+    className: 'mx-auto max-w-2xl space-y-6',
+    textContent: outerScrollPane.textContent,
+    parentElement: outerScrollPane,
+    closest: () => null
+  };
+  const modal = {
+    textContent: outerScrollPane.textContent,
+    querySelectorAll: () => [planHeading, creditsHeading]
+  };
+  outerScrollPane.parentElement = modal;
+
+  // Plan section
+  const planSection = {
+    className: 'space-y-2',
+    textContent: '套餐计划 您的套餐：Google AI Pro',
+    parentElement: centerCol,
+    closest: () => null
+  };
+  const planHeading = {
+    textContent: '套餐计划',
+    className: 'text-sm font-medium',
+    children: [],
+    parentElement: planSection,
+    closest: () => null
+  };
+
+  // Credits section (heading is sibling of rounded card, both inside creditsSection)
+  const creditsSection = {
+    className: 'space-y-2',
+    textContent: '模型积分 启用 AI 积分超额使用',
+    parentElement: centerCol,
+    closest: () => null
+  };
+  const creditsHeading = {
+    textContent: '模型积分',
+    className: 'text-sm font-medium',
+    children: [],
+    parentElement: creditsSection,
+    closest: () => null
+  };
+  const creditsCard = {
+    className: 'rounded-lg border p-4 flex justify-between items-center',
+    textContent: '启用 AI 积分超额使用',
+    parentElement: creditsSection,
+    closest: () => null
+  };
+  creditsHeading.nextElementSibling = creditsCard;
+  creditsSection.querySelectorAll = () => [creditsHeading, creditsCard];
+
+  const info = findModelsUsageAnchorInfo(modal);
+  assert.equal(info?.tier, 'credits');
+  assert.equal(info?.anchor, creditsSection);
+  assert.equal(info?.cardEl, creditsCard);
+  assert.notEqual(info?.anchor, outerScrollPane);
+  assert.notEqual(info?.anchor, centerCol);
+
+  // Flat-sibling layout (no section wrapper)
+  const flatCol = {
+    className: 'mx-auto max-w-2xl',
+    textContent: 'Models & Usage Model Credits Enable AI credit overages Gemini Models',
+    parentElement: outerScrollPane,
+    closest: () => null
+  };
+  const flatHeading = {
+    textContent: 'Model Credits',
+    className: 'text-sm font-medium',
+    children: [],
+    parentElement: flatCol,
+    closest: () => null
+  };
+  const flatCard = {
+    className: 'rounded-lg border p-4',
+    textContent: 'Enable AI credit overages',
+    parentElement: flatCol,
+    closest: () => null
+  };
+  flatHeading.nextElementSibling = flatCard;
+  const flatModal = {
+    textContent: flatCol.textContent,
+    querySelectorAll: () => [flatHeading]
+  };
+  const flatInfo = findModelsUsageAnchorInfo(flatModal);
+  assert.equal(flatInfo?.tier, 'credits');
+  assert.equal(flatInfo?.anchor, flatCard);
+});
+
+test('initDashboardSettings does not throw at document_start when document.body and documentElement are null', () => {
+  const prevDoc = globalThis.document;
+  const prevWin = globalThis.window;
+  const prevMO = globalThis.MutationObserver;
+  const listeners = new Map();
+  let observed = false;
+
+  globalThis.MutationObserver = class {
+    observe(target) {
+      if (!target) throw new TypeError("parameter 1 is not of type 'Node'");
+      observed = true;
+    }
+    disconnect() {}
+  };
+  globalThis.window = {};
+  globalThis.document = {
+    body: null,
+    documentElement: null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+    addEventListener: (ev, fn) => listeners.set(ev, fn),
+    removeEventListener: (ev) => listeners.delete(ev)
+  };
+
+  try {
+    const handle = initDashboardSettings(() => ({ features: { dashboard: { enabled: true } } }), () => {});
+    assert.equal(observed, false);
+    assert.equal(typeof listeners.get('DOMContentLoaded'), 'function');
+    // Simulate DOMContentLoaded once body exists
+    globalThis.document.body = { nodeType: 1 };
+    listeners.get('DOMContentLoaded')();
+    assert.equal(observed, true);
+    handle.destroy();
+  } finally {
+    globalThis.document = prevDoc;
+    globalThis.window = prevWin;
+    globalThis.MutationObserver = prevMO;
+  }
 });
 
 test('platformPaths points to antigravity-skin data dir and migrates legacy data', () => {
