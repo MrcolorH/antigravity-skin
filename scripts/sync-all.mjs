@@ -37,7 +37,13 @@ const filesToSync = [
   'sidecars/skin-engine/wallpaper-library.mjs',
   'sidecars/skin-engine/scene-pkg.mjs',
   'sidecars/skin-engine/vendor/webwallgl.js',
-  'sidecars/skin-engine/sidecar.json'
+  'sidecars/skin-engine/sidecar.json',
+  'sidecars/panel/sidecar.json',
+  'sidecars/panel/main.mjs',
+  'sidecars/panel/panel-source.mjs',
+  'sidecars/panel/index.html',
+  'sidecars/panel/styles.css',
+  'sidecars/panel/app.js'
 ];
 
 const sha1 = (p) => crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');

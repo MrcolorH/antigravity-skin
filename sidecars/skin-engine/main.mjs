@@ -1196,12 +1196,13 @@ const server = http.createServer((req, res) => {
         if (shouldInlineWebWallGL(parsed)) {
           ensureWebWallGLOnActiveSessions().catch(() => {});
         }
-        // 统一语言实时联动：推送给已挂载的内嵌看板控件
+        // 统一语言与配置实时联动：推送给已挂载的内嵌看板控件与外观皮肤引擎
         const nextLang = parsed?.features?.chineseLocalization === false ? 'en' : 'zh-CN';
+        const cfgJson = JSON.stringify(parsed);
         for (const session of activeSessions.values()) {
           try {
             session.send('Runtime.evaluate', {
-              expression: `try { window.__agPulseSetLanguage && window.__agPulseSetLanguage(${JSON.stringify(nextLang)}); } catch (_) {}`
+              expression: `try { window.__agPulseSetLanguage && window.__agPulseSetLanguage(${JSON.stringify(nextLang)}); window.__agySyncConfigFromEngine && window.__agySyncConfigFromEngine(${cfgJson}); } catch (_) {}`
             }).catch(() => {});
           } catch (_) {}
         }

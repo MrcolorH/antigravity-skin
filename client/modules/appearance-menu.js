@@ -495,38 +495,11 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       themeRow.insertAdjacentElement('afterend', langRow);
     }
 
-    // 2. 在语言行正下方插入“自定义主题与动效增强”总开关行
-    let customSwitchRow = document.getElementById('agy-integrated-custom-switch-row');
-    if (customSwitchRow && !customSwitchRow.querySelector('#agy-opt-custom-theme')) {
-      customSwitchRow.remove();
-      customSwitchRow = null;
-    }
-    if (!customSwitchRow) {
-      customSwitchRow = document.createElement('div');
-      customSwitchRow.id = 'agy-integrated-custom-switch-row';
-      customSwitchRow.className = 'py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center';
-      customSwitchRow.innerHTML = `
-        <div class="flex-1 flex flex-col gap-0.5">
-          <div class="flex items-center gap-1.5">
-            <span class="shrink-0 flex items-center text-amber-400">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-              </svg>
-            </span>
-            <span class="text-sm font-medium">自定义皮肤与动效增强</span>
-          </div>
-          <span class="text-xs text-muted-foreground opacity-65">开启后可独立配置动态壁纸（含毛玻璃界面美化）与开机引导动画，原生浅色/深色均可自由搭配</span>
-        </div>
-        <div class="shrink-0">
-          ${createSwitchHtml('agy-opt-custom-theme', isCustomThemeEnabled)}
-        </div>
-      `;
-      langRow.insertAdjacentElement('afterend', customSwitchRow);
-    } else if (customSwitchRow.previousElementSibling !== langRow) {
-      langRow.insertAdjacentElement('afterend', customSwitchRow);
-    }
+    // 2. 移除旧版冗余的“自定义皮肤与动效增强”总开关行
+    const legacyCustomSwitch = document.getElementById('agy-integrated-custom-switch-row');
+    if (legacyCustomSwitch) legacyCustomSwitch.remove();
 
-    // 3. 插入自定义主题的配置项容器（紧跟在自定义总开关行正下方）
+    // 3. 插入自定义配置项容器（紧跟在语言行正下方，直接独立展开）
     const isWin = checkIsWindows();
     let customOptions = document.getElementById('agy-integrated-custom-options');
     if (customOptions && (!customOptions.querySelector('#agy-group-chat-style') || !customOptions.querySelector('#agy-wrap-video-path #agy-chat-style-row') || !customOptions.querySelector('#agy-select-builtin-wallpaper') || !customOptions.querySelector('#agy-wrap-wallpaper-interact') || !customOptions.querySelector('#agy-group-boot-type') || !customOptions.querySelector('#agy-wrap-boot-code-config') || !customOptions.querySelector('#agy-select-boot-code') || customOptions.querySelector('#agy-input-custom-code-path') || customOptions.querySelector('#agy-group-code-mode') || customOptions.querySelector('#agy-wrap-550c-source') || customOptions.querySelector('#agy-opt-crt') || !customOptions.querySelector('#agy-wrap-plugin-update') || !customOptions.querySelector('#agy-wallpaper-lib-row') || !customOptions.querySelector('#agy-boot-lib-row') || !customOptions.querySelector('#agy-wallpaper-active') || !customOptions.querySelector('#agy-boot-active') || !customOptions.querySelector('#agy-btn-wallpaper-display') || !customOptions.querySelector('#agy-btn-boot-display') || !customOptions.querySelector('#agy-btn-open-wall-lib') || !customOptions.querySelector('#agy-btn-open-boot-lib') || !customOptions.querySelector('#agy-btn-scene-inspector') || !customOptions.querySelector('#agy-scene-inspector-drawer') || customOptions.querySelector('#agy-wrap-integrated-banner') || !customOptions.querySelector('#agy-btn-fix-boot-overlay') || !customOptions.querySelector('#agy-wrap-video-path')?.style?.background?.includes('0.08'))) {
@@ -537,7 +510,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
       customOptions = document.createElement('div');
       customOptions.id = 'agy-integrated-custom-options';
       customOptions.className = 'divide-y divide-border bg-transparent';
-      customOptions.style.display = isCustomThemeEnabled ? 'block' : 'none';
+      customOptions.style.display = 'block';
       customOptions.innerHTML = `
         <!-- 全局动态视频壁纸开关 -->
         <div class="py-2.5 px-3 w-full bg-transparent flex justify-between gap-4 items-center">
@@ -894,38 +867,13 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
           </div>
         </div>
       `;
-      customSwitchRow.insertAdjacentElement('afterend', customOptions);
-    } else if (customOptions.previousElementSibling !== customSwitchRow) {
-      customSwitchRow.insertAdjacentElement('afterend', customOptions);
+      langRow.insertAdjacentElement('afterend', customOptions);
+    } else if (customOptions.previousElementSibling !== langRow) {
+      langRow.insertAdjacentElement('afterend', customOptions);
     }
 
-    // 强力兜底保障：无论何时运行 integrateNativeMenu，customOptions 的展示状态必须与 isCustomThemeEnabled 严格一致
-    if (customOptions) {
-      const targetDisplay = isCustomThemeEnabled ? 'block' : 'none';
-      if (customOptions.style.display !== targetDisplay) {
-        customOptions.style.display = targetDisplay;
-      }
-    }
-
-    // 4. 自定义主题总开关事件绑定与初始同步
-    const optCustomTheme = customSwitchRow.querySelector('#agy-opt-custom-theme');
-    if (optCustomTheme) {
-      optCustomTheme.checked = isCustomThemeEnabled;
-      syncSwitchUI(optCustomTheme);
-      optCustomTheme.onchange = () => {
-        syncSwitchUI(optCustomTheme);
-        const isEnabled = optCustomTheme.checked;
-        isCustomThemeEnabled = isEnabled;
-        if (customOptions) {
-          const td = isEnabled ? 'block' : 'none';
-          if (customOptions.style.display !== td) customOptions.style.display = td;
-        }
-        const activeCfg = getConfig() || config;
-        if (!activeCfg.features) activeCfg.features = {};
-        activeCfg.features.themeStyles = isEnabled;
-        config.features.themeStyles = isEnabled;
-        triggerSave();
-      };
+    if (customOptions && customOptions.style.display !== 'block') {
+      customOptions.style.display = 'block';
     }
 
     // 6. 语言切换
@@ -3085,7 +3033,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     const elements = findAppearanceCard(modal);
     if (!elements) return;
 
-    if (!document.getElementById('agy-integrated-custom-switch-row') || !document.getElementById('agy-integrated-lang-row')) {
+    if (!document.getElementById('agy-integrated-custom-options') || !document.getElementById('agy-integrated-lang-row')) {
       integrateNativeMenu();
       return;
     }
@@ -3164,7 +3112,7 @@ export function initAppearanceMenu(getConfig, saveConfig, onConfigChange) {
     if (legacyFab) legacyFab.remove();
     // 关键守卫：只有当明确检测到外观卡片、且尚未接入自定义行时，才调用一次自愈接入！非外观页面绝不乱触发！
     const elements = findAppearanceCard(modal);
-    if (elements && (!document.getElementById('agy-integrated-custom-switch-row') || !document.getElementById('agy-integrated-custom-options'))) {
+    if (elements && (!document.getElementById('agy-integrated-lang-row') || !document.getElementById('agy-integrated-custom-options'))) {
       integrateNativeMenu();
     }
   }, 300);

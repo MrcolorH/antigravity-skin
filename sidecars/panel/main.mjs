@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -30,11 +30,60 @@ const readPatchSentinel = () => {
   try { return JSON.parse(readFileSync(platformPaths().patchSentinel, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; }
 };
 const hostLanguage = () => readSkinConfig()?.features?.chineseLocalization === false ? 'en' : 'zh-CN';
-const callSkinEngine = async (path, method = 'GET') => {
+const callSkinEngine = async (path, method = 'GET', bodyData = undefined) => {
   const port = Number(process.env.AG_SKIN_PORT || 59288);
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { method });
-  if (!res.ok) throw new Error(`Skin engine ${path} returned ${res.status}`);
+  const init = { method };
+  if (bodyData !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = typeof bodyData === 'string' ? bodyData : JSON.stringify(bodyData);
+  }
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, init);
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    throw new Error(`Skin engine ${path} returned ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
   return res.json();
+};
+const writeSkinConfigFallback = (cfg) => {
+  const file = platformPaths().skinConfig;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
+  return { ok: true, fallback: true };
+};
+const getSkinPanelState = async () => {
+  let config = readSkinConfig();
+  let patchStatus = readPatchSentinel() || { state: 'unknown', patched: false };
+  let engineOnline = false;
+  try {
+    const [remoteCfg, remotePatch] = await Promise.all([
+      callSkinEngine('/api/config', 'GET').catch(() => null),
+      callSkinEngine('/api/boot-patch/status', 'GET').catch(() => null)
+    ]);
+    if (remoteCfg && typeof remoteCfg === 'object') { config = remoteCfg; engineOnline = true; }
+    if (remotePatch && typeof remotePatch === 'object') { patchStatus = remotePatch; engineOnline = true; }
+  } catch {}
+  return {
+    platform: process.platform,
+    engineOnline,
+    hostLanguage: config?.features?.chineseLocalization === false ? 'en' : 'zh-CN',
+    config,
+    patchStatus: { ...patchStatus, platform: process.platform }
+  };
+};
+const getSkinAssets = async () => {
+  const [wallpapers, bootVideos, bootScripts, library] = await Promise.all([
+    callSkinEngine('/api/wallpaper/list', 'GET').catch(() => ({ files: [] })),
+    callSkinEngine('/api/boot-video/list', 'GET').catch(() => ({ files: [] })),
+    callSkinEngine('/api/boot-script/list', 'GET').catch(() => ({ files: [] })),
+    callSkinEngine('/api/wallpaper-library/scan', 'GET').catch(() => ({ items: [] }))
+  ]);
+  return {
+    wallpapers: wallpapers?.files || wallpapers?.items || [],
+    bootVideos: bootVideos?.files || bootVideos?.items || [],
+    bootScripts: bootScripts?.files || bootScripts?.items || [],
+    libraryItems: library?.items || []
+  };
 };
 const metrics = async input => {
   const base=await store.snapshot(input);if(input?.force)void usage.sync(true);
@@ -83,12 +132,26 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.api('/api/metrics', data => metrics({ conversationId: data.conversationId || null, force: data.force === true || data.force === '1' }), 'GET');
   app.api('/api/integration', () => integration.health, 'GET');
   app.api('/api/patch-status', async () => {
-    try { return await callSkinEngine('/api/boot-patch/status', 'GET'); }
-    catch { return readPatchSentinel() || { state: 'unknown', patched: true }; }
+    try { return { ...(await callSkinEngine('/api/boot-patch/status', 'GET')), platform: process.platform }; }
+    catch { return { ...(readPatchSentinel() || { state: 'unknown', patched: false }), platform: process.platform }; }
   }, 'GET');
   app.api('/api/patch-repair', async () => {
     try { return await callSkinEngine('/api/patch-boot', 'POST'); }
     catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
+  app.api('/api/skin-state', () => getSkinPanelState(), 'GET');
+  app.api('/api/skin-config', async () => {
+    try { return await callSkinEngine('/api/config', 'GET'); }
+    catch { return readSkinConfig(); }
+  }, 'GET');
+  app.api('/api/skin-config', async data => {
+    try { return await callSkinEngine('/api/config', 'POST', data); }
+    catch { return writeSkinConfigFallback(data); }
+  }, 'POST');
+  app.api('/api/skin-assets', () => getSkinAssets(), 'GET');
+  app.api('/api/skin-pick-library', async () => {
+    try { return await callSkinEngine('/api/wallpaper-library/pick-directory', 'POST'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Pick directory unavailable' }), { status: 502, contentType: 'application/json' }); }
   }, 'POST');
   app.api('/api/preferences',()=>preferences.snapshot(),'GET');
   app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
@@ -122,6 +185,62 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
         return;
       }
       res.writeHead(405);res.end();return;
+    }
+    if (url.pathname === '/api/patch-status' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify({ ...(await callSkinEngine('/api/boot-patch/status', 'GET')), platform: process.platform })); }
+      catch { res.end(JSON.stringify({ ...(readPatchSentinel() || { state: 'unknown', patched: false }), platform: process.platform })); }
+      return;
+    }
+    if (url.pathname === '/api/patch-repair' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/patch-boot', 'POST'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-state' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify(await getSkinPanelState()));
+      return;
+    }
+    if (url.pathname === '/api/skin-assets' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify(await getSkinAssets()));
+      return;
+    }
+    if (url.pathname === '/api/skin-pick-library' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/wallpaper-library/pick-directory', 'POST'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Pick directory unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-config') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      if (req.method === 'GET') {
+        try { res.end(JSON.stringify(await callSkinEngine('/api/config', 'GET'))); }
+        catch { res.end(JSON.stringify(readSkinConfig())); }
+        return;
+      }
+      if (req.method === 'POST') {
+        let body = '';
+        try {
+          for await (const chunk of req) body += chunk;
+          const parsed = JSON.parse(body);
+          try { res.end(JSON.stringify(await callSkinEngine('/api/config', 'POST', parsed))); }
+          catch { res.end(JSON.stringify(writeSkinConfigFallback(parsed))); }
+        } catch (err) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: err?.message || 'Invalid config payload' }));
+        }
+        return;
+      }
+      res.writeHead(405); res.end(); return;
     }
     if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
     res.setHeader('Cache-Control', 'no-store');

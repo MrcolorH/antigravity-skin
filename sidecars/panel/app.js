@@ -1,237 +1,421 @@
 import { percent, rate, count, elapsed, countdown, resetDate } from './format.mjs';
 import { createI18n } from './i18n.js';
 import { createTheme } from './theme.js';
-function initPanel(){
-if(!document.querySelector('.widget')||window.__agPulsePanelInstalled)return;
-window.__agPulsePanelInstalled=true;
-const theme=createTheme();
-let themeController=theme.attach(document.documentElement);
-window.addEventListener('pagehide',()=>themeController.dispose());
-window.addEventListener('pageshow',event=>{if(event.persisted)themeController=theme.attach(document.documentElement);});
-const localGet=key=>{try{return localStorage.getItem(key);}catch{return null;}};
-const localSet=(key,value)=>{try{localStorage.setItem(key,value);}catch{}};
-const language=createI18n(localGet('ag-pulse-language'));
-const t=language.t;
 
 const $ = id => document.getElementById(id);
-const compact=n=>typeof n!=='number'||!Number.isFinite(n)?'—':n>=1e9?`${(n/1e9).toFixed(1).replace(/\.0$/,'')}B`:n>=1e6?`${(n/1e6).toFixed(1).replace(/\.0$/,'')}M`:n>=1e3?`${(n/1e3).toFixed(1).replace(/\.0$/,'')}K`:String(n);
-const chips = [...document.querySelectorAll('[data-card]')];
-let snapshot = null, selectedGroup = localGet('ag-pulse-group'), group = null;
-let pending = false, timer = null, serverOffset = 0, lastExpiredRefresh = 0;
-let selectedCard='speed',cardMotion=null;
-let refreshRequest=null,manualRequest=null;
-const host = window.sidecar;
-if (!host) document.body.classList.add('standalone');
-const preferenceRequest=async(input)=>{
-  const transport=host?.fetch?host.fetch.bind(host):fetch;
-  const response=await transport('/api/preferences',input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:{cache:'no-store'});
-  if(!response.ok)throw new Error('Preferences unavailable');return response.json();
+const host = window.antigravity;
+const standalone = !host;
+if (standalone) document.body.classList.add('standalone');
+
+const TEXTS = {
+  'zh-CN': {
+    repairTitle: '插件通道状态',
+    cdpLabel: '热同步',
+    backupLabel: '备份',
+    forceRepair: '重新修复',
+    generalTitle: '界面与交互',
+    syncHint: '与「外观」菜单同步',
+    chineseLoc: '界面汉化 (中文)',
+    chineseLocDesc: '切换界面与看板语言',
+    chatStyle: '对话气泡样式',
+    chatBubble: '气泡卡片 (Bubble)',
+    chatNative: '原生透底 (Native)',
+    inlineDash: '对话栏内嵌看板',
+    inlineDashDesc: '在输入框旁显示轻量指标条',
+    wallpaperTitle: '动态壁纸',
+    sourceType: '素材类型',
+    sourceVideo: '内置视频 (Video)',
+    sourceScene: '场景素材库 (Scene)',
+    selectVideo: '选择壁纸视频',
+    selectScene: '选择场景壁纸',
+    fitMode: '画面适配',
+    fitCover: '填充裁切 (Cover)',
+    fitContain: '完整适应 (Contain)',
+    fitFill: '拉伸铺满 (Fill)',
+    brightness: '亮度',
+    contrast: '对比度',
+    audioEnable: '背景音频',
+    interactionEnable: '鼠标视差与滚轮交互',
+    bootTitle: '开机动画',
+    bootType: '动效类型',
+    bootVideo: '短视频 (Video)',
+    bootCode: '代码动效 (Script)',
+    selectBootVideo: '启动视频',
+    selectBootScript: '动效脚本',
+    bootDelay: '自动进入延迟 (秒)',
+    libraryTitle: '外部壁纸库',
+    pickDir: '选择目录',
+    patchMissing: '检测到反重力未激活插件通道（首次安装 / 版本已更新）',
+    patchMissingSub: '点击下方按钮自动注入并重启客户端即可生效。',
+    repairBtn: '立即修复并重启',
+    repairing: '正在修复并准备重启…',
+    repairDone: '修复指令已发送，请等待客户端重启',
+    repairFail: '修复失败：',
+    stateOk: '已激活',
+    stateMissing: '需要修复',
+    stateNotInstalled: '未检测到安装',
+    stateUnknown: '未知',
+    yes: '正常',
+    no: '未就绪',
+    hasBackup: '已有备份',
+    noBackup: '无备份',
+    ready: '配置已就绪',
+    saved: '已保存并同步到窗口',
+    saveError: '保存失败：',
+    noDir: '未配置目录（点击右上角选择）',
+    defaultOption: '默认内置'
+  },
+  en: {
+    repairTitle: 'Plugin Channel',
+    cdpLabel: 'Live Sync',
+    backupLabel: 'Backup',
+    forceRepair: 'Re-patch',
+    generalTitle: 'UI & Interaction',
+    syncHint: 'Synced with Appearance',
+    chineseLoc: 'Chinese Localization',
+    chineseLocDesc: 'Switch UI & dashboard language',
+    chatStyle: 'Chat Bubble Style',
+    chatBubble: 'Bubble',
+    chatNative: 'Native Transparent',
+    inlineDash: 'Inline Status Bar',
+    inlineDashDesc: 'Show compact metrics beside composer',
+    wallpaperTitle: 'Dynamic Wallpaper',
+    sourceType: 'Source Type',
+    sourceVideo: 'Built-in Video',
+    sourceScene: 'Scene Library',
+    selectVideo: 'Wallpaper Video',
+    selectScene: 'Scene Wallpaper',
+    fitMode: 'Fit Mode',
+    fitCover: 'Cover',
+    fitContain: 'Contain',
+    fitFill: 'Fill',
+    brightness: 'Brightness',
+    contrast: 'Contrast',
+    audioEnable: 'Background Audio',
+    interactionEnable: 'Parallax & Wheel Interaction',
+    bootTitle: 'Boot Animation',
+    bootType: 'Animation Type',
+    bootVideo: 'Video',
+    bootCode: 'Code Script',
+    selectBootVideo: 'Boot Video',
+    selectBootScript: 'Boot Script',
+    bootDelay: 'Auto-enter Delay (s)',
+    libraryTitle: 'External Wallpaper Library',
+    pickDir: 'Choose Folder',
+    patchMissing: 'Antigravity host patch missing (first install or app updated)',
+    patchMissingSub: 'Click below to inject the patch and restart Antigravity.',
+    repairBtn: 'Repair & Restart',
+    repairing: 'Repairing & restarting…',
+    repairDone: 'Repair triggered, waiting for restart…',
+    repairFail: 'Repair failed: ',
+    stateOk: 'Active',
+    stateMissing: 'Needs Repair',
+    stateNotInstalled: 'Not Installed',
+    stateUnknown: 'Unknown',
+    yes: 'Online',
+    no: 'Offline',
+    hasBackup: 'Available',
+    noBackup: 'None',
+    ready: 'Ready',
+    saved: 'Saved & synced',
+    saveError: 'Save failed: ',
+    noDir: 'No folder configured',
+    defaultOption: 'Default'
+  }
 };
-const connectPreferences=()=>language.connectPreferences({read:()=>preferenceRequest(),write:preferenceRequest,
-  cache:value=>localSet('ag-pulse-language',value),changed:()=>{localize();render();updateCountdowns();}});
-let preferences=connectPreferences();
 
-function showCard(name,animate=false) {
-  if(!['speed','cache','context'].includes(name))return;
-  const changed=selectedCard!==name;selectedCard=name;
-  cardMotion?.cancel();cardMotion=null;
-  for (const chip of chips){const selected=chip.dataset.card===name;chip.setAttribute('aria-selected',String(selected));chip.tabIndex=selected?0:-1;}
-  for (const nameKey of ['speed','cache','context']) $(`${nameKey}-card`).hidden = name !== nameKey;
-  if(changed&&animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches)cardMotion=$(`${name}-card`).animate([{opacity:.6,transform:'translateY(4px)'},{opacity:1,transform:'translateY(0)'}],{duration:160,easing:'cubic-bezier(.23,1,.32,1)'});
-}
-for (const chip of chips) {
-  chip.addEventListener('click', event => showCard(chip.dataset.card,event.detail>0));
-  chip.addEventListener('keydown',event=>{
-    const current=chips.indexOf(chip);let next;
-    if(event.key==='ArrowRight')next=(current+1)%chips.length;else if(event.key==='ArrowLeft')next=(current+chips.length-1)%chips.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=chips.length-1;else return;
-    event.preventDefault();showCard(chips[next].dataset.card);chips[next].focus();
-  });
-}
-function localize(){
-  document.documentElement.lang=language.language;
-  for(const e of document.querySelectorAll('[data-i18n]'))e.textContent=t(e.dataset.i18n);
-  for(const e of document.querySelectorAll('[data-i18n-aria]'))e.setAttribute('aria-label',t(e.dataset.i18nAria));
-  for(const e of document.querySelectorAll('[data-i18n-aria][title]'))e.title=t(e.dataset.i18nAria);
-  const repairText=$('patch-repair-text'),repairBtn=$('patch-repair-btn');
-  if(repairText)repairText.textContent=language.language==='zh-CN'?'检测到反重力未激活插件通道（首次安装 / 版本已更新）':'Antigravity patch missing (first install or app updated)';
-  if(repairBtn)repairBtn.textContent=language.language==='zh-CN'?'立即修复并重启':'Repair & Restart';
-}
+let lang = 'zh-CN';
+let config = {};
+let assets = { wallpapers: [], bootVideos: [], bootScripts: [], libraryItems: [] };
+let saveTimer = null;
+let lastLocalSaveAt = 0;
+let lastStateSig = '';
 
-function chooseGroup(groups, speed) {
-  if (selectedGroup && groups.some(g => g.id === selectedGroup)) return groups.find(g => g.id === selectedGroup);
-  const model = String(speed?.model || '').toLowerCase();
-  return groups.find(g => /gemini/.test(model) ? /gemini/i.test(g.id) : /claude|gpt/.test(model) ? /3p|claude|gpt/i.test(g.id) : false) || groups[0] || null;
-}
-function groupLabel(value) {
-  return /gemini/i.test(value.name) ? 'Gemini' : /claude|gpt/i.test(value.name) ? 'Claude / GPT' : value.name;
-}
+const t = key => (TEXTS[lang] || TEXTS['zh-CN'])[key] || key;
 
-function renderQuota(window, prefix) {
-  const bucket = group?.windows?.[window];
-  const remaining = bucket?.remaining;
-  $(`${prefix}-balance`).textContent = percent(remaining);
-  const fill = $(`${prefix}-fill`), track = $(`${prefix}-track`);
-  fill.style.width = typeof remaining === 'number' ? `${remaining * 100}%` : '0%';
-  fill.style.background = remaining !== null && remaining < .05 ? 'var(--pulse-danger)' : remaining !== null && remaining < .2 ? 'var(--pulse-warning)' : '';
-  if (typeof remaining === 'number') { track.setAttribute('aria-valuenow', String(remaining * 100)); track.setAttribute('aria-valuemin','0'); track.setAttribute('aria-valuemax','100'); }
-  else track.removeAttribute('aria-valuenow');
-  $(`${prefix}-reset`).textContent = language.resetDate(bucket?.resetAt);
-  $(`${prefix}-note`).textContent = !bucket?.available ? t('noQuota') : bucket.disabled ? t('disabledQuota') : remaining === null ? t('noFraction') : t('sharedQuota')+' '+t('quotaSource');
-}
+const transport = (path, init) => {
+  if (host?.fetch) return host.fetch(path, init);
+  return fetch(path, init);
+};
 
-function render() {
-  if (!snapshot) return;
-  const groups = snapshot.groups || [], speed = snapshot.speed;
-  group = chooseGroup(groups, speed);
-  const optionsKey = groups.map(g => g.id).join('|');
-  const select = $('quota-group');
-  if (select.dataset.options !== optionsKey) {
-    select.replaceChildren(...(groups.length ? groups.map(g => new Option(groupLabel(g),g.id)) : [new Option(t('unavailableQuota'),'')]));
-    select.dataset.options = optionsKey;
+async function apiJson(path, method = 'GET', body) {
+  const init = { method };
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = JSON.stringify(body);
   }
-  if (group) select.value = group.id;
-  for (const element of document.querySelectorAll('.group-name')) element.textContent = group ? groupLabel(group) : '—';
-  renderQuota('5h','five'); renderQuota('weekly','week');
-  $('strip-tps').textContent = rate(speed?.tps);
-  $('speed-tab').title=rate(speed?.tps)+' tok/s';
-  $('session-tps').textContent = rate(speed?.tps);
-  $('latest-tps').textContent = speed?.latestRateStatus==='unreliable'?t('timingUnreliable'):speed?.latestRateStatus==='legacy'?t('ratePending'):rate(speed?.latestTps);
-  $('request-count').textContent = t('sampleCount',{n:speed?.measuredRequests??0});
-  $('session-steps').textContent = speed ? t('rounds',{rounds:speed.rounds,steps:speed.steps}) : '';
-  $('strip-model').textContent = speed?.model || t('waitingRequest');
-  $('strip-model').title=$('strip-model').textContent;
-  $('model-time').textContent = language.elapsed(speed?.modelSeconds);
-  $('tool-time').textContent = language.elapsed(speed?.toolSeconds);
-  $('ttft').textContent = language.elapsed(speed?.ttftSeconds);
-  $('token-detail').textContent = speed ? `${count(speed.counts.responseOutput)} / ${count(speed.counts.thinkingOutput)} tok` : '—';
-  const savedNote=speed?.restoredFromHistory?' '+t('savedStats',{time:speed.savedAt?language.resetDate(speed.savedAt):'—'}):'';
-  const saveWarning=snapshot.persistenceError?' '+t('saveFailed'):'';
-  $('speed-basis').textContent = language.rateNote(speed)+savedNote+saveWarning;
-  const cache=speed?.cache;
-  const context=speed?.context,hasCapacity=typeof context?.usedFraction==='number';
-  $('strip-context').textContent=hasCapacity?`${Math.round(context.usedFraction*100)}%`:'—';
-  $('strip-context-size').textContent=context?`${compact(context.usedTokens)} / ${context.maxTokens===null?'—':compact(context.maxTokens)}`:'—';
-  $('context-tab').title=context?t('contextTokens',{used:count(context.usedTokens),max:context.maxTokens===null?'—':count(context.maxTokens)}):t('contextUnknown');
-  $('context-summary').textContent=hasCapacity?t('contextUsed',{used:Math.round(context.usedFraction*100),remaining:Math.round(context.remainingFraction*100)}):t('contextUnknown');
-  $('context-tokens').textContent=context?t('contextTokens',{used:compact(context.usedTokens),max:context.maxTokens===null?'—':compact(context.maxTokens)}):'—';
-  $('context-model').textContent=context?.model||'—';
-  $('context-fill').style.width=hasCapacity?`${Math.min(1,context.usedFraction)*100}%`:'0%';
-  $('context-fill').style.background=hasCapacity&&context.usedFraction>=.9?'var(--pulse-danger)':'';
-  if(hasCapacity){$('context-track').setAttribute('aria-valuenow',String(Math.min(100,context.usedFraction*100)));$('context-track').setAttribute('aria-valuemin','0');$('context-track').setAttribute('aria-valuemax','100');}else $('context-track').removeAttribute('aria-valuenow');
-  $('strip-cache').textContent=percent(cache?.hitRate);$('cache-rate').textContent=percent(cache?.hitRate);
-  const tokens=speed?.tokens || cache;
-  // Coverage remains available in raw statistics and documented separately.
-  const hasTotal=tokens?.measuredRequests&&Number.isSafeInteger(tokens.totalTokens)&&tokens.totalTokens>=0;
-  $('strip-cache-total').textContent=hasTotal?`${compact(tokens.totalTokens)} tok`:'— tok';
-  const inputCoverage={uncachedTokens:'uncachedRequests',cachedTokens:'cachedRequests',cacheWriteTokens:'cacheWriteRequests'};
-  for(const [field,id]of[['cachedTokens','cache-read'],['uncachedTokens','cache-miss'],['cacheWriteTokens','cache-write'],['outputTokens','cache-output']]) {
-    const available=field==='outputTokens'?(tokens?.outputAvailable??(tokens?.outputRequests??tokens?.measuredRequests)):(tokens?.[inputCoverage[field]]??tokens?.inputRequests??tokens?.measuredRequests);
-    const known=Number.isSafeInteger(tokens?.[field])&&tokens[field]>=0;
-    $(id).textContent=available&&known?`${count(tokens[field])} tok`:'—';
-  }
-  $('cache-coverage').textContent=hasTotal?`${count(tokens.totalTokens)} tok`:'— tok';
-  $('cache-write-row').hidden=!(tokens?.cacheWriteTokens>0);
-  $('cache-note').hidden=true;
-  $('connection-dot').className = `connection-dot ${snapshot.connection}`;
-  $('connection-dot').title = t(snapshot.connection === 'live'?'live':snapshot.connection === 'stale'?'stale':'offline');
-  const timestamp = snapshot.quotaUpdatedAt ? new Date(snapshot.quotaUpdatedAt).toLocaleTimeString(language.language,{hour12:false}) : null;
-  $('health-note').textContent = language.errorMessage(snapshot.error||snapshot.sessionError) || (timestamp ? t('health',{time:timestamp}) : t('firstUpdate'));
-  $('health-note').classList.toggle('warning', snapshot.connection !== 'live' || !!snapshot.sessionError);
-  const integration = snapshot.integration;
-  $('integration-note').textContent = integration && !['mounted','disabled'].includes(integration.state)
-    ? (language.language === 'zh-CN' ? '内嵌栏正在自动重连；此面板仍可查看统计。' : 'Inline widget is reconnecting automatically; statistics remain available in this panel.') : '';
-  updateCountdowns();
+  const res = await transport(path, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
-function updateCountdowns() {
-  const now = Date.now() + serverOffset;
-  for (const [window,prefix] of [['5h','five'],['weekly','week']]) {
-    const bucket = group?.windows?.[window];
-    $(`${prefix}-countdown`).textContent = language.countdown(bucket?.resetAt,now);
-    $(`${prefix}-summary-countdown`).textContent=language.countdown(bucket?.resetAt,now,true);
-    $(`${prefix}-summary-balance`).textContent=percent(bucket?.remaining);
-    $(`${prefix}-summary-fill`).style.width=typeof bucket?.remaining==='number'?`${Math.min(100,Math.max(0,bucket.remaining*100))}%`:'0%';
-    if (bucket?.resetAt && Date.parse(bucket.resetAt) <= now && snapshot?.connection === 'live' && now - lastExpiredRefresh > 30000) {
-      lastExpiredRefresh = now; setTimeout(() => refresh(true),0);
+function platformName(p) {
+  if (p === 'darwin') return 'macOS';
+  if (p === 'win32') return 'Windows';
+  if (p === 'linux') return 'Linux';
+  return p || '—';
+}
+
+function localize() {
+  for (const el of document.querySelectorAll('[data-t]')) {
+    el.textContent = t(el.dataset.t);
+  }
+  const repairText = $('patch-repair-text');
+  const repairSub = $('patch-repair-sub');
+  const repairBtn = $('patch-repair-btn');
+  if (repairText) repairText.textContent = t('patchMissing');
+  if (repairSub) repairSub.textContent = t('patchMissingSub');
+  if (repairBtn && !repairBtn.disabled) repairBtn.textContent = t('repairBtn');
+}
+
+function fillSelect(selectEl, items, currentVal, getVal, getLabel) {
+  if (!selectEl) return;
+  const list = Array.isArray(items) ? items : [];
+  selectEl.innerHTML = '';
+  const def = document.createElement('option');
+  def.value = '';
+  def.textContent = t('defaultOption');
+  selectEl.appendChild(def);
+  for (const item of list) {
+    const val = getVal(item);
+    if (!val) continue;
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = getLabel(item) || val;
+    selectEl.appendChild(opt);
+  }
+  if (currentVal && !Array.from(selectEl.options).some(o => o.value === currentVal)) {
+    const extra = document.createElement('option');
+    extra.value = currentVal;
+    extra.textContent = currentVal.split(/[/\\]/).pop() || currentVal;
+    selectEl.appendChild(extra);
+  }
+  selectEl.value = currentVal || '';
+}
+
+function renderPatchStatus(patch) {
+  const state = patch?.state || 'unknown';
+  const pill = $('patch-state-pill');
+  const banner = $('patch-repair-banner');
+  $('platform-badge').textContent = platformName(patch?.platform);
+  $('meta-cdp').textContent = patch?.cdpAvailable ? t('yes') : t('no');
+  $('meta-backup').textContent = patch?.hasBackup ? t('hasBackup') : t('noBackup');
+
+  if (pill) {
+    pill.className = 'status-pill ' + (state === 'ok' ? 'ok' : state === 'patch_missing' ? 'warn' : '');
+    pill.textContent = state === 'ok' ? t('stateOk') : state === 'patch_missing' ? t('stateMissing') : state === 'not_installed' ? t('stateNotInstalled') : t('stateUnknown');
+  }
+  if (banner) banner.hidden = state !== 'patch_missing';
+}
+
+function renderConfig() {
+  const f = config.features || {};
+  const dw = f.dynamicWallpaper || {};
+  const boot = f.bootAnimationConfig || {};
+  const lib = f.externalWallpaperLibrary || {};
+  const dash = f.dashboard || {};
+
+  $('cfg-chineseLocalization').checked = f.chineseLocalization !== false;
+  $('cfg-chatStyleMode').value = f.chatStyleMode === 'native' ? 'native' : 'bubble';
+  $('cfg-dashboardInline').checked = dash.enabled !== false && dash.inlineEnabled !== false;
+
+  const dwOn = dw.enabled === true;
+  $('cfg-dw-enabled').checked = dwOn;
+  $('wallpaper-options').hidden = !dwOn;
+
+  const dwSource = dw.sourceType || (dw.wallpaperDir ? 'scene' : 'video');
+  $('cfg-dw-sourceType').value = dwSource;
+  $('dw-video-row').hidden = dwSource !== 'video';
+  $('dw-scene-row').hidden = dwSource !== 'scene';
+
+  fillSelect($('cfg-dw-videoPath'), assets.wallpapers, dw.videoPath, i => (typeof i === 'string' ? i : i.name || i.path), i => (typeof i === 'string' ? i : i.name || i.file));
+  fillSelect($('cfg-dw-wallpaperDir'), assets.libraryItems, dw.wallpaperDir, i => i.dir || i.path || i.folder, i => i.title || i.name || i.folder);
+
+  $('cfg-dw-fit').value = dw.fit || 'cover';
+  const br = Number(dw.brightness ?? 0.85);
+  const ct = Number(dw.contrast ?? 1.05);
+  $('cfg-dw-brightness').value = String(br);
+  $('val-dw-brightness').textContent = br.toFixed(2);
+  $('cfg-dw-contrast').value = String(ct);
+  $('val-dw-contrast').textContent = ct.toFixed(2);
+  $('cfg-dw-audioEnabled').checked = dw.audioEnabled === true;
+  $('cfg-dw-interaction').checked = dw.wallpaperInteraction?.enabled !== false;
+
+  const bootOn = f.bootAnimation === true;
+  $('cfg-boot-enabled').checked = bootOn;
+  $('boot-options').hidden = !bootOn;
+
+  const bootType = boot.type === 'code' ? 'code' : 'video';
+  $('cfg-boot-type').value = bootType;
+  $('boot-video-row').hidden = bootType !== 'video';
+  $('boot-script-row').hidden = bootType !== 'code';
+
+  fillSelect($('cfg-boot-videoPath'), assets.bootVideos, boot.videoPath, i => (typeof i === 'string' ? i : i.name || i.path), i => (typeof i === 'string' ? i : i.name || i.file));
+  fillSelect($('cfg-boot-scriptPath'), assets.bootScripts, boot.customCodePath, i => (typeof i === 'string' ? i : i.name || i.path), i => (typeof i === 'string' ? i : i.name || i.file));
+
+  const delay = Number(boot.autoEnterDelay ?? 3);
+  $('cfg-boot-delay').value = String(delay);
+  $('val-boot-delay').textContent = `${delay}s`;
+
+  const libBox = $('cfg-lib-path');
+  libBox.textContent = lib.libraryPath || t('noDir');
+  libBox.title = lib.libraryPath || '';
+}
+
+function collectConfig() {
+  const next = JSON.parse(JSON.stringify(config || {}));
+  next.enabled = true;
+  next.features = next.features || {};
+  const f = next.features;
+  const dwEnabled = $('cfg-dw-enabled').checked;
+  f.themeStyles = dwEnabled;
+  f.chineseLocalization = $('cfg-chineseLocalization').checked;
+  f.chatStyleMode = $('cfg-chatStyleMode').value === 'native' ? 'native' : 'bubble';
+  f.dashboard = { ...(f.dashboard || {}), enabled: $('cfg-dashboardInline').checked, inlineEnabled: $('cfg-dashboardInline').checked };
+
+  f.dynamicWallpaper = f.dynamicWallpaper || {};
+  f.dynamicWallpaper.enabled = $('cfg-dw-enabled').checked;
+  f.dynamicWallpaper.sourceType = $('cfg-dw-sourceType').value;
+  f.dynamicWallpaper.videoPath = $('cfg-dw-videoPath').value;
+  f.dynamicWallpaper.wallpaperDir = $('cfg-dw-wallpaperDir').value;
+  f.dynamicWallpaper.fit = $('cfg-dw-fit').value;
+  f.dynamicWallpaper.brightness = Number($('cfg-dw-brightness').value);
+  f.dynamicWallpaper.contrast = Number($('cfg-dw-contrast').value);
+  f.dynamicWallpaper.audioEnabled = $('cfg-dw-audioEnabled').checked;
+  f.dynamicWallpaper.wallpaperInteraction = { ...(f.dynamicWallpaper.wallpaperInteraction || {}), enabled: $('cfg-dw-interaction').checked };
+
+  f.bootAnimation = $('cfg-boot-enabled').checked;
+  f.bootAnimationConfig = f.bootAnimationConfig || {};
+  f.bootAnimationConfig.type = $('cfg-boot-type').value === 'code' ? 'code' : 'video';
+  f.bootAnimationConfig.videoPath = $('cfg-boot-videoPath').value;
+  f.bootAnimationConfig.customCodePath = $('cfg-boot-scriptPath').value;
+  f.bootAnimationConfig.autoEnterDelay = Number($('cfg-boot-delay').value);
+
+  return next;
+}
+
+async function persistConfig(immediate = false) {
+  config = collectConfig();
+  lastLocalSaveAt = Date.now();
+  lang = config?.features?.chineseLocalization === false ? 'en' : 'zh-CN';
+  localize();
+  renderConfig();
+
+  const runSave = async () => {
+    saveTimer = null;
+    lastLocalSaveAt = Date.now();
+    try {
+      await apiJson('/api/skin-config', 'POST', config);
+      lastStateSig = JSON.stringify({ config, patchState: $('patch-state-pill')?.textContent });
+      $('status-note').textContent = t('saved');
+    } catch (err) {
+      $('status-note').textContent = `${t('saveError')}${err.message}`;
     }
-  }
+  };
+
+  clearTimeout(saveTimer);
+  if (immediate) return runSave();
+  saveTimer = setTimeout(runSave, 180);
 }
 
-function refreshBusy(busy){
-  const button=$('refresh-button');button.setAttribute('aria-busy',String(busy));button.setAttribute('aria-disabled',String(busy));
-  button.dataset.i18nAria=busy?'refreshing':'refreshStats';button.title=t(button.dataset.i18nAria);button.setAttribute('aria-label',button.title);
-}
-function refreshManually(){
-  if(manualRequest)return;
-  refreshBusy(true);const started=performance.now();
-  manualRequest=(async()=>{
-    try{if(pending)await refreshRequest;await refresh(true);}
-    finally{
-      const remaining=250-(performance.now()-started);
-      if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));
-      refreshBusy(false);manualRequest=null;
-    }
-  })();
-}
-function refresh(force = false) {
-  if (pending) return refreshRequest;
-  pending = true;
-  refreshRequest=(async()=>{
+async function refreshAll(silent = false) {
+  if (silent && (saveTimer || Date.now() - lastLocalSaveAt < 1400)) return;
+  const btn = $('refresh-button');
+  if (!silent) btn?.setAttribute('aria-busy', 'true');
   try {
-    const params = new URLSearchParams();
-    if (host?.conversationId) params.set('conversationId',host.conversationId);
-    if (force) params.set('force','1');
-    const transport = host?.fetch ? host.fetch.bind(host) : fetch;
-    const response = await transport(`/api/metrics?${params}`,{cache:'no-store'});
-    if (!response.ok) throw new Error(t('panelUnavailable'));
-    const value = await response.json();
-    if (!['live','stale','offline'].includes(value.connection)) throw new Error(t('invalidData'));
-    snapshot = value;
-    if(Object.hasOwn(value,'theme'))themeController.setHostTheme(value.theme);
-    if(value.hostLanguage && value.hostLanguage !== language.language){
-      language.setLanguage(value.hostLanguage);
-      localSet('ag-pulse-language', value.hostLanguage);
-      localize();
-    }
-    const banner=$('patch-repair-banner');
-    if(banner){
-      banner.hidden = value.patchStatus?.state !== 'patch_missing';
-    }
-    if(value.preferences)preferences.sync(value.preferences);
-    serverOffset = Date.parse(value.serverTime) - Date.now();
-    if (!Number.isFinite(serverOffset)) serverOffset = 0;
-    render();
-  } catch (error) {
-    if (snapshot) { snapshot.connection = 'stale'; snapshot.error = error.message; render(); }
-    else { $('health-note').textContent = language.errorMessage(error.message); $('health-note').classList.add('warning'); }
-  } finally {
-    pending = false; refreshRequest=null;
-    clearTimeout(timer); timer = setTimeout(refresh, document.hidden ? 10000 : 2200);
-  }
-  })();
-  return refreshRequest;
-}
-$('quota-group').addEventListener('change', event => { selectedGroup = event.target.value; localSet('ag-pulse-group',selectedGroup); render(); });
-$('refresh-button').addEventListener('click', refreshManually);
-const repairBtnEl=$('patch-repair-btn');
-if(repairBtnEl)repairBtnEl.addEventListener('click',async()=>{
-  repairBtnEl.disabled=true;
-  repairBtnEl.textContent=language.language==='zh-CN'?'正在修复...':'Repairing...';
-  try{
-    const transport=host?.fetch?host.fetch.bind(host):fetch;
-    await transport('/api/patch-repair',{method:'POST'});
-  }catch{
-    repairBtnEl.disabled=false;
+    const [value, assetData] = await Promise.all([
+      apiJson('/api/skin-state'),
+      silent ? Promise.resolve(assets) : apiJson('/api/skin-assets').catch(() => assets)
+    ]);
+    if (silent && (saveTimer || Date.now() - lastLocalSaveAt < 1400)) return;
+    const nextSig = JSON.stringify({ config: value.config, patch: value.patchStatus, lang: value.hostLanguage });
+    if (silent && nextSig === lastStateSig) return;
+    lastStateSig = nextSig;
+
+    if (value.hostLanguage) lang = value.hostLanguage;
+    config = value.config || {};
+    assets = assetData || assets;
+    $('connection-dot').className = 'connection-dot ' + (value.engineOnline ? 'live' : 'stale');
     localize();
+    renderPatchStatus(value.patchStatus);
+    renderConfig();
+    if (!silent) $('status-note').textContent = t('ready');
+  } catch (err) {
+    $('connection-dot').className = 'connection-dot stale';
+    if (!silent) $('status-note').textContent = err.message;
+  } finally {
+    if (!silent) btn?.removeAttribute('aria-busy');
   }
-});
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-window.addEventListener('pagehide',()=>preferences.dispose());
-window.addEventListener('pageshow',event=>{if(event.persisted)preferences=connectPreferences();});
-setInterval(updateCountdowns,1000);
-localize();
-showCard('speed');
-refresh();
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initPanel,{once:true});
-else initPanel();
+
+async function triggerRepair(btn) {
+  if (!btn) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = t('repairing');
+  $('repair-feedback').textContent = '';
+  try {
+    await apiJson('/api/patch-repair', 'POST');
+    $('repair-feedback').textContent = t('repairDone');
+  } catch (err) {
+    $('repair-feedback').textContent = `${t('repairFail')}${err.message}`;
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+function bindEvents() {
+  $('refresh-button').addEventListener('click', () => refreshAll(false));
+  $('patch-repair-btn').addEventListener('click', () => triggerRepair($('patch-repair-btn')));
+  $('force-repair-btn').addEventListener('click', () => triggerRepair($('force-repair-btn')));
+
+  const immediateIds = [
+    'cfg-chineseLocalization', 'cfg-chatStyleMode', 'cfg-dashboardInline',
+    'cfg-dw-enabled', 'cfg-dw-sourceType', 'cfg-dw-videoPath', 'cfg-dw-wallpaperDir', 'cfg-dw-fit',
+    'cfg-dw-audioEnabled', 'cfg-dw-interaction',
+    'cfg-boot-enabled', 'cfg-boot-type', 'cfg-boot-videoPath', 'cfg-boot-scriptPath'
+  ];
+  for (const id of immediateIds) {
+    $(id)?.addEventListener('change', () => persistConfig(true));
+  }
+
+  $('cfg-dw-brightness').addEventListener('input', e => {
+    $('val-dw-brightness').textContent = Number(e.target.value).toFixed(2);
+    persistConfig(false);
+  });
+  $('cfg-dw-contrast').addEventListener('input', e => {
+    $('val-dw-contrast').textContent = Number(e.target.value).toFixed(2);
+    persistConfig(false);
+  });
+  $('cfg-boot-delay').addEventListener('input', e => {
+    $('val-boot-delay').textContent = `${e.target.value}s`;
+    persistConfig(false);
+  });
+
+  $('pick-library-btn').addEventListener('click', async () => {
+    try {
+      const res = await apiJson('/api/skin-pick-library', 'POST');
+      if (res?.path) {
+        config.features = config.features || {};
+        config.features.externalWallpaperLibrary = { ...(config.features.externalWallpaperLibrary || {}), libraryPath: res.path };
+        await persistConfig(true);
+        await refreshAll();
+      }
+    } catch (err) {
+      $('status-note').textContent = err.message;
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshAll(false);
+  });
+  window.addEventListener('focus', () => refreshAll(false));
+  setInterval(() => {
+    if (!document.hidden) refreshAll(true);
+  }, 1500);
+}
+
+try { createTheme?.(); } catch {}
+bindEvents();
+refreshAll();

@@ -214,7 +214,8 @@
 
 
         /* 2.5 Windows 顶部窗口栏 / 标题菜单栏 (Title Menu Bar) 100% 纯透明沉浸式 */
-        div.shrink-0:has(> [data-testid="title-menu-bar"]),
+        div.shrink-0:has([data-testid="title-menu-bar"]),
+        div.shrink-0:has([data-testid="title-menu-bar"]) > div:has([data-testid="title-menu-bar"]),
         [data-testid="title-menu-bar"] {
           background-color: transparent !important;
           background: transparent !important;
@@ -225,8 +226,10 @@
           box-shadow: none !important;
         }
 
-        .theme-dark div.shrink-0:has(> [data-testid="title-menu-bar"]),
-        .dark div.shrink-0:has(> [data-testid="title-menu-bar"]),
+        .theme-dark div.shrink-0:has([data-testid="title-menu-bar"]),
+        .dark div.shrink-0:has([data-testid="title-menu-bar"]),
+        .theme-dark div.shrink-0:has([data-testid="title-menu-bar"]) > div:has([data-testid="title-menu-bar"]),
+        .dark div.shrink-0:has([data-testid="title-menu-bar"]) > div:has([data-testid="title-menu-bar"]),
         .theme-dark [data-testid="title-menu-bar"],
         .dark [data-testid="title-menu-bar"] {
           background-color: transparent !important;

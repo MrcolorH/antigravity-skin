@@ -73,7 +73,6 @@
   function isWallpaperSkinActive(cfg) {
     if (!cfg || cfg.enabled === false) return false;
     const f = cfg.features || {};
-    if (f.themeStyles === false) return false;
     const dw = f.dynamicWallpaper || {};
     return dw.enabled === true && hasValidWallpaperSource(dw);
   }
@@ -81,7 +80,7 @@
   function isBootActiveEffective(cfg) {
     if (!cfg || cfg.enabled === false) return false;
     const f = cfg.features || {};
-    return f.themeStyles !== false && f.bootAnimation === true;
+    return f.bootAnimation === true;
   }
 
   window.__agyHasValidWallpaperSource = hasValidWallpaperSource;
@@ -960,6 +959,70 @@
     getConfig: () => currentConfig,
     saveConfig: saveConfigRemote
   };
+
+  function remountSettingsMenusIfOpen() {
+    try {
+      const hasAppearance = !!document.getElementById('agy-integrated-lang-row') || !!document.getElementById('agy-integrated-custom-options');
+      if (hasAppearance && typeof window.__agyInitAppearanceMenu === 'function') {
+        document.querySelectorAll('#agy-integrated-lang-row, #agy-integrated-custom-switch-row, #agy-integrated-custom-options').forEach(el => el.remove());
+        menuHandle = window.__agyInitAppearanceMenu(
+          () => (window.__AG_SKIN_CONFIG__ || currentConfig),
+          saveConfigRemote,
+          (updatedConfig) => { applyFeatures(updatedConfig); }
+        );
+        window.__agyAppearanceMenuHandle = menuHandle;
+      }
+      const hasDash = !!document.getElementById('agy-dashboard-settings-card');
+      if (hasDash && typeof window.__agyInitDashboardSettings === 'function') {
+        document.getElementById('agy-dashboard-settings-card')?.remove();
+        window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
+          () => (window.__AG_SKIN_CONFIG__ || currentConfig),
+          saveConfigRemote
+        );
+      }
+    } catch (_) {}
+  }
+
+  window.__agySyncConfigFromEngine = (nextCfg) => {
+    if (!nextCfg || typeof nextCfg !== 'object') return;
+    const prevJson = JSON.stringify(currentConfig);
+    const nextJson = JSON.stringify(nextCfg);
+    if (prevJson === nextJson) return;
+    currentConfig = nextCfg;
+    window.__AG_SKIN_CONFIG__ = nextCfg;
+    try {
+      applyFeatures(nextCfg);
+    } catch (e) {
+      console.warn('[Antigravity Skin] Error applying features on engine sync:', e);
+    }
+    remountSettingsMenusIfOpen();
+  };
+
+  // 兜底同步：当设置弹窗打开或窗口重新聚焦时，从 sidecar 拉取一次最新配置（防止 CDP 未连接时双端不同步）
+  let lastPullAt = 0;
+  function pullConfigFromEngine() {
+    const now = Date.now();
+    if (now - lastPullAt < 1000) return;
+    lastPullAt = now;
+    try {
+      fetch(`${API_BASE}/api/config`, { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(remote => {
+          if (remote && typeof remote === 'object') {
+            window.__agySyncConfigFromEngine(remote);
+          }
+        })
+        .catch(() => {});
+    } catch (_) {}
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('focus', pullConfigFromEngine);
+    const syncTimer = setInterval(() => {
+      if (document.hidden) return;
+      pullConfigFromEngine();
+    }, 1500);
+    if (syncTimer && typeof syncTimer.unref === 'function') syncTimer.unref();
+  }
 
   // 核心时序防护：仅在已播放、总开关关闭或用户已在工作区产生实质输入时跳过开机动画
   function shouldAbandonBootAnimation(activeCfg) {
