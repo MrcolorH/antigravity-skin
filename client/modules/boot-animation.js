@@ -99,17 +99,30 @@
         }
       }
 
+      const maxBytes = Number.isFinite(opts.maxBytes) ? opts.maxBytes : MAX_BLOB_MEDIA_BYTES;
+
       const fetchAndCreateBlob = async () => {
         try {
-          const resp = await fetch(rawUrl);
+          if (maxBytes < MAX_BLOB_MEDIA_BYTES) {
+            try {
+              const headResp = await fetch(rawUrl, { method: 'HEAD' });
+              const headLen = Number(headResp?.headers?.get?.('content-length') || 0);
+              if (Number.isFinite(headLen) && headLen > maxBytes) {
+                return { url: rawUrl, isBlob: false, cached: false };
+              }
+            } catch (_) {}
+          }
+          const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          const resp = await fetch(rawUrl, controller ? { signal: controller.signal } : undefined);
           if (!resp || !resp.ok) return { url: rawUrl, isBlob: false, cached: false };
           const lenHeader = resp.headers && typeof resp.headers.get === 'function' ? resp.headers.get('content-length') : null;
           const contentLen = lenHeader ? Number(lenHeader) : 0;
-          if (Number.isFinite(contentLen) && contentLen > MAX_BLOB_MEDIA_BYTES) {
+          if (Number.isFinite(contentLen) && contentLen > maxBytes) {
+            try { controller?.abort(); } catch (_) {}
             return { url: rawUrl, isBlob: false, cached: false };
           }
           const blob = await resp.blob();
-          if (!blob || !blob.size || blob.size > MAX_BLOB_MEDIA_BYTES) {
+          if (!blob || !blob.size || blob.size > maxBytes) {
             return { url: rawUrl, isBlob: false, cached: false };
           }
           const blobUrl = URL.createObjectURL(blob);

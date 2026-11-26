@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, watchFile } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -29,6 +29,14 @@ const readSkinConfig = () => {
 const readPatchSentinel = () => {
   try { return JSON.parse(readFileSync(platformPaths().patchSentinel, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; }
 };
+const readPluginVersion = () => {
+  try {
+    const raw = readFileSync(join(HERE, '..', '..', 'plugin.json'), 'utf8').replace(/^\uFEFF/, '');
+    return JSON.parse(raw).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+};
 const hostLanguage = () => readSkinConfig()?.features?.chineseLocalization === false ? 'en' : 'zh-CN';
 const callSkinEngine = async (path, method = 'GET', bodyData = undefined) => {
   const port = Number(process.env.AG_SKIN_PORT || 59288);
@@ -44,6 +52,19 @@ const callSkinEngine = async (path, method = 'GET', bodyData = undefined) => {
     throw new Error(`Skin engine ${path} returned ${res.status}${detail ? `: ${detail}` : ''}`);
   }
   return res.json();
+};
+const callSkinEngineRaw = async (path, method = 'GET', body = undefined, headers = {}) => {
+  const port = Number(process.env.AG_SKIN_PORT || 59288);
+  const init = { method, headers };
+  if (body !== undefined) init.body = body;
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, init);
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    throw new Error(`Skin engine ${path} returned ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  return { buf, contentType: res.headers.get('content-type') || 'application/octet-stream' };
 };
 const writeSkinConfigFallback = (cfg) => {
   const file = platformPaths().skinConfig;
@@ -66,6 +87,7 @@ const getSkinPanelState = async () => {
   return {
     platform: process.platform,
     engineOnline,
+    pluginVersion: readPluginVersion(),
     hostLanguage: config?.features?.chineseLocalization === false ? 'en' : 'zh-CN',
     config,
     patchStatus: { ...patchStatus, platform: process.platform }
@@ -82,7 +104,7 @@ const getSkinAssets = async () => {
     wallpapers: wallpapers?.files || wallpapers?.items || [],
     bootVideos: bootVideos?.files || bootVideos?.items || [],
     bootScripts: bootScripts?.files || bootScripts?.items || [],
-    libraryItems: library?.items || []
+    libraryItems: library?.wallpapers || library?.items || []
   };
 };
 const metrics = async input => {
@@ -139,6 +161,14 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
     try { return await callSkinEngine('/api/patch-boot', 'POST'); }
     catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' }), { status: 502, contentType: 'application/json' }); }
   }, 'POST');
+  app.api('/api/update-check', async () => {
+    try { return await callSkinEngine('/api/update/check', 'GET'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, currentVersion: readPluginVersion(), error: err?.message || 'Update check unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'GET');
+  app.api('/api/update-apply', async data => {
+    try { return await callSkinEngine('/api/update/apply', 'POST', data || {}); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Update apply unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
   app.api('/api/skin-state', () => getSkinPanelState(), 'GET');
   app.api('/api/skin-config', async () => {
     try { return await callSkinEngine('/api/config', 'GET'); }
@@ -153,6 +183,68 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
     try { return await callSkinEngine('/api/wallpaper-library/pick-directory', 'POST'); }
     catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Pick directory unavailable' }), { status: 502, contentType: 'application/json' }); }
   }, 'POST');
+  app.api('/api/skin-lib-detect', async () => {
+    try { return await callSkinEngine('/api/wallpaper-library/detect', 'GET'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Detect unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'GET');
+  app.api('/api/skin-lib-scan', async data => {
+    try {
+      const qs = new URLSearchParams();
+      if (data?.path) qs.set('path', String(data.path));
+      if (data?.force === '1' || data?.force === true) qs.set('force', '1');
+      if (data?.mount === '1' || data?.mount === true) qs.set('mount', '1');
+      const query = qs.toString() ? `?${qs.toString()}` : '';
+      return await callSkinEngine(`/api/wallpaper-library/scan${query}`, 'GET');
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err?.message || 'Scan unavailable' }), { status: 502, contentType: 'application/json' });
+    }
+  }, 'GET');
+  app.api('/api/skin-lib-import-folder', async data => {
+    try { return await callSkinEngine('/api/wallpaper-library/import-folder', 'POST', data || {}); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Import folder unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
+  app.api('/api/skin-lib-properties', async data => {
+    try {
+      const folder = String(data?.folder || '');
+      return await callSkinEngine(`/api/wallpaper-library/properties?folder=${encodeURIComponent(folder)}`, 'GET');
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err?.message || 'Properties unavailable' }), { status: 502, contentType: 'application/json' });
+    }
+  }, 'GET');
+  app.api('/api/skin-lib-preview', async data => {
+    try {
+      const qs = new URLSearchParams();
+      if (data?.folder) qs.set('folder', String(data.folder));
+      if (data?.file) qs.set('file', String(data.file));
+      const { buf, contentType } = await callSkinEngineRaw(`/api/wallpaper-library/preview?${qs.toString()}`, 'GET');
+      return new Response(buf, { contentType, headers: { 'Cache-Control': 'max-age=3600' } });
+    } catch {
+      return new Response('', { status: 404, contentType: 'text/plain' });
+    }
+  }, 'GET');
+  app.api('/api/skin-upload', async data => {
+    try {
+      const target = data?.target === 'boot-video' ? '/api/boot-video/upload' : data?.target === 'boot-script' ? '/api/boot-script/upload' : '/api/wallpaper/upload';
+      const name = encodeURIComponent(String(data?.name || 'asset'));
+      const buf = Buffer.from(String(data?.dataBase64 || ''), 'base64');
+      const { buf: resBuf } = await callSkinEngineRaw(`${target}?name=${name}`, 'POST', buf, { 'Content-Type': 'application/octet-stream' });
+      return JSON.parse(resBuf.toString('utf8'));
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err?.message || 'Upload unavailable' }), { status: 502, contentType: 'application/json' });
+    }
+  }, 'POST');
+  app.api('/api/skin-delete-asset', async data => {
+    try {
+      const endpoint = data?.target === 'boot-video' ? '/api/boot-video/delete' : data?.target === 'boot-script' ? '/api/boot-script/delete' : '/api/wallpaper/delete';
+      return await callSkinEngine(endpoint, 'POST', { path: data?.path || '' });
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: err?.message || 'Delete unavailable' }), { status: 502, contentType: 'application/json' });
+    }
+  }, 'POST');
+  app.api('/api/skin-boot-preview', async () => {
+    try { return await callSkinEngine('/api/boot-preview', 'POST'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Boot preview unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
   app.api('/api/preferences',()=>preferences.snapshot(),'GET');
   app.api('/api/preferences',async data=>{try{return await preferences.set(data);}catch{return new Response(JSON.stringify({error:'Language preference could not be saved'}),{status:400,contentType:'application/json'});}},'POST');
   app.run();
@@ -165,6 +257,12 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   for (const signal of ['SIGTERM','SIGINT']) process.once(signal, () => {
     void shutdown();
   });
+  try {
+    const selfFile = fileURLToPath(import.meta.url);
+    watchFile(selfFile, { interval: 1000 }, (curr, prev) => {
+      if (curr.mtimeMs !== prev.mtimeMs) void shutdown();
+    });
+  } catch {}
 } else {
   // A dependency-free local preview uses the same collector and frontend.
   const port = Number(process.env.AG_PULSE_PORT || 17891);
@@ -200,6 +298,28 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
       catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' })); }
       return;
     }
+    if (url.pathname === '/api/update-check' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/update/check', 'GET'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, currentVersion: readPluginVersion(), error: err?.message || 'Update check unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/update-apply' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      let body = '';
+      try {
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        try { res.end(JSON.stringify(await callSkinEngine('/api/update/apply', 'POST', parsed))); }
+        catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Update apply unavailable' })); }
+      } catch (err) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: err?.message || 'Invalid update payload' }));
+      }
+      return;
+    }
     if (url.pathname === '/api/skin-state' && req.method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -217,6 +337,79 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       try { res.end(JSON.stringify(await callSkinEngine('/api/wallpaper-library/pick-directory', 'POST'))); }
       catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Pick directory unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-lib-detect' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/wallpaper-library/detect', 'GET'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Detect unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-lib-scan' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine(`/api/wallpaper-library/scan${url.search}`, 'GET'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Scan unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-lib-import-folder' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      let body = '';
+      try {
+        for await (const chunk of req) body += chunk;
+        res.end(JSON.stringify(await callSkinEngine('/api/wallpaper-library/import-folder', 'POST', JSON.parse(body || '{}'))));
+      } catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Import folder unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-lib-properties' && req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine(`/api/wallpaper-library/properties${url.search}`, 'GET'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Properties unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-lib-preview' && req.method === 'GET') {
+      try {
+        const { buf, contentType } = await callSkinEngineRaw(`/api/wallpaper-library/preview${url.search}`, 'GET');
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'max-age=3600' });
+        res.end(buf);
+      } catch { res.writeHead(404); res.end(); }
+      return;
+    }
+    if (url.pathname === '/api/skin-upload' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      let body = '';
+      try {
+        for await (const chunk of req) body += chunk;
+        const data = JSON.parse(body || '{}');
+        const target = data?.target === 'boot-video' ? '/api/boot-video/upload' : data?.target === 'boot-script' ? '/api/boot-script/upload' : '/api/wallpaper/upload';
+        const name = encodeURIComponent(String(data?.name || 'asset'));
+        const buf = Buffer.from(String(data?.dataBase64 || ''), 'base64');
+        const { buf: resBuf } = await callSkinEngineRaw(`${target}?name=${name}`, 'POST', buf, { 'Content-Type': 'application/octet-stream' });
+        res.end(resBuf);
+      } catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Upload unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-delete-asset' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      let body = '';
+      try {
+        for await (const chunk of req) body += chunk;
+        const data = JSON.parse(body || '{}');
+        const endpoint = data?.target === 'boot-video' ? '/api/boot-video/delete' : data?.target === 'boot-script' ? '/api/boot-script/delete' : '/api/wallpaper/delete';
+        res.end(JSON.stringify(await callSkinEngine(endpoint, 'POST', { path: data?.path || '' })));
+      } catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Delete unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/skin-boot-preview' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/boot-preview', 'POST'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Boot preview unavailable' })); }
       return;
     }
     if (url.pathname === '/api/skin-config') {

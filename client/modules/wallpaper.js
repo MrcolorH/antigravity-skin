@@ -955,7 +955,7 @@ export function initWallpaper(options = {}) {
     }
 
     if (el.dataset) el.dataset.agyMediaLoading = '1';
-    window.__agyResolveBlobMediaUrl(rawUrl).then((resolved) => {
+    window.__agyResolveBlobMediaUrl(rawUrl, opts).then((resolved) => {
       if (isDestroyed || !el || el.__agySrcToken !== token) return;
       if (el.dataset) delete el.dataset.agyMediaLoading;
       const targetSrc = (resolved && resolved.url) ? resolved.url : rawUrl;
@@ -1794,7 +1794,11 @@ export function initWallpaper(options = {}) {
       destroyWebEl();
       return mountScene(fadeIn);
     }
-    // 视频模式（含无素材时的清理）
+    // 视频模式（有素材时先保留旧场景/网页底层直至视频首帧就绪，避免黑屏闪烁）
+    if (enableVideo && videoUrl) {
+      destroyAudioEl();
+      return realMountVideo(fadeIn);
+    }
     destroyWebEl();
     destroySceneEl();
     destroyAudioEl();
@@ -1916,11 +1920,18 @@ export function initWallpaper(options = {}) {
 
     applyVideoGeometry();
 
+    const hasUnderlyingLayer = !!(document.getElementById('agy-dynamic-scene') || document.getElementById('agy-dynamic-iframe'));
     const onPlayReady = () => {
       if (videoEl && videoEl.style.opacity !== '1') {
         requestAnimationFrame(() => {
-          videoEl.style.opacity = '1';
+          if (videoEl) videoEl.style.opacity = '1';
         });
+      }
+      if (document.getElementById('agy-dynamic-scene') || document.getElementById('agy-dynamic-iframe')) {
+        setTimeout(() => {
+          destroySceneEl();
+          destroyWebEl();
+        }, 120);
       }
     };
 
@@ -1961,7 +1972,11 @@ export function initWallpaper(options = {}) {
       (!videoEl.src && (!videoEl.dataset || videoEl.dataset.agyMediaLoading !== '1'))
     );
     if (needsAssign) {
+      if (hasUnderlyingLayer && videoEl) {
+        videoEl.style.opacity = '0';
+      }
       assignMediaElementSrc(videoEl, videoUrl, {
+        maxBytes: 16 * 1024 * 1024,
         onAssigned: () => {
           if (isDestroyed || !videoEl) return;
           try { videoEl.load(); } catch (_) {}

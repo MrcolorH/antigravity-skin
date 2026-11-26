@@ -143,21 +143,58 @@ function getBootPatchStatus(force = false) {
   return value;
 }
 
+function getAntigravityClientVersion(resourcesDir) {
+  if (!resourcesDir) return '';
+  // 1. 通用方式：利用 Electron 宿主接管的 fs 直接读取 app.asar 内的 package.json / product.json
+  for (const rel of [
+    path.join('app.asar', 'package.json'),
+    path.join('app', 'package.json'),
+    path.join('app.asar', 'product.json'),
+    path.join('app', 'product.json')
+  ]) {
+    try {
+      const raw = fs.readFileSync(path.join(resourcesDir, rel), 'utf8');
+      const data = JSON.parse(raw);
+      if (data && typeof data.version === 'string' && data.version.trim()) {
+        return data.version.trim();
+      }
+    } catch (_) {}
+  }
+  // 2. macOS 兜底：读取 Antigravity.app/Contents/Info.plist
+  if (process.platform === 'darwin') {
+    try {
+      const plistPath = path.resolve(resourcesDir, '..', 'Info.plist');
+      if (fs.existsSync(plistPath)) {
+        const plist = fs.readFileSync(plistPath, 'utf8');
+        const m = plist.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/);
+        if (m && m[1]) return m[1].trim();
+      }
+    } catch (_) {}
+  }
+  return '';
+}
+
 let __sentinelNotifiedThisSession = false;
 function runBootPatchSentinel(httpPort) {
   if (process.platform !== 'win32' && process.platform !== 'darwin') return;
   const status = getBootPatchStatus(true);
+  const currentVersion = getAntigravityClientVersion(locateAntigravityResources());
   const sentinelFile = path.join(PLUGIN_ROOT, 'state', 'patch-sentinel.json');
   let prev = {};
   try {
     if (fs.existsSync(sentinelFile)) prev = JSON.parse(fs.readFileSync(sentinelFile, 'utf8'));
   } catch (_) {}
 
+  const prevVersion = typeof prev.lastClientVersion === 'string' ? prev.lastClientVersion.trim() : '';
+  const versionChanged = Boolean(currentVersion && prevVersion && currentVersion !== prevVersion);
+
   const nextState = {
     ...prev,
     state: status.state,
     patched: status.patched,
     cdpAvailable: status.cdpAvailable,
+    lastClientVersion: currentVersion || prevVersion,
+    ...(versionChanged ? { noticeDismissed: false } : {}),
     detectedAt: new Date().toISOString()
   };
   try {
@@ -165,43 +202,25 @@ function runBootPatchSentinel(httpPort) {
     fs.writeFileSync(sentinelFile, JSON.stringify(nextState, null, 2), 'utf8');
   } catch (_) {}
 
-  if (status.state !== 'patch_missing') return;
+  // 仅当已记录过旧版本号、且本次启动检测到客户端版本号发生变更（即反重力已更新）时弹窗提示
+  if (!versionChanged) return;
 
-  // 1. 派生退出静默守望进程（用户正常退出客户端后 2 秒内静默重注 app.asar，不自动重启）
-  try {
-    const watcherScript = path.join(PLUGIN_ROOT, 'scripts', 'exit-heal-watcher.mjs');
-    if (fs.existsSync(watcherScript)) {
-      const { nodeBin, env: cleanEnv } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
-      const child = spawn(nodeBin, [watcherScript], {
-        cwd: PLUGIN_ROOT,
-        detached: true,
-        stdio: 'ignore',
-        env: cleanEnv
-      });
-      child.unref();
-    }
-  } catch (_) {}
-
-  // 2. 一次性系统原生轻提醒（用户可勾选不再提醒）
-  if (!__sentinelNotifiedThisSession && !prev.noticeDismissed) {
+  if (!__sentinelNotifiedThisSession) {
     __sentinelNotifiedThisSession = true;
     const cfg = readConfig();
     const zh = cfg?.features?.chineseLocalization !== false;
     if (process.platform === 'darwin') {
       const msg = zh
-        ? '检测到 Antigravity 已更新或首次安装，插件注入通道尚未激活。您可立即修复并重启，或在正常退出后自动静默修复。'
-        : 'Antigravity was updated or newly installed and the plugin channel is not active yet. Repair & restart now, or auto-repair silently on exit.';
-      const btnDismiss = zh ? '不再提醒' : "Don't Remind";
-      const btnExit = zh ? '退出时自动修复' : 'Fix on Exit';
-      const btnNow = zh ? '立即修复并重启' : 'Repair & Restart';
+        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），插件状态被覆盖，是否修复重新激活？`
+        : `Antigravity updated (${prevVersion} → ${currentVersion}) and plugin state was overwritten. Repair and reactivate now?`;
+      const btnCancel = zh ? '暂不修复' : 'Later';
+      const btnConfirm = zh ? '修复并重新激活' : 'Repair & Reactivate';
       const osa = `
         try
-          set r to display dialog "${msg}" with title "Antigravity Skin" buttons {"${btnDismiss}", "${btnExit}", "${btnNow}"} default button "${btnNow}"
+          set r to display dialog "${msg}" with title "Antigravity Skin" buttons {"${btnCancel}", "${btnConfirm}"} default button "${btnConfirm}"
           set b to button returned of r
-          if b is "${btnNow}" then
-            do shell script "curl -s -X POST http://127.0.0.1:${httpPort}/api/boot-patch/repair >/dev/null 2>&1"
-          else if b is "${btnDismiss}" then
-            do shell script "curl -s -X POST http://127.0.0.1:${httpPort}/api/boot-patch/dismiss-notice >/dev/null 2>&1"
+          if b is "${btnConfirm}" then
+            do shell script "curl -s -X POST http://127.0.0.1:${httpPort}/api/patch-boot >/dev/null 2>&1"
           end if
         end try
       `;
@@ -212,13 +231,12 @@ function runBootPatchSentinel(httpPort) {
     } else if (process.platform === 'win32') {
       const title = 'Antigravity Skin';
       const body = zh
-        ? '检测到客户端已更新，插件将在您退出后自动静默修复；或打开右侧 Extensions -> Antigrative Dashboard 一键修复并重启。'
-        : 'Client updated. Auto-repair will run silently on exit, or click Repair in Extensions -> Antigrative Dashboard.';
+        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），插件状态被覆盖，是否修复重新激活？`
+        : `Antigravity updated (${prevVersion} → ${currentVersion}) and plugin state was overwritten. Repair and reactivate now?`;
       const ps = `
         Add-Type -AssemblyName System.Windows.Forms;
-        $r = [System.Windows.Forms.MessageBox]::Show('${body}', '${title}', 'YesNoCancel', 'Information');
-        if ($r -eq 'Yes') { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:${httpPort}/api/boot-patch/repair' | Out-Null }
-        elseif ($r -eq 'Cancel') { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:${httpPort}/api/boot-patch/dismiss-notice' | Out-Null }
+        $r = [System.Windows.Forms.MessageBox]::Show('${body}', '${title}', 'YesNo', 'Information');
+        if ($r -eq 'Yes') { Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:${httpPort}/api/patch-boot' | Out-Null }
       `.replace(/\r?\n/g, ' ');
       try {
         const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], { detached: true, stdio: 'ignore' });
@@ -1319,6 +1337,20 @@ const server = http.createServer((req, res) => {
           }
         } catch (_) {}
       }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // API: 触发主窗口立即预览开机动画（供侧边栏插件面板调用）
+  if (url.pathname === '/api/boot-preview' && req.method === 'POST') {
+    for (const session of activeSessions.values()) {
+      try {
+        session.send('Runtime.evaluate', {
+          expression: `try { sessionStorage.removeItem('__agy_booted__'); window.__triggerBootAnimation && window.__triggerBootAnimation(undefined, undefined, undefined, undefined, true); } catch (_) {}`
+        }).catch(() => {});
+      } catch (_) {}
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
@@ -2667,14 +2699,9 @@ function buildClientBundle() {
   }
 
 
-  const agyModalMod = readClientModule('client/modules/agy-modal.js');
-  const mediaDisplayModalMod = readClientModule('client/modules/media-display-modal.js');
   const bootCode = readClientModule('client/modules/boot-animation.js');
   const wallpaperMod = readClientModule('client/modules/wallpaper.js');
   const crtMod = readClientModule('client/modules/crt-theme.js');
-  const libraryUiMod = readClientModule('client/modules/wallpaper-library-ui.js');
-  const appearanceMenuMod = readClientModule('client/modules/appearance-menu.js');
-  const dashboardSettingsMod = readClientModule('client/modules/dashboard-settings.js');
   const indexMod = readClientModule('client/index.js');
 
   let bundleParts = [];
@@ -2768,23 +2795,14 @@ function buildClientBundle() {
     })();`);
   }
 
-  // 0.5 弹窗基座与独立参数设置弹窗（优先载入就绪）
-  if (agyModalMod) bundleParts.push(agyModalMod);
-  if (mediaDisplayModalMod) bundleParts.push(mediaDisplayModalMod);
-
   // 1. 开机动画模块（优先载入就绪，确保开机最早期捕获播放状态与挂载素材）
   if (bootCode) bundleParts.push(bootCode);
 
   // 2. 动态壁纸与毛玻璃模块
   bundleParts.push(wallpaperMod);
 
-  // 2.5 外部 Wallpaper 素材库资产中心（须先于外观菜单注册到全局）
-  if (libraryUiMod) bundleParts.push(libraryUiMod);
-
-  // 3. CRT 及设置菜单模块
+  // 3. CRT 主题模块（原设置-外观与设置-模型注入已由独立侧边栏面板替代，不再修改原生设置页）
   bundleParts.push(crtMod);
-  bundleParts.push(appearanceMenuMod);
-  bundleParts.push(dashboardSettingsMod);
 
   // 4. 汉化与多语言模块（由 window.__agyI18n 动态控制语言切换）
   const hansCode = readClientModule('client/modules/i18n-engine.js');

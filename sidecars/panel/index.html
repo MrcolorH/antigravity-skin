@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Antigravity Skin</title>
-  <link rel="stylesheet" href="/theme.css?v=skin-panel-2">
-  <link rel="stylesheet" href="/styles.css?v=skin-panel-2">
+  <link rel="stylesheet" href="/theme.css?v=skin-panel-3">
+  <link rel="stylesheet" href="/styles.css?v=skin-panel-3">
   <script src="/preload.js"></script>
-  <script defer src="/app.js?v=skin-panel-2"></script>
+  <script defer src="/app.js?v=skin-panel-3"></script>
 </head>
 <body>
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -15,6 +15,11 @@
     <symbol id="shield" viewBox="0 0 16 16"><path d="M8 1.8l5 2v4.1c0 3.1-2.1 5.4-5 6.3-2.9-.9-5-3.2-5-6.3V3.8z"/></symbol>
     <symbol id="refresh" viewBox="0 0 16 16"><path d="M12.8 6a5.1 5.1 0 1 0 .1 4M12.8 2.5V6H9.2"/></symbol>
     <symbol id="folder" viewBox="0 0 16 16"><path d="M2 4.2A1.2 1.2 0 0 1 3.2 3h3l1.3 1.5h5.3A1.2 1.2 0 0 1 14 5.7v6.1a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 11.8z"/></symbol>
+    <symbol id="trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.2"/></symbol>
+    <symbol id="upload" viewBox="0 0 16 16"><path d="M8 10.5V2.8M4.8 5.8L8 2.6l3.2 3.2M2.5 11.5v1.3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.3"/></symbol>
+    <symbol id="grid" viewBox="0 0 16 16"><rect x="2.2" y="2.2" width="4.8" height="4.8" rx="1"/><rect x="9" y="2.2" width="4.8" height="4.8" rx="1"/><rect x="2.2" y="9" width="4.8" height="4.8" rx="1"/><rect x="9" y="9" width="4.8" height="4.8" rx="1"/></symbol>
+    <symbol id="play" viewBox="0 0 16 16"><path d="M4.5 3.2l8 4.8-8 4.8z"/></symbol>
+    <symbol id="close" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></symbol>
   </svg>
 
   <main class="skin-panel" aria-label="Antigravity Skin control panel">
@@ -51,11 +56,19 @@
           <button type="button" id="patch-repair-btn" class="btn btn-warning">立即修复并重启</button>
         </section>
 
-        <div class="repair-inline-meta">
-          <span><em data-t="cdpLabel">热同步</em>: <strong id="meta-cdp">—</strong></span>
-          <span><em data-t="backupLabel">备份</em>: <strong id="meta-backup">—</strong></span>
-          <span class="save-hint" id="repair-feedback"></span>
+        <div class="update-row">
+          <div class="update-meta">
+            <span class="update-ver-label" data-t="versionLabel">当前版本</span>
+            <span class="version-pill" id="plugin-version-pill">v—</span>
+            <span class="status-pill ok" id="update-available-pill" hidden></span>
+          </div>
+          <div class="update-actions">
+            <button type="button" id="check-update-btn" class="btn btn-xs" data-t="checkUpdate">检查更新</button>
+            <button type="button" id="apply-update-btn" class="btn btn-xs btn-accent" hidden data-t="applyUpdate">立即更新</button>
+          </div>
         </div>
+        <div class="update-status-line" id="update-status-line" hidden></div>
+        <div class="save-hint" id="repair-feedback" hidden></div>
       </section>
 
       <!-- 2. 界面与交互 -->
@@ -90,27 +103,83 @@
           <input type="checkbox" class="header-switch" id="cfg-dw-enabled" aria-label="启用动态壁纸">
         </div>
         <div class="setting-list" id="wallpaper-options">
-          <div class="field-row">
-            <label for="cfg-dw-sourceType" data-t="sourceType">素材类型</label>
-            <select id="cfg-dw-sourceType">
-              <option value="video" data-t="sourceVideo">内置视频 (Video)</option>
-              <option value="scene" data-t="sourceScene">场景素材库 (Scene)</option>
-            </select>
+          <label class="toggle-row">
+            <span><strong data-t="useWallpaperLib">使用 Wallpaper 素材库</strong><small data-t="useWallpaperLibDesc">零拷贝引用本地场景/视频/网页壁纸</small></span>
+            <input type="checkbox" id="cfg-dw-useLibrary">
+          </label>
+
+          <!-- 内置视频模式 -->
+          <div class="sub-block" id="dw-builtin-section">
+            <div class="field-row">
+              <label for="cfg-dw-videoPath" data-t="selectVideo">选择壁纸视频</label>
+              <div class="inline-control">
+                <select id="cfg-dw-videoPath"></select>
+                <button type="button" id="dw-delete-video-btn" class="icon-btn-sm danger" title="删除当前素材" disabled><svg class="icon"><use href="#trash"/></svg></button>
+              </div>
+            </div>
+            <div class="action-row">
+              <span class="row-tip" data-t="uploadVideoTip">支持 MP4 / WebM</span>
+              <input type="file" id="dw-upload-video-file" accept="video/mp4,video/webm,video/mov,video/mkv" hidden>
+              <button type="button" id="dw-upload-video-btn" class="btn btn-xs"><svg class="icon"><use href="#upload"/></svg><span data-t="uploadVideo">载入新视频</span></button>
+            </div>
           </div>
-          <div class="field-row" id="dw-video-row">
-            <label for="cfg-dw-videoPath" data-t="selectVideo">选择壁纸视频</label>
-            <select id="cfg-dw-videoPath"></select>
+
+          <!-- Wallpaper 素材库模式 -->
+          <div class="sub-block" id="dw-library-section" hidden>
+            <div class="active-asset-bar">
+              <div class="active-asset-info">
+                <span class="active-asset-label" data-t="currentWallpaper">当前壁纸</span>
+                <div class="active-asset-name-row">
+                  <strong id="dw-active-title" class="active-asset-title">—</strong>
+                  <span id="dw-active-type-badge" class="type-badge" hidden>Scene</span>
+                </div>
+              </div>
+              <button type="button" id="open-wall-lib-btn" class="btn btn-xs btn-primary-soft">
+                <svg class="icon"><use href="#grid"/></svg><span data-t="browseLibrary">浏览素材库</span>
+              </button>
+            </div>
           </div>
-          <div class="field-row" id="dw-scene-row" hidden>
-            <label for="cfg-dw-wallpaperDir" data-t="selectScene">选择场景壁纸</label>
-            <select id="cfg-dw-wallpaperDir"></select>
+
+          <!-- 场景属性配置 (Inspector) -->
+          <div class="inspector-box" id="scene-inspector-section" hidden>
+            <div class="inspector-head">
+              <div class="inspector-title">
+                <span data-t="scenePropsTitle">场景属性配置</span>
+                <span class="count-pill" id="scene-prop-count">0</span>
+              </div>
+              <button type="button" id="scene-prop-reset-btn" class="btn btn-xs" data-t="resetAuthorDefault">恢复默认</button>
+            </div>
+            <div class="inspector-list" id="scene-prop-list"></div>
           </div>
+
+          <label class="toggle-row" id="dw-audio-row">
+            <span><strong data-t="audioEnable">背景音频</strong><small data-t="audioEnableDesc">播放场景内嵌氛围音</small></span>
+            <input type="checkbox" id="cfg-dw-audioEnabled">
+          </label>
+
+          <!-- 壁纸基础显示设置 -->
           <div class="field-row">
             <label for="cfg-dw-fit" data-t="fitMode">画面适配</label>
             <select id="cfg-dw-fit">
               <option value="cover" data-t="fitCover">填充裁切 (Cover)</option>
+              <option value="auto" data-t="fitAuto">按素材自动 (Auto)</option>
+              <option value="blur" data-t="fitBlur">模糊铺满 (Blur)</option>
               <option value="contain" data-t="fitContain">完整适应 (Contain)</option>
               <option value="fill" data-t="fitFill">拉伸铺满 (Fill)</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label for="cfg-dw-fitPosition" data-t="fitPosition">对齐位置</label>
+            <select id="cfg-dw-fitPosition">
+              <option value="center" data-t="posCenter">居中 (Center)</option>
+              <option value="top" data-t="posTop">顶部 (Top)</option>
+              <option value="bottom" data-t="posBottom">底部 (Bottom)</option>
+              <option value="left" data-t="posLeft">左侧 (Left)</option>
+              <option value="right" data-t="posRight">右侧 (Right)</option>
+              <option value="top left" data-t="posTopLeft">左上角</option>
+              <option value="top right" data-t="posTopRight">右上角</option>
+              <option value="bottom left" data-t="posBottomLeft">左下角</option>
+              <option value="bottom right" data-t="posBottomRight">右下角</option>
             </select>
           </div>
           <div class="slider-row">
@@ -121,14 +190,63 @@
             <div class="slider-head"><span data-t="contrast">对比度</span><strong id="val-dw-contrast">1.05</strong></div>
             <input type="range" id="cfg-dw-contrast" min="0.5" max="1.8" step="0.05">
           </div>
-          <label class="toggle-row">
-            <span><strong data-t="audioEnable">背景音频</strong></span>
-            <input type="checkbox" id="cfg-dw-audioEnabled">
-          </label>
-          <label class="toggle-row">
-            <span><strong data-t="interactionEnable">鼠标视差与滚轮交互</strong></span>
-            <input type="checkbox" id="cfg-dw-interaction">
-          </label>
+
+          <!-- 高级渲染与交互设置抽屉 -->
+          <details class="sub-drawer" id="dw-advanced-drawer">
+            <summary data-t="dwAdvancedTitle">渲染性能与交互设置</summary>
+            <div class="drawer-body">
+              <div class="field-row">
+                <label for="cfg-dw-fps" data-t="fpsLimit">渲染帧率 (FPS)</label>
+                <select id="cfg-dw-fps">
+                  <option value="30">30 FPS</option>
+                  <option value="60">60 FPS</option>
+                  <option value="120">120 FPS</option>
+                  <option value="0" data-t="fpsUnlimited">无限制 (0)</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="cfg-dw-renderDpr" data-t="renderDpr">渲染精度 (DPR)</label>
+                <select id="cfg-dw-renderDpr">
+                  <option value="0.5">0.5x</option>
+                  <option value="0.75">0.75x</option>
+                  <option value="1.0">1.0x</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="cfg-dw-sceneRenderer" data-t="scenePipeline">场景渲染模式</label>
+                <select id="cfg-dw-sceneRenderer">
+                  <option value="dynamic" data-t="pipelineDynamic">实时动态 (WebGL2)</option>
+                  <option value="static" data-t="pipelineStatic">静态海报 (省电)</option>
+                </select>
+              </div>
+              <label class="toggle-row">
+                <span><strong data-t="interactionEnable">按键穿透与视差交互</strong></span>
+                <input type="checkbox" id="cfg-dw-interaction">
+              </label>
+              <div class="field-row">
+                <label for="cfg-dw-modifierKey" data-t="modifierKey">触发修饰键</label>
+                <select id="cfg-dw-modifierKey">
+                  <option value="alt">Alt / Option</option>
+                  <option value="shift">Shift</option>
+                  <option value="ctrl">Ctrl</option>
+                  <option value="meta">Meta / Cmd / Win</option>
+                </select>
+              </div>
+              <label class="toggle-row">
+                <span><strong data-t="wheelEnable">穿透时响应滚轮</strong></span>
+                <input type="checkbox" id="cfg-dw-enableWheel">
+              </label>
+              <label class="toggle-row">
+                <span><strong data-t="hudEnable">显示交互状态 HUD</strong></span>
+                <input type="checkbox" id="cfg-dw-showHud">
+              </label>
+              <div class="drawer-footer">
+                <button type="button" id="dw-display-reset-btn" class="btn btn-xs" data-t="resetDisplayDefault">恢复默认设置</button>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -136,7 +254,12 @@
       <section class="panel-card" id="boot-card">
         <div class="card-header">
           <span class="card-title" data-t="bootTitle">开机动画</span>
-          <input type="checkbox" class="header-switch" id="cfg-boot-enabled" aria-label="启用开机动画">
+          <div class="card-header-actions">
+            <button type="button" id="boot-preview-btn" class="btn btn-xs" title="在主窗口立即预览开机动画">
+              <svg class="icon"><use href="#play"/></svg><span data-t="previewBoot">预览</span>
+            </button>
+            <input type="checkbox" class="header-switch" id="cfg-boot-enabled" aria-label="启用开机动画">
+          </div>
         </div>
         <div class="setting-list" id="boot-options">
           <div class="field-row">
@@ -146,36 +269,194 @@
               <option value="code" data-t="bootCode">代码动效 (Script)</option>
             </select>
           </div>
-          <div class="field-row" id="boot-video-row">
-            <label for="cfg-boot-videoPath" data-t="selectBootVideo">启动视频</label>
-            <select id="cfg-boot-videoPath"></select>
+
+          <div id="boot-video-row" class="sub-block-stack">
+            <label class="toggle-row">
+              <span><strong data-t="useBootLib">使用 Wallpaper 素材库</strong><small data-t="useBootLibDesc">从素材库选择视频类开屏</small></span>
+              <input type="checkbox" id="cfg-boot-useLibrary">
+            </label>
+
+            <div class="sub-block" id="boot-builtin-section">
+              <div class="field-row">
+                <label for="cfg-boot-videoPath" data-t="selectBootVideo">启动视频</label>
+                <div class="inline-control">
+                  <select id="cfg-boot-videoPath"></select>
+                  <button type="button" id="boot-delete-video-btn" class="icon-btn-sm danger" title="删除当前素材" disabled><svg class="icon"><use href="#trash"/></svg></button>
+                </div>
+              </div>
+              <div class="action-row">
+                <span class="row-tip" data-t="uploadVideoTip">支持 MP4 / WebM</span>
+                <input type="file" id="boot-upload-video-file" accept="video/mp4,video/webm,video/mov,video/mkv" hidden>
+                <button type="button" id="boot-upload-video-btn" class="btn btn-xs"><svg class="icon"><use href="#upload"/></svg><span data-t="uploadVideo">载入新视频</span></button>
+              </div>
+            </div>
+
+            <div class="sub-block" id="boot-library-section" hidden>
+              <div class="active-asset-bar">
+                <div class="active-asset-info">
+                  <span class="active-asset-label" data-t="currentBoot">当前开屏</span>
+                  <strong id="boot-active-title" class="active-asset-title">—</strong>
+                </div>
+                <button type="button" id="open-boot-lib-btn" class="btn btn-xs btn-primary-soft">
+                  <svg class="icon"><use href="#grid"/></svg><span data-t="browseLibrary">浏览素材库</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="field-row" id="boot-script-row" hidden>
-            <label for="cfg-boot-scriptPath" data-t="selectBootScript">动效脚本</label>
-            <select id="cfg-boot-scriptPath"></select>
+
+          <div id="boot-script-row" class="sub-block" hidden>
+            <div class="field-row">
+              <label for="cfg-boot-scriptPath" data-t="selectBootScript">动效脚本</label>
+              <div class="inline-control">
+                <select id="cfg-boot-scriptPath"></select>
+                <button type="button" id="boot-delete-script-btn" class="icon-btn-sm danger" title="删除当前脚本" disabled><svg class="icon"><use href="#trash"/></svg></button>
+              </div>
+            </div>
+            <div class="action-row">
+              <span class="row-tip" data-t="uploadScriptTip">支持 JS 动效脚本</span>
+              <input type="file" id="boot-upload-script-file" accept=".js,application/javascript,text/javascript" hidden>
+              <button type="button" id="boot-upload-script-btn" class="btn btn-xs"><svg class="icon"><use href="#upload"/></svg><span data-t="uploadScript">载入脚本</span></button>
+            </div>
           </div>
+
           <div class="slider-row">
-            <div class="slider-head"><span data-t="bootDelay">自动进入延迟 (秒)</span><strong id="val-boot-delay">3s</strong></div>
-            <input type="range" id="cfg-boot-delay" min="1" max="10" step="1">
+            <div class="slider-head"><span data-t="bootDelay">自动进入延迟 (0s=纯手动)</span><strong id="val-boot-delay">3s</strong></div>
+            <input type="range" id="cfg-boot-delay" min="0" max="10" step="1">
           </div>
+
+          <!-- 开屏显示与渲染设置抽屉 -->
+          <details class="sub-drawer" id="boot-advanced-drawer">
+            <summary data-t="bootAdvancedTitle">开屏显示与渲染设置</summary>
+            <div class="drawer-body">
+              <div class="field-row">
+                <label for="cfg-boot-fit" data-t="fitMode">画面适配</label>
+                <select id="cfg-boot-fit">
+                  <option value="cover" data-t="fitCover">填充裁切 (Cover)</option>
+                  <option value="contain" data-t="fitContain">完整适应 (Contain)</option>
+                  <option value="fill" data-t="fitFill">拉伸铺满 (Fill)</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="cfg-boot-fitPosition" data-t="fitPosition">对齐位置</label>
+                <select id="cfg-boot-fitPosition">
+                  <option value="center" data-t="posCenter">居中 (Center)</option>
+                  <option value="top" data-t="posTop">顶部 (Top)</option>
+                  <option value="bottom" data-t="posBottom">底部 (Bottom)</option>
+                </select>
+              </div>
+              <div class="slider-row">
+                <div class="slider-head"><span data-t="bootBrightness">开屏亮度</span><strong id="val-boot-brightness">1.00</strong></div>
+                <input type="range" id="cfg-boot-brightness" min="0.2" max="1.5" step="0.05">
+              </div>
+              <div class="slider-row">
+                <div class="slider-head"><span data-t="bootContrast">开屏对比度</span><strong id="val-boot-contrast">1.00</strong></div>
+                <input type="range" id="cfg-boot-contrast" min="0.5" max="1.5" step="0.05">
+              </div>
+              <div class="field-row">
+                <label for="cfg-boot-fps" data-t="fpsLimit">渲染帧率 (FPS)</label>
+                <select id="cfg-boot-fps">
+                  <option value="30">30 FPS</option>
+                  <option value="60">60 FPS</option>
+                  <option value="120">120 FPS</option>
+                  <option value="0" data-t="fpsUnlimited">无限制 (0)</option>
+                </select>
+              </div>
+              <div class="field-row">
+                <label for="cfg-boot-renderDpr" data-t="renderDpr">渲染精度 (DPR)</label>
+                <select id="cfg-boot-renderDpr">
+                  <option value="0.5">0.5x</option>
+                  <option value="0.75">0.75x</option>
+                  <option value="1.0">1.0x</option>
+                  <option value="1.25">1.25x</option>
+                </select>
+              </div>
+              <div class="drawer-footer">
+                <button type="button" id="boot-display-reset-btn" class="btn btn-xs" data-t="resetDisplayDefault">恢复默认设置</button>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
       <!-- 5. 外部壁纸库 -->
-      <section class="panel-card">
+      <section class="panel-card" id="library-card">
         <div class="card-header">
           <span class="card-title" data-t="libraryTitle">外部壁纸库</span>
-          <button type="button" id="pick-library-btn" class="btn btn-xs">
-            <svg class="icon"><use href="#folder"/></svg><span data-t="pickDir">选择目录</span>
-          </button>
+          <div class="card-header-actions">
+            <button type="button" id="detect-library-btn" class="btn btn-xs" data-t="detectDir">检测</button>
+            <button type="button" id="pick-library-btn" class="btn btn-xs">
+              <svg class="icon"><use href="#folder"/></svg><span data-t="pickDir">选择目录</span>
+            </button>
+          </div>
         </div>
         <div class="path-box" id="cfg-lib-path" title="">未配置目录</div>
+        <div class="lib-summary-row">
+          <span class="lib-summary-text" id="lib-summary-text">—</span>
+          <button type="button" id="open-lib-browser-btn" class="btn btn-xs btn-primary-soft">
+            <svg class="icon"><use href="#grid"/></svg><span data-t="openBrowser">浏览素材</span>
+          </button>
+        </div>
       </section>
     </div>
 
     <footer class="panel-footer">
       <span id="status-note">就绪</span>
     </footer>
+
+    <!-- Wallpaper 素材库浏览器覆盖层 -->
+    <section class="lib-modal" id="lib-modal" hidden aria-label="Wallpaper Library Browser">
+      <header class="lib-modal-header">
+        <div class="lib-modal-title-wrap">
+          <svg class="icon"><use href="#grid"/></svg>
+          <strong id="lib-modal-title">Wallpaper 素材库</strong>
+        </div>
+        <div class="lib-modal-actions">
+          <button type="button" id="lib-refresh-btn" class="icon-button" title="刷新扫描"><svg class="icon"><use href="#refresh"/></svg></button>
+          <button type="button" id="lib-close-btn" class="icon-button" title="关闭"><svg class="icon"><use href="#close"/></svg></button>
+        </div>
+      </header>
+
+      <div class="lib-toolbar">
+        <input type="search" id="lib-search-input" class="lib-search" placeholder="搜索标题 / ID…">
+        <div class="lib-filter-row" id="lib-type-filters">
+          <button type="button" class="filter-chip active" data-type="all" data-t="filterAll">全部</button>
+          <button type="button" class="filter-chip" data-type="scene" data-t="filterScene">场景</button>
+          <button type="button" class="filter-chip" data-type="video" data-t="filterVideo">视频</button>
+          <button type="button" class="filter-chip" data-type="web" data-t="filterWeb">网页</button>
+        </div>
+        <div class="lib-filter-row" id="lib-rating-filters">
+          <span class="filter-label" data-t="ratingLabel">分级:</span>
+          <button type="button" class="filter-chip active" data-rating="everyone" data-t="ratingG">所有人</button>
+          <button type="button" class="filter-chip active" data-rating="questionable" data-t="ratingPG">辅导级</button>
+          <button type="button" class="filter-chip" data-rating="mature" data-t="ratingR18">限制级</button>
+        </div>
+      </div>
+
+      <div class="lib-detect-box" id="lib-detect-box" hidden></div>
+
+      <div class="lib-grid-scroll">
+        <div class="lib-grid" id="lib-grid"></div>
+        <div class="lib-empty" id="lib-empty" hidden>暂无匹配素材</div>
+      </div>
+
+      <footer class="lib-pagination" id="lib-pagination" hidden>
+        <div class="lib-page-btns">
+          <button type="button" id="lib-first-btn" class="btn btn-xs" title="首页">«</button>
+          <button type="button" id="lib-prev-btn" class="btn btn-xs" data-t="prevPage">上一页</button>
+        </div>
+        <div class="lib-page-center">
+          <span id="lib-page-info">1 / 1</span>
+          <span class="lib-page-jump">
+            <input type="number" id="lib-jump-input" min="1" value="1" aria-label="页码">
+            <button type="button" id="lib-jump-btn" class="btn btn-xs" data-t="jumpGo">跳转</button>
+          </span>
+        </div>
+        <div class="lib-page-btns">
+          <button type="button" id="lib-next-btn" class="btn btn-xs" data-t="nextPage">下一页</button>
+          <button type="button" id="lib-last-btn" class="btn btn-xs" title="末页">»</button>
+        </div>
+      </footer>
+    </section>
   </main>
 </body>
 </html>

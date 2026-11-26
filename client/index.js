@@ -33,7 +33,6 @@
   // 状态句柄与壁纸状态缓存（跨热重载/复用上下文共享，防止重复初始化撕裂视频管线）
   let wallpaperHandle = window.__agyWallpaperInstance || null;
   let crtHandle = null;
-  let menuHandle = window.__agyAppearanceMenuHandle || null;
   let lastWallpaperState = {
     isCustomTheme: undefined,
     isVideoOn: undefined,
@@ -835,6 +834,17 @@
           if (typeof wallpaperHandle.updateInteraction === 'function') {
             wallpaperHandle.updateInteraction(wallpaperInteraction);
           }
+          const activeWpId = wallpaperId || String(wallpaperDir).split(/[\\/]/).filter(Boolean).pop() || '';
+          const activeUserProps = (activeWpId && wallpaperUserProperties[activeWpId]) ? wallpaperUserProperties[activeWpId] : {};
+          const propsKey = JSON.stringify(activeUserProps);
+          if (lastWallpaperState.propsKey !== propsKey) {
+            if (typeof wallpaperHandle.setProperties === 'function') {
+              try { wallpaperHandle.setProperties(activeUserProps); } catch (_) {}
+            } else if (window.__agySceneRenderer && typeof window.__agySceneRenderer.setProperties === 'function') {
+              try { window.__agySceneRenderer.setProperties(activeUserProps); } catch (_) {}
+            }
+            lastWallpaperState.propsKey = propsKey;
+          }
         }
       } catch (err) {
         console.warn('[Antigravity Skin] Failed to init/update wallpaper:', err);
@@ -960,26 +970,16 @@
     saveConfig: saveConfigRemote
   };
 
-  function remountSettingsMenusIfOpen() {
+  function cleanupLegacySettingsMenus() {
     try {
-      const hasAppearance = !!document.getElementById('agy-integrated-lang-row') || !!document.getElementById('agy-integrated-custom-options');
-      if (hasAppearance && typeof window.__agyInitAppearanceMenu === 'function') {
-        document.querySelectorAll('#agy-integrated-lang-row, #agy-integrated-custom-switch-row, #agy-integrated-custom-options').forEach(el => el.remove());
-        menuHandle = window.__agyInitAppearanceMenu(
-          () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-          saveConfigRemote,
-          (updatedConfig) => { applyFeatures(updatedConfig); }
-        );
-        window.__agyAppearanceMenuHandle = menuHandle;
-      }
-      const hasDash = !!document.getElementById('agy-dashboard-settings-card');
-      if (hasDash && typeof window.__agyInitDashboardSettings === 'function') {
-        document.getElementById('agy-dashboard-settings-card')?.remove();
-        window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
-          () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-          saveConfigRemote
-        );
-      }
+      if (window.__agyAppearanceMenuHandle?.destroy) window.__agyAppearanceMenuHandle.destroy();
+      if (window.__agyDashboardSettingsHandle?.destroy) window.__agyDashboardSettingsHandle.destroy();
+      window.__agyAppearanceMenuHandle = null;
+      window.__agyDashboardSettingsHandle = null;
+      window.__agyDashboardSettingsFn = null;
+      document.querySelectorAll(
+        '#agy-integrated-lang-row, #agy-integrated-custom-switch-row, #agy-integrated-custom-options, #agy-dashboard-settings-card, #agy-dashboard-settings-style'
+      ).forEach(el => el.remove());
     } catch (_) {}
   }
 
@@ -995,7 +995,6 @@
     } catch (e) {
       console.warn('[Antigravity Skin] Error applying features on engine sync:', e);
     }
-    remountSettingsMenusIfOpen();
   };
 
   // 兜底同步：当设置弹窗打开或窗口重新聚焦时，从 sidecar 拉取一次最新配置（防止 CDP 未连接时双端不同步）
@@ -1089,23 +1088,7 @@
       window.__agySyncTitleBar(true);
     }
 
-    if (!window.__agyAppearanceMenuHandle && typeof window.__agyInitAppearanceMenu === 'function') {
-      menuHandle = window.__agyInitAppearanceMenu(
-        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-        saveConfigRemote,
-        (updatedConfig) => {
-          activeApply(updatedConfig);
-        }
-      );
-      window.__agyAppearanceMenuHandle = menuHandle;
-    }
-    if (typeof window.__agyInitDashboardSettings === 'function' && (!window.__agyDashboardSettingsHandle || window.__agyDashboardSettingsFn !== window.__agyInitDashboardSettings)) {
-      window.__agyDashboardSettingsFn = window.__agyInitDashboardSettings;
-      window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
-        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-        saveConfigRemote
-      );
-    }
+    cleanupLegacySettingsMenus();
     // 关键自愈：如果素材或样式与壁纸皮肤激活态不一致，立即同步或清理（开机动效播放时除外）
     const needWallpaper = isWallpaperSkinActive(liveCfg);
     const needStyle = needWallpaper;
@@ -1218,28 +1201,7 @@
     }, { once: true });
   }
 
-  // 5. 挂载外观页面设置菜单
-  try {
-    if (typeof window.__agyInitAppearanceMenu === 'function') {
-      menuHandle = window.__agyInitAppearanceMenu(
-        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-        saveConfigRemote,
-        (updatedConfig) => {
-          applyFeatures(updatedConfig);
-        }
-      );
-      window.__agyAppearanceMenuHandle = menuHandle;
-    }
-    if (typeof window.__agyInitDashboardSettings === 'function' && (!window.__agyDashboardSettingsHandle || window.__agyDashboardSettingsFn !== window.__agyInitDashboardSettings)) {
-      window.__agyDashboardSettingsFn = window.__agyInitDashboardSettings;
-      window.__agyDashboardSettingsHandle = window.__agyInitDashboardSettings(
-        () => (window.__AG_SKIN_CONFIG__ || currentConfig),
-        saveConfigRemote
-      );
-    }
-  } catch (err) {
-    console.warn('[Antigravity Skin] Error in __agyInitAppearanceMenu:', err);
-  }
+  cleanupLegacySettingsMenus();
 
   console.log('[Antigravity Skin] Custom skin running smoothly.');
 })();

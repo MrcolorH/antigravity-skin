@@ -211,6 +211,16 @@
           -webkit-backdrop-filter: none !important;
         }
 
+        /* 2.3 Sidecar 插件面板插槽（如 Antigravity Skin 右侧配置面板）透底穿透：
+           宿主在 [data-testid="sidecar-iframe-slot"] 上内联写了 background-color: var(--background)，
+           必须覆盖为透明，插件面板自身的透明样式才能透出底层壁纸。 */
+        [data-testid="sidecar-iframe-slot"],
+        [data-testid="sidecar-iframe-slot"] > div,
+        [data-testid="sidecar-iframe-slot"] iframe {
+          background-color: transparent !important;
+          background: transparent !important;
+        }
+
 
 
         /* 2.5 Windows 顶部窗口栏 / 标题菜单栏 (Title Menu Bar) 100% 纯透明沉浸式 */
@@ -3475,14 +3485,24 @@
 
         .theme-dark [role="menu"],
         .dark [role="menu"],
+        .vscode-dark [role="menu"],
+        html.agy-native-dark [role="menu"],
         .theme-dark [data-radix-menu-content],
         .dark [data-radix-menu-content],
+        .vscode-dark [data-radix-menu-content],
+        html.agy-native-dark [data-radix-menu-content],
         .theme-dark [data-radix-popper-content-wrapper] > div,
         .dark [data-radix-popper-content-wrapper] > div,
+        .vscode-dark [data-radix-popper-content-wrapper] > div,
+        html.agy-native-dark [data-radix-popper-content-wrapper] > div,
         .theme-dark div[class*="animate-slideIn"][class*="bg-card"],
         .dark div[class*="animate-slideIn"][class*="bg-card"],
+        .vscode-dark div[class*="animate-slideIn"][class*="bg-card"],
+        html.agy-native-dark div[class*="animate-slideIn"][class*="bg-card"],
         .theme-dark div[data-side][role="menu"],
-        .dark div[data-side][role="menu"] {
+        .dark div[data-side][role="menu"],
+        .vscode-dark div[data-side][role="menu"],
+        html.agy-native-dark div[data-side][role="menu"] {
           background-color: rgba(18, 22, 32, 0.65) !important;
           background: rgba(18, 22, 32, 0.65) !important;
           backdrop-filter: blur(32px) saturate(190%) !important;
@@ -3495,7 +3515,7 @@
         [role="menu"] [role="menuitem"]:hover,
         [role="menu"] button:hover,
         [role="menu"] [data-highlighted],
-        [role="menu"] div[tabindex]:hover {
+        [role="menu"] div[tabindex]:not([role="menu"]):not([data-radix-menu-content]):hover {
           background-color: rgba(255, 255, 255, 0.45) !important;
           backdrop-filter: blur(12px) !important;
           -webkit-backdrop-filter: blur(12px) !important;
@@ -3504,12 +3524,20 @@
         }
         .theme-dark [role="menu"] [role="menuitem"]:hover,
         .dark [role="menu"] [role="menuitem"]:hover,
+        .vscode-dark [role="menu"] [role="menuitem"]:hover,
+        html.agy-native-dark [role="menu"] [role="menuitem"]:hover,
         .theme-dark [role="menu"] button:hover,
         .dark [role="menu"] button:hover,
+        .vscode-dark [role="menu"] button:hover,
+        html.agy-native-dark [role="menu"] button:hover,
         .theme-dark [role="menu"] [data-highlighted],
         .dark [role="menu"] [data-highlighted],
-        .theme-dark [role="menu"] div[tabindex]:hover,
-        .dark [role="menu"] div[tabindex]:hover {
+        .vscode-dark [role="menu"] [data-highlighted],
+        html.agy-native-dark [role="menu"] [data-highlighted],
+        .theme-dark [role="menu"] div[tabindex]:not([role="menu"]):not([data-radix-menu-content]):hover,
+        .dark [role="menu"] div[tabindex]:not([role="menu"]):not([data-radix-menu-content]):hover,
+        .vscode-dark [role="menu"] div[tabindex]:not([role="menu"]):not([data-radix-menu-content]):hover,
+        html.agy-native-dark [role="menu"] div[tabindex]:not([role="menu"]):not([data-radix-menu-content]):hover {
           background-color: rgba(255, 255, 255, 0.14) !important;
           backdrop-filter: blur(12px) !important;
           -webkit-backdrop-filter: blur(12px) !important;

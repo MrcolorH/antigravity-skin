@@ -8,6 +8,7 @@
 
 | 版本 | 发布重点 | 详细说明 |
 | :--- | :--- | :--- |
+| **v0.3.3** | 升级插件交互方式：全面收口至「Antigravity Skin」独立侧边栏配置面板，移除原生设置页侵入式注入，集成动态壁纸、场景属性实时调参、素材库与面板交互；同步修复暗色主题下插件展开子菜单外框变浅问题 | [RELEASE_v0.3.3.md](docs/releases/RELEASE_v0.3.3.md) |
 | **v0.3.2** | 修复 Windows 版顶部菜单栏在新版客户端 DOM 结构下残留浅色实底与字色误翻问题，重构「Antigravity Skin」侧边栏配置面板并实现与核心外观配置的实时双向同步 | [RELEASE_v0.3.2.md](docs/releases/RELEASE_v0.3.2.md) |
 | **v0.3.1** | 修复「模型与用量」页面反重力看板设置卡片错位、开关样式与蓝灰状态异常，以及刷新页面后设置项消失与冷启动注入竞态问题 | [RELEASE_v0.3.1.md](docs/releases/RELEASE_v0.3.1.md) |
 | **v0.3.0** | 完整集成反重力看板（`antigrative-dashboard`）、存量 `antigravity-pulse` 无损平滑替换、「模型与用量」原生单开关控制、统一中英文联动、Antigravity 2.35+ 环境变量凭据适配与零命令行更新自愈 | [RELEASE_v0.3.0.md](docs/releases/RELEASE_v0.3.0.md) |
