@@ -1169,13 +1169,19 @@ function bindEvents() {
 
   $('apply-update-btn')?.addEventListener('click', async () => {
     const ver = latestUpdateInfo?.latestVersion || '';
-    if (typeof confirm === 'function' && !confirm(t('updateConfirm').replace('{v}', ver))) return;
     const btn = $('apply-update-btn');
+    const pill = $('update-available-pill');
     const line = $('update-status-line');
     if (btn) { btn.disabled = true; btn.textContent = t('applyingUpdate'); }
+    if (line) { line.textContent = t('applyingUpdate'); line.className = 'update-status-line'; line.hidden = false; }
     try {
-      await apiJson('/api/update-apply', 'POST', latestUpdateInfo || {});
-      if (line) { line.textContent = t('updateSuccess').replace('{v}', ver); line.className = 'update-status-line ok'; line.hidden = false; }
+      const res = await apiJson('/api/update-apply', 'POST', latestUpdateInfo || {});
+      const appliedVer = res?.version || ver;
+      if (pill) pill.hidden = true;
+      if (btn) { btn.hidden = true; btn.disabled = false; btn.textContent = t('applyUpdate'); }
+      if (line) { line.textContent = t('updateSuccess').replace('{v}', appliedVer); line.className = 'update-status-line ok'; line.hidden = false; }
+      latestUpdateInfo = null;
+      refreshAll(false).catch(() => {});
     } catch (err) {
       if (line) { line.textContent = `${t('updateFail')}${err.message}`; line.className = 'update-status-line warn'; line.hidden = false; }
       if (btn) { btn.disabled = false; btn.textContent = t('applyUpdate'); }
