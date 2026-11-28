@@ -410,8 +410,8 @@ if (effectiveKernelInjection) {
     });
     if (macRes.ok) {
       console.log(`  [√] macOS 启动器已就绪: ${macRes.launcherPath || 'Antigravity.app'}`);
-    } else if (macRes.deferred === 'inside_host' || macRes.reason === 'host-running-skip-isolate') {
-      console.log('  💡 检测到正运行于 Antigravity 宿主会话中，无法在线移动正在运行的 /Applications/Antigravity.app。请完全退出 Antigravity 后在系统 Terminal 中运行 ./install.sh 即可完成单入口隔离！');
+    } else if (macRes.reason === 'host-running-skip-isolate') {
+      console.log('  💡 检测到运行于 Antigravity 宿主会话中，跳过在线迁移 /Applications/Antigravity.app（下次关闭后重启或手动部署脚本可执行隔离），CLI 入口已就绪。');
     } else {
       console.log(`  ⚠️ macOS 启动器构建未能完成 (${macRes.reason || macRes.error || 'unknown'})，已回退至命令行包装 ~/.local/bin/antigravity。`);
     }
