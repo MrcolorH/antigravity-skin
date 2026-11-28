@@ -318,6 +318,7 @@ if os.path.exists(lp) and os.path.exists(rp):
         plistlib.dump(ldata, f)
 " 2>/dev/null || true
             xattr -cr "$SYSTEM_APP" >/dev/null 2>&1 || true
+            codesign --force --deep --sign - "$SYSTEM_APP" >/dev/null 2>&1 || true
             if [ -x "$LSREGISTER" ]; then
                 "$LSREGISTER" -f "$SYSTEM_APP" >/dev/null 2>&1 || true
             fi
@@ -370,6 +371,7 @@ if os.path.exists(lp):
         plistlib.dump(ldata, f)
 " 2>/dev/null || true
             xattr -cr "$KEEP_LAUNCHER" >/dev/null 2>&1 || true
+            codesign --force --deep --sign - "$KEEP_LAUNCHER" >/dev/null 2>&1 || true
             LAUNCH_TARGET="$KEEP_LAUNCHER"
         fi
     fi

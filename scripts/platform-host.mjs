@@ -569,6 +569,7 @@ export function setupMacZeroPatchLauncher({
       'utf8'
     );
     try { execFileSync('xattr', ['-cr', tmpOutApp], { stdio: 'ignore' }); } catch (_) {}
+    try { execFileSync('codesign', ['--force', '--deep', '--sign', '-', tmpOutApp], { stdio: 'ignore' }); } catch (_) {}
 
     if (fs.existsSync(launcherPath)) {
       if (!isLauncherAppBundle(launcherPath)) {
@@ -585,6 +586,7 @@ export function setupMacZeroPatchLauncher({
 
     const finalLauncher = effectiveMode === 'isolate' ? launcherPath : keepOriginalLauncher;
     try { execFileSync('xattr', ['-cr', finalLauncher], { stdio: 'ignore' }); } catch (_) {}
+    try { execFileSync('codesign', ['--force', '--deep', '--sign', '-', finalLauncher], { stdio: 'ignore' }); } catch (_) {}
 
     if (fs.existsSync(LSREGISTER_PATH)) {
       if (effectiveMode === 'isolate' && fs.existsSync(isolatedApp)) {
