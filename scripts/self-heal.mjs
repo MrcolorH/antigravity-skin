@@ -18,6 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { findAllOriginalResourcesDirs, readJsonSafe } from './platform-host.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,32 +67,7 @@ function writeState(patch) {
 
 /** 定位所有可能的 Antigravity resources 目录（含 app.asar 的） */
 function findResourcesDirs() {
-  const home = os.homedir();
-  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const candidates = [
-    path.join(localAppData, 'Programs', 'antigravity', 'resources'),
-    path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
-    path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources'),
-    path.join(programFiles, 'Antigravity', 'resources'),
-    path.join(programFilesX86, 'Antigravity', 'resources'),
-    'D:\\soft\\Antigravity IDE\\resources'
-  ];
-  const found = [];
-  const seen = new Set();
-  for (const dir of candidates) {
-    let asarPath;
-    try { asarPath = path.join(dir, 'app.asar'); } catch (_) { continue; }
-    if (!fs.existsSync(asarPath)) continue;
-    // Windows 路径大小写不敏感，用 realpath 去重避免重复打补丁
-    let key = dir;
-    try { key = fs.realpathSync.native(dir).toLowerCase(); } catch (_) { key = dir.toLowerCase(); }
-    if (seen.has(key)) continue;
-    seen.add(key);
-    found.push(dir);
-  }
-  return found;
+  return findAllOriginalResourcesDirs({ platform: 'win32' });
 }
 
 /** 通过全量扫描 asar 二进制判断补丁标记是否存在（asar 未压缩，直接字符串检索即可） */
@@ -173,6 +149,14 @@ function main() {
   if (process.platform !== 'win32') {
     // macOS / Linux 采用非侵入式架构，无 asar 补丁，直接跳过
     return 3;
+  }
+
+  const deployedCfg = readJsonSafe(path.join(os.homedir(), '.gemini', 'config', 'plugins', 'antigravity-skin', 'config', 'config.json'));
+  const localCfg = readJsonSafe(path.join(PLUGIN_ROOT, 'config', 'config.json'));
+  const cfg = deployedCfg || localCfg;
+  if (cfg?.features?.kernelInjection !== true) {
+    log('📌 当前处于零改包纯净启动模式（kernelInjection !== true），跳过开机自愈。');
+    return 0;
   }
 
   const dirs = findResourcesDirs();

@@ -4,32 +4,28 @@
   <img src="https://img.shields.io/badge/Antigravity-2.0+-blue?style=flat-square" alt="Antigravity">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Architecture-Official%20Sidecar%20Daemon-success?style=flat-square" alt="Architecture">
-  <img src="https://img.shields.io/badge/Dual--Engine-macOS%20Zero--Patch%20%7C%20Win%20Boot--Enhanced-brightgreen?style=flat-square" alt="Dual Engine">
+  <img src="https://img.shields.io/badge/Architecture-100%25%20Zero--Patch%20Default%20%7C%20Optional%20Kernel%20Boot-brightgreen?style=flat-square" alt="Zero Patch Architecture">
   <img src="https://img.shields.io/badge/License-MIT-orange?style=flat-square" alt="License">
 </p>
 
 > [!IMPORTANT]
-> ### 📢 【置顶公告】关于 Antigravity (反重力) 更新后插件失效与一键修补指引
+> ### 🌟 `v0.3.4` 核心架构升级：默认全面回归「100% 零改包 / 零重签」纯净启动
 >
-> 1. **核心原因与启动项配置**：
->    - 由于 Antigravity 官方在近期更新后**默认不开启插件模式**（官方底层默认禁用了 CDP 调试端口 `remote-debugging-port` 并在启动时自动清理端口句柄），导致换肤插件、汉化/翻译插件等所有依赖该机制的外部扩展无法挂载。
->    - **启动项要求**：客户端必须携带启动参数 `--remote-debugging-port=0` 启动，才能正常激活插件模式。
+> 为了彻底消除大家对“修改官方客户端文件 / 重签名”的顾虑，本插件自 `v0.3.4` 起默认全面采用**零改包、零重签**启动架构：
 >
-> 2. **脚本一键修补（推荐，省时省心）**：
->    本插件的安装脚本中已全面支持**一键配置启动项与内核修补**，无需手动配置：
->    - **🍎 macOS**：使用 `.sh` 安装脚本，终端进入目录运行 `./install.sh`（或通过在线命令 `curl -fsSL https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.sh | bash`）
->    - **🪟 Windows**：使用 `.ps1` 安装脚本（PowerShell 执行 `.\install.ps1`）或双击 `install.bat`（或通过在线命令 `irm https://raw.githubusercontent.com/MrcolorH/antigravity-skin/main/install.ps1 | iex`）
->    - 脚本会自动为快捷方式或客户端注入 `--remote-debugging-port=0` 启动项及必要内核补丁，直接完成修补。
->    - *(注：若习惯手动配置启动项，Windows 可右键 Antigravity 快捷方式并在「目标」末尾追加 ` --remote-debugging-port=0`；macOS 可通过终端执行 `open -a Antigravity --args --remote-debugging-port=0`)*
->
-> 3. **⚠️ 特别注意：每次反重力更新后，均需重新执行一次脚本修补**：
->    - **为什么无法在 App 内通过设置修复？**：修补功能原本内嵌在插件界面的「设置」-「外观」中（支持一键修复与状态检测）。但由于**官方更新后默认直接屏蔽了插件**，插件在未修补状态下根本无法加载，导致无法打开外观设置菜单去点击修补，**因此无法通过插件内完成修补，只能重新通过外部脚本安装**。
->    - **应对方式**：后续只要 Antigravity 客户端自动升级后，重新运行一次安装脚本（Mac 执行 `install.sh` / Win 执行 `install.ps1` 或 `install.bat`）即可秒级恢复。
->
-> 4. **可用性说明**：
->    **换肤、动态壁纸与汉化/翻译插件均依然可以正常使用**，核心功能未受影响，只是每次客户端更新后需要重新执行脚本完成修补，稍有繁琐，感谢大家的理解与支持！
+> 1. **默认零修改官方客户端（`features.kernelInjection: false`）**：
+>    - 安装过程（`install.bat` / `install.ps1` / `install.sh` / `scripts/install.mjs`）、Windows 开机自愈与在线热更新**默认均不再修改官方 `app.asar`**，macOS **不再执行 `codesign` 重签名**，100% 完整保留 Google 官方原厂二进制与数字签名。
+>    - 客户端后续自动更新**不会与插件产生冲突**（仅当系统清理了快捷方式参数时自动无感修复）。
+> 2. **跨平台零改包无感启动入口**：
+>    - **🪟 Windows**：安装脚本自动通过 Shell API 为桌面（兼容 OneDrive 重定向桌面）、开始菜单与任务栏固定快捷方式附加 `--remote-debugging-port=0` 参数（当 `Program Files` 只读时自动在用户桌面补充 `Antigravity (Skin).lnk`）。
+>    - **🍎 macOS**：自动将未经修改的官方 `Antigravity.app` 无损隔离并生成轻量化单入口启动器（保留原版图标、文件拖放、URL 关联及统一入口体验；亦可在侧边栏切为“保留官方位置 + 独立启动器”模式）。
+> 3. **按需开启可选内核注入**：
+>    - 如仍需要「开机首帧零白闪视频 / 免参直启」，可在右上角 `⋮ -> 插件 -> Antigravity Skin` 侧边栏面板中手动确认开启「内核级前置注入」，并支持随时**一键从备份还原 100% 官方原版并切回纯净模式**。（*注：若 macOS 曾开启并执行过重签名，仅还原 `app.asar.bak` 无法恢复原厂数字签名，需从官方重新下载覆盖 `.app`*）。
+> 4. **🛡️ 安全边界与自查提醒（重要）**：
+>    - 本插件仅作用于**本地 UI 渲染与只读看板**，**绝不**读取或上传任何 Google 账号 OAuth 凭据、**绝不**拦截/反代任何 API 请求，已隔离本地 OAuth/登录页面并对本地服务与更新源实施严格白名单校验。
+>    - 近期若遇到账号 `Error 403` / 封禁风险，请重点自查账号或本机是否安装/授权过**第三方 API 反代中转、号池工具、自动化刷量脚本或高风险代理节点**（可前往 Google 账号第三方权限页检查撤销）。
 
-> **无缝集成、体验极致** 的 Google Antigravity 主题、动态视频壁纸、自定义开机引导动效与原生外观设置菜单集成插件。（**macOS 平台保持 100% 纯净零改包免侵入**；**Windows 平台提供专属开机防白闪深度增强，并支持一键无损还原**）
+> **无缝集成、体验极致** 的 Google Antigravity 主题、动态视频壁纸、自定义开机引导动效与独立侧边栏控制面板插件。（**默认 Windows / macOS 全平台 100% 纯净零改包零重签**；**可选侧边栏按需开启深度防白闪增强**）
 
 ---
 
@@ -107,22 +103,20 @@
 - **代码与终端严格隔离**：采用容器级回溯检测，自动规避代码块（`<pre>`, `<code>`）、Monaco/Ace 代码编辑器与终端输出，绝不污染代码原文。
 - 汉化选项直接内嵌至外观设置卡片下方，支持一键热开关。
 
-### 6. 官方 Sidecar 伴生架构与跨平台双引擎设计
-- **核心功能依托官方持久化规范**：主体功能（动态视频壁纸、毛玻璃穿透、外观控制台注入、在线热更新）基于 Antigravity 官方持久化插件规范与 Sidecar 伴生守护进程运行，核心代码与用户素材独立保存在用户目录（`.gemini/config/plugins`）中。
-- **实事求是的跨平台开机引导策略**：
-  - **🍎 macOS 端（100% 纯净零改包）**：恪守苹果 Gatekeeper 严格代码签名机制，**绝对不解包或修改 `app.asar`**，完全由 Sidecar 守护进程通过 Chromium CDP 事件在毫秒级无感隐匿原生呼吸遮罩；
-  - **🪟 Windows 端（深度防白闪补丁 + 随时一键还原）**：针对 Windows 下 Chromium 启动瞬间硬编码呼吸遮罩造成的闪白顽疾，安装脚本内置针对 `app.asar` 启动遮罩的轻量优化补丁（`patch-loading.bat`），实现极致的无白闪平滑溶出，并配套提供 `restore-loading.bat` 随时一键完整恢复官方原厂状态。
-  - **🛡️ 开机自愈守护（Windows）**：Antigravity 客户端**每次自动更新都会整体替换 `app.asar`**，注入其中的开机动效必然被覆盖。安装时会自动注册一个「登录延迟 10 秒」的隐藏自愈任务（用户启动文件夹 `Startup\AntigravitySkinSelfHeal.vbs`，无需管理员权限、无控制台闪窗）：检测到补丁标记丢失且客户端未运行 → 后台静默重打补丁；客户端正在运行 → 绝不强杀会话，标记为待恢复并顺延到下次登录。状态实时显示在「设置 - 外观 - 开机动效引擎修复」一行（✅ 已就绪 / ⚠️ 缺失），也可随时双击 `self-heal.bat` 手动自检。
-- **长连接持久巡检**：CDP 通道保持长效保活，页面重载、导航或热更新时自动无感补注皮肤，防止主题掉落。
-- **顶部栏与文字对比度自适应（v0.1.8）**：顶部菜单字色跟随「壁纸顶部条带」亮度（而非原生主题），并叠加淡渐变蒙层与文字阴影兜底；同时内置**通用对比度守护**——逐个文本/图标元素计算其实际背景的 WCAG 对比度，低于 3:1 才自动翻色，不透明面板（设置弹窗等）内保持原生配色不变。
-- **原生窗口按钮永不失联**：Windows WCO 底色一律使用不透明色并跟随壁纸明暗（透明底会导致 Windows 直接隐藏最小化/最大化/关闭按钮），开机动效期间用纯黑幕布无缝衔接。
+### 6. 官方 Sidecar 伴生架构与跨平台零改包启动
+- **核心功能依托官方持久化规范**：主体功能（动态视频壁纸、毛玻璃穿透、独立侧边栏控制面板、在线热更新）基于 Antigravity 官方持久化插件规范与 Sidecar 伴生守护进程运行，核心代码与用户素材独立保存在用户目录（`.gemini/config/plugins`）中。
+- **跨平台默认 100% 零改包纯净启动（`kernelInjection: false`）**：
+  - **🪟 Windows 端**：默认不修改官方 `app.asar`，也不自动写入开机自愈注册脚本；自动通过 Shell API 为桌面（兼容 OneDrive 重定向桌面）、开始菜单与任务栏固定快捷方式附加 `--remote-debugging-port=0` 参数（当 `Program Files` 只读时自动创建桌面用户级 `Antigravity (Skin).lnk`）。如个人电脑仍需开屏首帧零白闪增强，可在侧边栏面板手动开启可选内核注入，并随时一键还原官方 `app.asar.bak`。
+  - **🍎 macOS 端**：默认不修改官方 `app.asar`、不执行 `codesign` 重签名；自动采用隔离无感单入口启动器（或保留官方原位独立启动器），在完全保留官方代码签名与安全沙箱的同时自动携带调试参数启动，并支持在卸载时完整归位官方原版。
+- **长连接持久巡检**：CDP 通道保持长效保活，页面重载、导航或热更新时自动无感补注皮肤，防止主题掉落，同时严格隔离登录与 OAuth 授权页。
+- **顶部栏与文字对比度自适应（v0.1.8）**：顶部菜单字色跟随「壁纸顶部条带」亮度（而非原生主题），并叠加淡渐变蒙层与文字阴影兜底；同时内置**通用对比度守护**——逐个文本/图标元素计算其实际背景的 WCAG 对比度，低于 3:1 才自动翻色，不透明面板内保持原生配色不变。
+- **原生窗口按钮永不失联**：零改包模式下完整保持官方原生窗口控件与色彩表现；可选内核注入模式下 Windows WCO 底色使用不透明保护色，开机动效期间平滑过渡。
 - **优雅退出**：客户端关闭时自动注销清理进程与端口，杜绝僵尸进程占用资源。
 
 ### 7. 客户端内一键在线热更新（跨平台：Windows & macOS）
-- **免手动重复下载与安装**：在「设置 - 外观」控制面板底部直接点击「🔄 检查更新」，自动对接 GitHub Releases 获取最新发布与更新说明。
-- **真·无感热重载**：点击「🚀 立即热更新」后，后台自动流式下载并安全部署核心代码，通过 CDP 实时热替换客户端样式与逻辑，**无需退出客户端**即刻生效。
+- **免手动重复下载与安装**：在右侧 `Antigravity Skin` 面板顶部直接点击「检查更新」，自动对接 GitHub Releases 获取最新发布。
+- **真·无感热重载**：点击「立即更新」后，后台严格校验官方仓库下载地址与重定向白名单，安全流式下载并热更新插件源码，默认零改包模式下绝不触碰官方 `app.asar`。
 - **用户数据绝对安全**：白名单增量更新严格保留本地个性化配置（`config.json`）与所有自定义壁纸/开机素材，绝无被覆盖丢失的风险。
-- **网络镜像双保险**：内置 GitHub Releases 官方开放 API、jsDelivr CDN 兜底节点与国内镜像下载加速，保障各地区极速升级。
 
 
 ---
@@ -167,27 +161,26 @@
 
 ---
 
-### 🎬 跨平台开机动画联动配置（Windows & macOS）
+### 🎬 跨平台启动入口与可选开机动画配置（Windows & macOS）
 
-- **🍎 macOS 平台（原生纯净非侵入式架构）**：
-  - **一步到位，零指令额外操作**：只需执行一次 `./install.sh`（或一行在线命令），脚本会自动关闭 Antigravity 客户端、完成部署并**自动重新启动客户端**！
-  - **100% 保持官方代码签名**：绝不解包或篡改 `app.asar`，完全避免 macOS Gatekeeper / Hardened Runtime 签名损坏导致的白屏或死锁；
-  - **动态消除原生 Loading 遮罩**：Sidecar 守护进程通过 Chromium CDP 事件驱动在毫秒级无感隐藏官方呼吸 Logo 遮罩，并将背景纯黑无缝过渡至渲染层的开机视频，体验如丝般顺滑！
+- **🍎 macOS 平台（默认零改包 / 零重签无感启动器）**：
+  - 安装脚本自动构建轻量化单入口启动器（默认 `isolate` 模式接管 `/Applications/Antigravity.app` 并完整隔离官方 `.app`，或通过侧边栏切为 `keep_original` 模式）；
+  - Sidecar 守护进程通过 Chromium CDP 事件在毫秒级平滑过渡原生 Loading 遮罩，100% 保持官方代码签名与沙箱完整性；
+  - 若需要底层主进程级开屏视频，可在侧边栏确认开启可选内核注入（需执行 ad-hoc 重签名），并支持从备份还原。
 
-- **🪟 Windows 平台（支持深度 Asar 补丁与非侵入式双模式）**：
-  - **全自动退出与重启**：运行 `install.bat` / `install.ps1` 会自动退出客户端，并在部署完成后自动重新拉起生效；
-  - **可选独立补丁与还原**：如需手动合入或还原官方原版，可随时双击 `patch-loading.bat` / `restore-loading.bat`；
-  - **自愈与自检**：双击 `self-heal.bat` 可立即自检并按需重打补丁（客户端运行中会自动跳过，绝不打断会话），同时打印自愈守护的注册状态。
+- **🪟 Windows 平台（默认零改包快捷方式启动 + 可选内核增强）**：
+  - 安装时默认仅配置快捷方式启动参数（桌面、开始菜单、任务栏固定栏，及只读安装目录自动补充用户桌面快捷方式），**不修改官方 `app.asar`**；
+  - 如需启用高阶开屏首帧拦截，可在 `Antigravity Skin` 侧边栏按需确认开启，也可随时一键切回纯净启动或运行 `patch-loading.bat` / `restore-loading.bat`。
 
 ---
 
 ## ⚙️ 如何在客户端中个性化设置
 
-安装生效后，主题已与 Antigravity 原生设置融为一体：
+安装生效后，请点击 Antigravity 右上角菜单 `⋮` → `插件 (Plugins)` → **`Antigravity Skin`** 打开独立侧边栏控制面板：
 
-1. 点击 Antigravity 左侧导航栏底部的 **⚙️ 设置（Settings）** 图标。
-2. 切换至 **外观（Appearance）** 标签页。
-3. 在顶部的 **「主题 (Theme)」** 选项中，点击 **「✨ 自定义」**。
+1. 查看顶部「插件通道状态」（零改包运行中 / 可选内核注入运行中）及在线更新状态；
+2. 调节「界面与交互」（界面汉化、对话气泡样式、对话栏内嵌看板）；
+3. 配置「动态壁纸」、「Wallpaper 素材库」零拷贝引用及「开机动画」效果。
 4. 此时下方将展开专属控制台：
    - **动态视频壁纸**：一键开启或关闭；
    - **壁纸素材库与一键载入**：
@@ -195,7 +188,7 @@
      - 导入后自动纳入插件素材库，随时可通过下拉菜单自由切换；
    - **亮度 / 对比度调节**：拖动滑块实时无级微调毛玻璃透光度与对比反差；
    - **开机引导动画**：自由选择【代码动效】或【自定义短视频】，支持载入新开机短视频与一键「▶️ 立即预览」；
-   - **界面语言 (Language)**：自由切换中文（增强汉化）与默认英文。
+4. 如需「开机首帧防白闪视频 / 免参直启」，可在面板底部切换「内核级前置注入 (可选高级模式)」并确认；
 5. 所有的调整均**实时生效**，并自动持久化保存，下次启动客户端自动应用。
 
 ---
@@ -242,35 +235,36 @@ antigravity-skin/
 ├── provisionSplash.js          # Electron 初始化 Splash 垫片
 ├── client/                     # 客户端渲染层代码
 │   ├── index.js                # 客户端总控中心与配置桥接
-│   ├── modules/
-│   │   ├── agy-modal.js        # 原生质感弹窗基建
-│   │   ├── appearance-menu.js  # 原生外观设置卡片深度无缝注入
-│   │   ├── boot-animation.js   # 视频 / 场景封面 / 代码三类全屏开机动画引擎
-│   │   ├── crt-theme.js        # 复古 CRT 特效模块
-│   │   ├── i18n-engine.js      # 智能防污染中文隔离汉化引擎
-│   │   ├── media-display-modal.js # 独立参数调节面板与修饰键配置
-│   │   ├── wallpaper-library-ui.js # 外部素材库资产中心（卡片网格 / 筛选 / 双向应用）
-│   │   └── wallpaper.js        # 多形态壁纸渲染器（video / web iframe / scene）与毛玻璃
+│   └── modules/
+│       ├── agy-modal.js        # 原生质感弹窗基建
+│       ├── boot-animation.js   # 视频 / 场景封面 / 代码三类全屏开机动画引擎
+│       ├── crt-theme.js        # 复古 CRT 特效模块
+│       ├── i18n-engine.js      # 智能防污染中文隔离汉化引擎（含认证页隔离）
+│       ├── media-display-modal.js # 独立参数调节面板与修饰键配置
+│       ├── wallpaper-library-ui.js # 外部素材库资产中心（卡片网格 / 筛选 / 双向应用）
+│       └── wallpaper.js        # 多形态壁纸渲染器（video / web iframe / scene）与毛玻璃
 │   └── styles/
 │       ├── crt-theme.css       # 复古扫描线样式
 │       └── glass-theme.css     # 深度毛玻璃与窗口穿透核心样式
 ├── sidecars/
+│   ├── panel/                  # Antigravity Skin 独立侧边栏控制面板（WebView / Sidecar UI）
 │   └── skin-engine/
 │       ├── sidecar.json        # 官方 Sidecar 服务声明配置
-│       ├── main.mjs            # 守护进程（流媒体 Range 服务 + CDP 长连接注入 + 状态自愈）
+│       ├── main.mjs            # 守护进程（流媒体 Range 服务 + CDP 注入 + 零改包状态机）
 │       ├── scene-pkg.mjs       # PKG 解包与 Scene 数据流驱动
 │       ├── wallpaper-library.mjs # 外部素材库解析引擎（project.json / 缓存 / 静态伺服）
 │       └── vendor/             # 场景渲染三方依赖 (WebWallGL)
 ├── scripts/                    # 部署、运维与发布管理脚本
 │   ├── hot-sync.mjs            # 源码文件变动实时监听与自动热同步
-│   ├── install.mjs             # 跨平台纯净白名单部署与 RPC 注册引擎
+│   ├── install.mjs             # 跨平台纯净白名单部署、快捷方式/mac启动器与 RPC 注册
 │   ├── pack.mjs                # 一键构建 GitHub Release 压缩包脚本
-│   ├── patch-boot-overlay.mjs  # 跨平台核心开机引擎与原生窗口锁黑补丁 (Win & macOS)
-│   ├── register-self-heal.mjs  # 注册/注销开机自愈守护（启动文件夹 VBS 隐藏执行，免管理员）
-│   ├── restore-boot-overlay.mjs# 跨平台官方 app.asar 自动还原脚本 (Win & macOS)
-│   ├── self-heal.mjs           # 开机自愈：检测 app.asar 补丁是否被覆盖并自动重打
+│   ├── patch-boot-overlay.mjs  # 可选内核注入与原生窗口锁黑补丁 (Win & macOS)
+│   ├── platform-host.mjs       # 跨平台宿主寻址、快捷方式/启动器与配置原子写入公共模块
+│   ├── register-self-heal.mjs  # 注册/注销开机自愈守护（仅内核注入开启时生效）
+│   ├── restore-boot-overlay.mjs# 跨平台官方 app.asar 自动还原与纯净模式切换脚本
+│   ├── self-heal.mjs           # 开机自愈（严格门控于 kernelInjection === true）
 │   ├── sync-all.mjs            # 全量文件一键快速热同步至系统插件目录
-│   └── uninstall.mjs           # 跨平台安全卸载引擎
+│   └── uninstall.mjs           # 跨平台安全卸载与启动器归位引擎
 ├── tools/                      # 开发者辅助工具
 │   ├── capture-previews.mjs    # 文档效果图与界面截图自动化采集
 │   └── inspect-dom.mjs         # CDP 实时 DOM 节点与计算样式快速探查

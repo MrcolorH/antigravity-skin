@@ -279,6 +279,12 @@
     const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
     if (!element) return false;
 
+    // 认证/登录/OAuth 授权页严格跳过，绝不干扰任何账号鉴权流程
+    const hrefLower = (window.location.href || '').toLowerCase();
+    if (['accounts.google.com', '/oauth', '/auth/', '/login', '/signin', '/callback'].some(k => hrefLower.includes(k))) {
+      return false;
+    }
+
     // 主窗口白名单
     const isMainWindow = window.location.pathname.endsWith('workbench.html') ||
       window.location.href.indexOf('/workbench.html') >= 0 ||

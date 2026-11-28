@@ -1,6 +1,8 @@
 {
   "enabled": true,
   "features": {
+    "kernelInjection": false,
+    "macLauncherMode": "isolate",
     "bootAnimation": false,
     "bootAnimationConfig": {
       "type": "video",

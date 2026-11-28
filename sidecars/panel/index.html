@@ -68,6 +68,27 @@
           </div>
         </div>
         <div class="update-status-line" id="update-status-line" hidden></div>
+        <div class="sub-block zero-patch-block" id="advanced-mode-block">
+          <label class="toggle-row">
+            <span><strong data-t="kernelInjectionTitle">内核级前置注入 (可选高级模式)</strong><small data-t="kernelInjectionDesc">默认使用 100% 零改包 / 零重签纯净启动；开启将修改官方 app.asar 以解锁开机首帧视频。</small></span>
+            <input type="checkbox" id="cfg-kernelInjection">
+          </label>
+          <div class="mode-warn-text" id="mac-sign-warning" hidden data-t="macSignWarning">⚠️ macOS 注意：开启内核注入将修改 app.asar 并执行 ad-hoc 重签名；若曾开启过此项，仅还原 app.asar.bak 无法恢复 Apple/Google 原厂数字签名，如需恢复原厂签名请从官方重新下载覆盖 Antigravity.app。</div>
+          <div class="field-row" id="mac-launcher-mode-row" hidden>
+            <label for="cfg-macLauncherMode" data-t="macLauncherModeLabel">macOS 启动器模式</label>
+            <select id="cfg-macLauncherMode">
+              <option value="isolate" data-t="macModeIsolate">无感接管系统入口 (推荐)</option>
+              <option value="keep_original" data-t="macModeKeep">保留原位，独立启动器 (Antigravity Skin)</option>
+            </select>
+          </div>
+          <div class="confirm-inline-box" id="kernel-confirm-box" hidden>
+            <div class="confirm-inline-text" id="kernel-confirm-text"></div>
+            <div class="confirm-inline-actions">
+              <button type="button" id="kernel-confirm-cancel" class="btn btn-xs" data-t="cancelAction">取消</button>
+              <button type="button" id="kernel-confirm-ok" class="btn btn-xs btn-warning" data-t="confirmAction">确认执行</button>
+            </div>
+          </div>
+        </div>
         <div class="save-hint" id="repair-feedback" hidden></div>
       </section>
 

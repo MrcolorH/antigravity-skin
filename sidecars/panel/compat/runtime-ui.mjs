@@ -15,6 +15,9 @@ const offline = message => ({ connection: 'offline', error: message, speed: null
 export function validTarget(target, port) {
   try {
     const page = new URL(target.url), ws = new URL(target.webSocketDebuggerUrl);
+    if (/^\/(?:admin|api|debug|test|app|dashboard|callback|oauth|auth|login|signin|sso)(?:\/|$)/i.test(page.pathname)) {
+      return false;
+    }
     return target.type === 'page' && ['http:', 'https:'].includes(page.protocol) && LOOPBACK.has(page.hostname)
       && ws.protocol === 'ws:' && LOOPBACK.has(ws.hostname) && Number(ws.port) === port;
   } catch { return false; }

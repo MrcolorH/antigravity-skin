@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, watchFile } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync, watchFile } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -69,7 +69,29 @@ const callSkinEngineRaw = async (path, method = 'GET', body = undefined, headers
 const writeSkinConfigFallback = (cfg) => {
   const file = platformPaths().skinConfig;
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(cfg, null, 2), 'utf8');
+  const prev = readSkinConfig();
+  const nextCfg = cfg && typeof cfg === 'object' ? { ...cfg } : {};
+  const prevFeatures = prev?.features && typeof prev.features === 'object' ? prev.features : {};
+  const nextFeatures = nextCfg.features && typeof nextCfg.features === 'object' ? { ...nextCfg.features } : {};
+  if (typeof prevFeatures.kernelInjection === 'boolean') {
+    nextFeatures.kernelInjection = prevFeatures.kernelInjection;
+  } else if (typeof nextFeatures.kernelInjection !== 'boolean') {
+    nextFeatures.kernelInjection = false;
+  }
+  if (prevFeatures.macLauncherMode === 'isolate' || prevFeatures.macLauncherMode === 'keep_original') {
+    nextFeatures.macLauncherMode = prevFeatures.macLauncherMode;
+  } else if (nextFeatures.macLauncherMode !== 'isolate' && nextFeatures.macLauncherMode !== 'keep_original') {
+    nextFeatures.macLauncherMode = 'isolate';
+  }
+  nextCfg.features = nextFeatures;
+  const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmp, JSON.stringify(nextCfg, null, 2), 'utf8');
+  try {
+    renameSync(tmp, file);
+  } catch {
+    writeFileSync(file, JSON.stringify(nextCfg, null, 2), 'utf8');
+    try { unlinkSync(tmp); } catch {}
+  }
   return { ok: true, fallback: true };
 };
 const getSkinPanelState = async () => {
@@ -160,6 +182,18 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
   app.api('/api/patch-repair', async () => {
     try { return await callSkinEngine('/api/patch-boot', 'POST'); }
     catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
+  app.api('/api/patch-restore', async () => {
+    try { return await callSkinEngine('/api/restore-boot', 'POST'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Restore unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
+  app.api('/api/shortcuts-repair', async () => {
+    try { return await callSkinEngine('/api/shortcuts/repair', 'POST'); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Shortcut repair unavailable' }), { status: 502, contentType: 'application/json' }); }
+  }, 'POST');
+  app.api('/api/mac-launcher-mode', async data => {
+    try { return await callSkinEngine('/api/mac-launcher/mode', 'POST', data || {}); }
+    catch (err) { return new Response(JSON.stringify({ ok: false, error: err?.message || 'Mode switch unavailable' }), { status: 502, contentType: 'application/json' }); }
   }, 'POST');
   app.api('/api/update-check', async () => {
     try { return await callSkinEngine('/api/update/check', 'GET'); }
@@ -296,6 +330,35 @@ if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       try { res.end(JSON.stringify(await callSkinEngine('/api/patch-boot', 'POST'))); }
       catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Repair unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/patch-restore' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/restore-boot', 'POST'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Restore unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/shortcuts-repair' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      try { res.end(JSON.stringify(await callSkinEngine('/api/shortcuts/repair', 'POST'))); }
+      catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Shortcut repair unavailable' })); }
+      return;
+    }
+    if (url.pathname === '/api/mac-launcher-mode' && req.method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      let body = '';
+      try {
+        for await (const chunk of req) body += chunk;
+        const parsed = body ? JSON.parse(body) : {};
+        try { res.end(JSON.stringify(await callSkinEngine('/api/mac-launcher/mode', 'POST', parsed))); }
+        catch (err) { res.writeHead(502); res.end(JSON.stringify({ ok: false, error: err?.message || 'Mode switch unavailable' })); }
+      } catch (err) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: err?.message || 'Invalid mode payload' }));
+      }
       return;
     }
     if (url.pathname === '/api/update-check' && req.method === 'GET') {

@@ -51,7 +51,11 @@ export function migrateLegacyPulseData(paths = platformPaths()) {
 export function agentExecutables({ platform = process.platform, home = homedir(), env = process.env, arch = process.arch } = {}) {
   if (env.ANTIGRAVITY_AGENTAPI_EXE) return [env.ANTIGRAVITY_AGENTAPI_EXE];
   const roots = platform === 'win32' ? [join(env.LOCALAPPDATA || join(home,'AppData','Local'),'Programs','antigravity','resources')]
-    : platform === 'darwin' ? ['/Applications/Antigravity.app/Contents/Resources',join(home,'Applications','Antigravity.app','Contents','Resources')]
+    : platform === 'darwin' ? [
+        join(home,'Library','Application Support','AntigravitySkin.noindex','Antigravity.app','Contents','Resources'),
+        '/Applications/Antigravity.app/Contents/Resources',
+        join(home,'Applications','Antigravity.app','Contents','Resources')
+      ]
     : ['/opt/Antigravity/resources','/opt/antigravity/resources','/usr/share/antigravity/resources'];
   if (env.AG_PULSE_APP_RESOURCES) roots.unshift(env.AG_PULSE_APP_RESOURCES);
   try { const saved=JSON.parse(readFileSync(platformPaths({platform,home,env}).settings,'utf8').replace(/^\uFEFF/,''));if(typeof saved.appResources==='string')roots.unshift(saved.appResources); } catch {}

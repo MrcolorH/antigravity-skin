@@ -5,6 +5,16 @@ import http from 'node:http';
 import { execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { migrateLegacyPulse } from './migrate-pulse.mjs';
+import {
+  findOriginalResourcesDir,
+  detectAsarPatchState,
+  patchWindowsShortcuts,
+  setupMacZeroPatchLauncher,
+  resolveMacLaunchTarget,
+  writeJsonAtomic,
+  readJsonSafe,
+  runPowerShellScript
+} from './platform-host.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +31,7 @@ console.log('==================================================');
 
 let detectedExePath = null;
 const isInsideAntigravityHost = !!(process.env.ANTIGRAVITY_LS_ADDRESS || process.env.ANTIGRAVITY_CSRF_TOKEN);
+const WITH_KERNEL_INJECTION = process.argv.includes('--with-kernel-injection');
 
 // 0. 自动退出运行中的客户端及后台语言服务以解除文件锁定并杜绝配置覆写竞态
 function ensureProcessClosed() {
@@ -69,7 +80,7 @@ function ensureProcessClosed() {
 
       if (isRunning) {
         console.log('⚠️ 检测到 Antigravity 客户端或后台语言服务正在运行，正在执行安全优雅退出...');
-        try { execSync('osascript -e \'quit app "Antigravity"\'', { stdio: 'ignore' }); } catch (_) {}
+        try { execSync('osascript -e \'tell application id "com.google.antigravity" to quit\'', { stdio: 'ignore' }); } catch (_) {}
         const start = Date.now();
         while (Date.now() - start < 4500) {
           let alive = false;
@@ -208,6 +219,35 @@ if (savedUserConfig) {
   }
 }
 
+// 兼容升级同步：若用户未显式配置 kernelInjection，则按当前 app.asar 状态平滑决定默认模式
+let pluginFeatureCfg = readJsonSafe(targetUserConfigFile) || {};
+if (!pluginFeatureCfg.features || typeof pluginFeatureCfg.features !== 'object') {
+  pluginFeatureCfg.features = {};
+}
+let featureCfgChanged = false;
+if (WITH_KERNEL_INJECTION && pluginFeatureCfg.features.kernelInjection !== true) {
+  pluginFeatureCfg.features.kernelInjection = true;
+  featureCfgChanged = true;
+} else if (typeof pluginFeatureCfg.features.kernelInjection !== 'boolean') {
+  const hostResources = findOriginalResourcesDir();
+  const hostAsar = hostResources ? path.join(hostResources, 'app.asar') : null;
+  const hostPatched = !!(hostAsar && fs.existsSync(hostAsar) && detectAsarPatchState(hostAsar).patched);
+  pluginFeatureCfg.features.kernelInjection = hostPatched;
+  featureCfgChanged = true;
+  if (hostPatched) {
+    console.log('  [i] 检测到旧版内置内核补丁，已自动平滑继承可选内核注入状态 (kernelInjection = true)。');
+  }
+}
+if (pluginFeatureCfg.features.macLauncherMode !== 'keep_original' && pluginFeatureCfg.features.macLauncherMode !== 'isolate') {
+  pluginFeatureCfg.features.macLauncherMode = 'isolate';
+  featureCfgChanged = true;
+}
+if (featureCfgChanged) {
+  writeJsonAtomic(targetUserConfigFile, pluginFeatureCfg);
+}
+const effectiveKernelInjection = pluginFeatureCfg.features.kernelInjection === true;
+const effectiveMacLauncherMode = pluginFeatureCfg.features.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+
 // 验证
 if (!fs.existsSync(path.join(targetPluginDir, 'plugin.json'))) {
   throw new Error('插件挂载失败：未能生成目标 plugin.json');
@@ -257,27 +297,11 @@ if (rpcOk) {
   console.log('  [√] 已通过 Antigravity 官方 Language Server RPC 热注册并启用插件。');
 } else {
   // RPC 不可用时，执行具备原子保护的文件持久化
-  let configData = {};
-  if (fs.existsSync(configFile)) {
-    try {
-      configData = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    } catch (e) {
-      console.warn('  读取现有 config.json 失败，将初始化配置:', e.message);
-    }
-  }
+  let configData = readJsonSafe(configFile) || {};
   if (!configData.plugins) configData.plugins = {};
   configData.plugins['antigravity-skin'] = { enabled: true };
-
-  const tmpConfigFile = `${configFile}.tmp.${Date.now()}`;
-  fs.writeFileSync(tmpConfigFile, JSON.stringify(configData, null, 2), 'utf8');
-  try {
-    fs.renameSync(tmpConfigFile, configFile);
-    console.log('  [√] 已原子化写入 ~/.gemini/config/config.json 启用配置。');
-  } catch (e) {
-    fs.copyFileSync(tmpConfigFile, configFile);
-    try { fs.unlinkSync(tmpConfigFile); } catch(_) {}
-    console.log('  [√] 已同步写入 ~/.gemini/config/config.json。');
-  }
+  writeJsonAtomic(configFile, configData);
+  console.log('  [√] 已原子化写入 ~/.gemini/config/config.json 启用配置。');
 }
 
 // 4. 清理可能残留的观察器（热优化当前会话）
@@ -336,85 +360,103 @@ async function cleanRunningHost() {
 
 await cleanRunningHost();
 
-// 5. 跨平台支持：先完成自愈与快捷方式注册，最后执行内核调试端口与前置动效补丁（支持任意环境自动安全重启）
-if (process.platform === 'win32' || process.platform === 'darwin') {
-  // 注册开机自愈守护 (Windows)：客户端更新覆盖 app.asar 后，下次登录自动静默重打补丁
+// 5. 启动入口配置：默认采用 100% 零改包 / 零重签纯净启动；仅在用户显式开启 kernelInjection 时同步内核补丁
+if (effectiveKernelInjection) {
   if (process.platform === 'win32') {
     const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
     if (fs.existsSync(registerScript)) {
       try {
-        console.log('\n[4/6] 正在注册开机自愈守护（检测到客户端更新覆盖补丁时自动恢复）...');
+        console.log('\n[4/5] 检测到已启用可选内核注入，正在同步开机自愈守护...');
         execSync(`"${process.execPath}" "${registerScript}"`, { stdio: 'inherit' });
       } catch (e) {
         console.log('  ⚠️ 开机自愈守护注册失败，可稍后双击 self-heal.bat 手动重试。');
       }
     }
-
-    // 配置桌面与开始菜单快捷方式启动参数
-    try {
-      console.log('\n[5/6] 正在配置 Windows 快捷方式启动参数...');
-      const psCmd = `
-        $wsh = New-Object -ComObject WScript.Shell
-        $paths = @(
-          [Environment]::GetFolderPath('Desktop'),
-          [Environment]::GetFolderPath('CommonDesktopDirectory'),
-          [Environment]::GetFolderPath('Programs'),
-          [Environment]::GetFolderPath('CommonPrograms')
-        )
-        foreach ($p in $paths) {
-          if (Test-Path $p) {
-            Get-ChildItem -Path $p -Filter "*Antigravity*.lnk" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-              try {
-                $shortcut = $wsh.CreateShortcut($_.FullName)
-                if ($shortcut.TargetPath -and $shortcut.TargetPath.ToLower().Contains("antigravity")) {
-                  if ($shortcut.Arguments -notmatch "remote-debugging-port") {
-                    $shortcut.Arguments = ($shortcut.Arguments + " --remote-debugging-port=0").Trim()
-                    $shortcut.Save()
-                  }
-                }
-              } catch (_) {}
-            }
-          }
-        }
-      `;
-      execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psCmd.replace(/\r?\n\s*/g, ' ')}"`, { stdio: 'ignore' });
-      console.log('  [√] 桌面与开始菜单快捷方式已成功加上 --remote-debugging-port=0 参数。');
-    } catch (_) {}
+    try { patchWindowsShortcuts({ pluginRoot: targetPluginDir }); } catch (_) {}
   }
 
-  console.log('\n[6/6] 正在配置客户端内核调试端口与开机动效补丁 (支持全场景自动安全重启)...');
+  console.log('\n[5/5] 正在同步可选客户端内核调试端口与前置动效补丁 (kernelInjection = true)...');
   const deployedPatchScript = path.join(targetPluginDir, 'scripts', 'patch-boot-overlay.mjs');
   const patchScript = fs.existsSync(deployedPatchScript) ? deployedPatchScript : path.join(PROJECT_ROOT, 'scripts', 'patch-boot-overlay.mjs');
   if (fs.existsSync(patchScript)) {
     try {
       execSync(`"${process.execPath}" "${patchScript}"`, { stdio: 'inherit' });
     } catch (e) {
-      console.log('  ⚠️ 开机动画与内核补丁执行出现异常:', e.message);
-      console.log('     👉 您可随时在外观设置中点击「一键修复」重新合入！');
+      console.log('  ⚠️ 可选内核补丁执行出现异常:', e.message);
+      console.log('     👉 您可随时在插件控制面板中点击「重新修复」或「还原官方原版」！');
     }
+  }
+} else if (process.platform === 'win32') {
+  const registerScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
+  if (fs.existsSync(registerScript)) {
+    try { execSync(`"${process.execPath}" "${registerScript}" --unregister`, { stdio: 'ignore' }); } catch (_) {}
+  }
+  console.log('\n[4/4] 正在配置 Windows 零改包快捷方式启动参数 (--remote-debugging-port=0)...');
+  try {
+    const scRes = patchWindowsShortcuts({ pluginRoot: targetPluginDir });
+    console.log(`  [√] 快捷方式配置完成：更新 ${scRes.updated} 项${scRes.userCreated > 0 ? `，新建用户级快捷方式 ${scRes.userCreated} 项` : ''}。`);
+    if (scRes.skippedReadOnly > 0 && scRes.userCreated === 0) {
+      console.log(`  ⚠️ 有 ${scRes.skippedReadOnly} 个系统只读目录快捷方式无写入权限，请从桌面用户级入口启动。`);
+    }
+  } catch (e) {
+    console.log('  ⚠️ 配置快捷方式时出现非致命异常:', e.message);
+  }
+} else if (process.platform === 'darwin') {
+  console.log(`\n[4/4] 正在配置 macOS 零改包 / 零重签无感启动器 (模式: ${effectiveMacLauncherMode})...`);
+  try {
+    const macRes = setupMacZeroPatchLauncher({
+      mode: effectiveMacLauncherMode,
+      isInsideHost: isInsideAntigravityHost
+    });
+    if (macRes.ok) {
+      console.log(`  [√] macOS 启动器已就绪: ${macRes.launcherPath || 'Antigravity.app'}`);
+    } else if (macRes.reason === 'host-running-skip-isolate') {
+      console.log('  💡 检测到运行于 Antigravity 宿主会话中，跳过在线迁移 /Applications/Antigravity.app（下次关闭后重启或手动部署脚本可执行隔离），CLI 入口已就绪。');
+    } else {
+      console.log(`  ⚠️ macOS 启动器构建未能完成 (${macRes.reason || macRes.error || 'unknown'})，已回退至命令行包装 ~/.local/bin/antigravity。`);
+    }
+  } catch (e) {
+    console.log('  ⚠️ 配置 macOS 启动器失败:', e.message);
+  }
+} else if (process.platform === 'linux') {
+  console.log('\n[4/4] 正在配置 Linux 零改包 CLI 启动包装 (--remote-debugging-port=0)...');
+  try {
+    const binDir = path.join(home, '.local', 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const wrapperPath = path.join(binDir, 'antigravity');
+    const wrapperContent = [
+      '#!/usr/bin/env bash',
+      '# antigravity-skin zero-patch launcher wrapper',
+      'REAL_BIN=""',
+      'for p in /usr/bin/antigravity /usr/local/bin/antigravity /opt/Antigravity/antigravity /opt/antigravity/antigravity; do',
+      '  if [ -x "$p" ] && [ "$p" != "$0" ]; then REAL_BIN="$p"; break; fi',
+      'done',
+      'if [ -z "$REAL_BIN" ]; then echo "Antigravity binary not found" >&2; exit 1; fi',
+      'exec "$REAL_BIN" --remote-debugging-port=0 "$@"',
+      ''
+    ].join('\n');
+    fs.writeFileSync(wrapperPath, wrapperContent, { mode: 0o755 });
+    console.log(`  [√] 已配置 CLI 启动包装: ${wrapperPath}`);
+  } catch (e) {
+    console.log('  ⚠️ 配置 Linux CLI 启动包装失败:', e.message);
   }
 }
 
 function restartAntigravity() {
   if (isInsideAntigravityHost) {
-    console.log('\n✨ 插件、内核补丁与运行配置已全量就绪，Antigravity 即将在后台自动安全重启生效！');
+    console.log('\n✨ 插件、配置与启动入口已全量就绪！');
     return;
   }
   console.log('\n✨ 正在自动为您重新拉起 Antigravity 客户端...');
   try {
     if (process.platform === 'darwin') {
-      const candidates = [
-        '/Applications/Antigravity.app',
-        path.join(home, 'Applications', 'Antigravity.app')
-      ];
-      for (const c of candidates) {
-        if (fs.existsSync(c)) {
-          execSync(`open -a "${c}"`, { stdio: 'ignore' });
-          console.log('✨ 客户端已成功重新拉起启动！');
-          return;
-        }
+      const launch = resolveMacLaunchTarget();
+      const argSuffix = launch.isLauncher ? '' : ' --args --remote-debugging-port=0';
+      if (launch.target.startsWith('/') || launch.target.includes('.app')) {
+        execSync(`open -a "${launch.target}"${argSuffix}`, { stdio: 'ignore' });
+      } else {
+        execSync(`open -b "${launch.target}"${argSuffix}`, { stdio: 'ignore' });
       }
-      execSync('open -a Antigravity', { stdio: 'ignore' });
       console.log('✨ 客户端已成功重新拉起启动！');
     } else if (process.platform === 'win32') {
       // 1. 如果客户端已由补丁脚本成功唤醒，避免重复拉起引发冲突
@@ -429,13 +471,18 @@ function restartAntigravity() {
       function findExe() {
         if (detectedExePath && fs.existsSync(detectedExePath)) return detectedExePath;
         try {
-          const desktop = path.join(home, 'Desktop');
-          for (const lnk of [path.join(desktop, 'Antigravity.lnk'), path.join(desktop, 'Antigravity IDE.lnk')]) {
-            if (fs.existsSync(lnk)) {
-              const target = execSync(`powershell.exe -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk}').TargetPath"`, { encoding: 'utf8' }).trim();
-              if (target && fs.existsSync(target)) return target;
+          const t = runPowerShellScript(`
+            $desktop = [Environment]::GetFolderPath('Desktop')
+            $wsh = New-Object -ComObject WScript.Shell
+            foreach ($n in @('Antigravity.lnk', 'Antigravity IDE.lnk', 'Antigravity (Skin).lnk')) {
+              $p = Join-Path $desktop $n
+              if (Test-Path $p) {
+                $tp = $wsh.CreateShortcut($p).TargetPath
+                if ($tp -and (Test-Path $tp)) { Write-Output $tp; break }
+              }
             }
-          }
+          `);
+          if (t && fs.existsSync(t)) return t;
         } catch (_) {}
         const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
         const candidates = [
@@ -459,8 +506,10 @@ function restartAntigravity() {
         delete cleanEnv.NODE_ENV;
         delete cleanEnv.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
 
+        const escapedExe = exe.replace(/'/g, "''");
+        const escapedDir = exeDir.replace(/'/g, "''");
         try {
-          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${exe}' -ArgumentList '--remote-debugging-port=0' -WorkingDirectory '${exeDir}'"`, {
+          execSync(`powershell.exe -NoProfile -NonInteractive -Command "Start-Process -FilePath '${escapedExe}' -ArgumentList '--remote-debugging-port=0' -WorkingDirectory '${escapedDir}'"`, {
             windowsHide: true,
             stdio: 'ignore',
             env: cleanEnv
@@ -492,18 +541,13 @@ console.log(' 🔔 重要提示：');
 console.log(' 插件核心文件已全部复制到上述持久化目录。');
 console.log(' 当前解压出来的安装包文件夹【已不需要，请直接删除】！');
 console.log(' 本地无需保留任何多余文件，完全不影响插件正常运行。');
-if (process.platform === 'win32') {
-  console.log('--------------------------------------------------');
-  console.log(' 🎬 Windows 开机动画专属提示：');
-  console.log(' 安装程序已自动为您退出客户端并完成前置开机动画终极升级！');
-  console.log(' 如需重新打补丁，随时双击运行 patch-loading.bat；如需还原官方，可双击 restore-loading.bat。');
-  console.log('--------------------------------------------------');
-  console.log(' ✨ 客户端已为您自动重启生效，无需手动操作！');
+console.log('--------------------------------------------------');
+if (effectiveKernelInjection) {
+  console.log(' ⚡ 当前运行模式：可选内核注入模式 (kernelInjection = true)');
+  console.log('   如需随时恢复官方原版 100% 未修改包，可在控制面板「零改包与高级模式」一键切换，或运行 restore-loading.bat。');
 } else {
-  console.log('--------------------------------------------------');
-  console.log(' 🍎 macOS 纯净架构提示：');
-  console.log(' 已采用原生非侵入式架构完成部署，100% 保护官方代码签名与安全沙箱完整！');
-  console.log('--------------------------------------------------');
-  console.log(' ✨ 客户端已为您自动重新拉起生效，无需手动操作！');
+  console.log(' 🛡️ 当前运行模式：100% 零改包 / 零重签纯净启动 (推荐默认)');
+  console.log('   未修改任何官方 app.asar 与原版代码签名，仅通过官方标准启动入口激活插件调试端口。');
+  console.log('   如需开机首帧视频等高阶能力，可在插件控制面板底部开启「内核级前置注入 (实验性)」。');
 }
 console.log('==================================================');

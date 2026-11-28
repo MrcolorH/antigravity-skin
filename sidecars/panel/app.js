@@ -23,8 +23,21 @@ const TEXTS = {
     updateSuccess: '已更新至 v{v}，正在重启引擎…',
     updateFail: '更新失败：',
     checkFail: '检查失败：',
-    updateConfirm: '确认立即热更新至 v{v} 吗？\n\n更新将自动下载并部署最新代码，您的配置和壁纸素材会完整保留。',
     forceRepair: '重新修复',
+    repairShortcutsShort: '修复快捷方式',
+    kernelInjectionTitle: '内核级前置注入 (可选高级模式)',
+    kernelInjectionDesc: '默认使用 100% 零改包 / 零重签纯净启动；开启将修改官方 app.asar 以解锁开机首帧视频。',
+    macSignWarning: '⚠️ macOS 注意：若您此前曾开启过内核注入并执行过 codesign 重签名，仅还原 app.asar.bak 无法恢复 Apple/Google 原厂数字签名；如需恢复原厂签名，请从官方重新下载覆盖 Antigravity.app。',
+    macLauncherModeLabel: 'macOS 启动器模式',
+    macModeIsolate: '无感接管系统入口 (推荐)',
+    macModeKeep: '保留原位，独立启动器 (Antigravity Skin)',
+    cancelAction: '取消',
+    confirmAction: '确认执行',
+    confirmEnableKernel: '确认开启「内核级前置注入」吗？插件将备份官方 app.asar 并注入前置开屏与调试参数，随后自动重启 Antigravity 生效。',
+    confirmEnableKernelMac: '确认在 macOS 开启「内核级前置注入」吗？开启将修改官方 app.asar 并执行 ad-hoc 重签名（破坏官方原版签名），随后重启生效；若已启用「隔离无感启动」，注入位置位于隔离区备份中。',
+    confirmDisableKernel: '确认关闭内核注入并切回「100% 零改包纯净启动」吗？插件将从 app.asar.bak 恢复官方原版文件、注销开机自愈并补齐快捷方式参数，随后重启生效。',
+    confirmMacModeIsolate: '确认切换为「无感接管系统入口」吗？将把官方 /Applications/Antigravity.app 无损移至安全隔离区并生成同名轻量化启动器。',
+    confirmMacModeKeep: '确认切换为「保留官方原位」吗？官方应用将归位至 /Applications/Antigravity.app，插件改为创建独立入口 ~/Applications/Antigravity Skin.app。',
     generalTitle: '界面与交互',
     syncHint: '与「外观」菜单同步',
     chineseLoc: '界面汉化 (中文)',
@@ -108,14 +121,23 @@ const TEXTS = {
     nextPage: '下一页',
     jumpGo: '跳转',
     pageInfo: (cur, total, count) => `共 ${count} 款 · ${cur}/${total}`,
-    patchMissing: '检测到反重力未激活插件通道（首次安装 / 版本已更新）',
-    patchMissingSub: '点击下方按钮自动注入并重启客户端即可生效。',
+    patchMissing: '检测到内核补丁在客户端更新后丢失（当前处于可选内核注入模式）',
+    patchMissingSub: '点击下方按钮重新合入补丁并重启客户端即可恢复，也可在下方切换为零改包纯净启动。',
+    cdpInactive: '检测到当前未使用纯净启动器 / 快捷方式启动（调试端口未激活）',
+    cdpInactiveSub: '点击下方按钮可自动修复快捷方式/启动器参数，随后从桌面/启动台重新打开客户端即可生效。',
     repairBtn: '立即修复并重启',
-    repairing: '正在修复并准备重启…',
-    repairDone: '修复指令已发送，请等待客户端重启',
-    repairFail: '修复失败：',
+    repairShortcutsBtn: '一键修复快捷方式 / 启动器',
+    repairing: '正在执行并准备生效…',
+    repairDone: '指令已执行，请等待客户端重启生效',
+    restoreDone: '已切换回零改包纯净启动，正在重启客户端…',
+    shortcutsRepairDone: '快捷方式 / 启动器入口已修复并加上调试参数，下次通过快捷方式启动生效。',
+    modeSwitchDone: 'macOS 启动器模式已切换！',
+    repairFail: '操作失败：',
     stateOk: '已激活',
-    stateMissing: '需要修复',
+    stateZeroPatchOk: '零改包运行中',
+    stateKernelOk: '内核注入运行中',
+    stateCdpInactive: '调试端口未激活',
+    stateMissing: '内核补丁丢失',
     stateNotInstalled: '未检测到安装',
     stateUnknown: '未知',
     ready: '配置已就绪',
@@ -149,8 +171,21 @@ const TEXTS = {
     updateSuccess: 'Updated to v{v}, restarting engine…',
     updateFail: 'Update failed: ',
     checkFail: 'Check failed: ',
-    updateConfirm: 'Hot-update to v{v} now?\n\nYour settings and wallpaper assets will be preserved.',
     forceRepair: 'Re-patch',
+    repairShortcutsShort: 'Repair Shortcuts',
+    kernelInjectionTitle: 'Kernel Boot Injection (Optional)',
+    kernelInjectionDesc: '100% Zero-Patch / Zero Re-signing launch by default; enabling modifies official app.asar for first-frame boot videos.',
+    macSignWarning: '⚠️ macOS Notice: If kernel injection previously re-signed the app via codesign, restoring app.asar.bak alone cannot restore the original Apple/Google signature; reinstall official Antigravity.app to restore factory signing.',
+    macLauncherModeLabel: 'macOS Launcher Mode',
+    macModeIsolate: 'Isolate & Replace /Applications Entry (Recommended)',
+    macModeKeep: 'Keep Official App, Use Separate Launcher',
+    cancelAction: 'Cancel',
+    confirmAction: 'Confirm',
+    confirmEnableKernel: 'Enable Kernel Boot Injection? Official app.asar will be backed up and patched, then Antigravity will restart.',
+    confirmEnableKernelMac: 'Enable Kernel Boot Injection on macOS? Official app.asar will be modified and ad-hoc re-signed (breaking official signature), then Antigravity will restart.',
+    confirmDisableKernel: 'Disable Kernel Injection and return to 100% Zero-Patch mode? Official app.asar.bak will be restored and shortcuts repaired before restart.',
+    confirmMacModeIsolate: 'Switch to Isolate mode? Moves official /Applications/Antigravity.app into safe storage and installs a lightweight launcher.',
+    confirmMacModeKeep: 'Switch to Keep Original mode? Restores /Applications/Antigravity.app and creates ~/Applications/Antigravity Skin.app instead.',
     generalTitle: 'UI & Interaction',
     syncHint: 'Synced with Appearance',
     chineseLoc: 'Chinese Localization',
@@ -234,14 +269,23 @@ const TEXTS = {
     nextPage: 'Next',
     jumpGo: 'Go',
     pageInfo: (cur, total, count) => `${count} items · ${cur}/${total}`,
-    patchMissing: 'Antigravity host patch missing (first install or app updated)',
-    patchMissingSub: 'Click below to inject the patch and restart Antigravity.',
+    patchMissing: 'Kernel boot patch missing after client update',
+    patchMissingSub: 'Click below to re-patch and restart, or switch back to Zero-Patch mode below.',
+    cdpInactive: 'CDP debugging port is inactive (direct launch or shortcut args reset)',
+    cdpInactiveSub: 'Click below to repair shortcuts/launcher arguments automatically, then relaunch from your shortcut.',
     repairBtn: 'Repair & Restart',
-    repairing: 'Repairing & restarting…',
-    repairDone: 'Repair triggered, waiting for restart…',
-    repairFail: 'Repair failed: ',
+    repairShortcutsBtn: 'Repair Shortcuts / Launcher',
+    repairing: 'Working…',
+    repairDone: 'Action triggered, waiting for restart…',
+    restoreDone: 'Restored official package & switched to Zero-Patch mode, restarting…',
+    shortcutsRepairDone: 'Shortcuts / launcher arguments repaired.',
+    modeSwitchDone: 'macOS launcher mode updated!',
+    repairFail: 'Failed: ',
     stateOk: 'Active',
-    stateMissing: 'Needs Repair',
+    stateZeroPatchOk: 'Zero-Patch Active',
+    stateKernelOk: 'Kernel Patch Active',
+    stateCdpInactive: 'CDP Inactive',
+    stateMissing: 'Patch Missing',
     stateNotInstalled: 'Not Installed',
     stateUnknown: 'Unknown',
     ready: 'Ready',
@@ -272,6 +316,8 @@ let saveTimer = null;
 let lastLocalSaveAt = 0;
 let lastStateSig = '';
 let latestUpdateInfo = null;
+let latestPatchStatus = null;
+let pendingModeConfirm = null;
 
 // Scene Inspector state
 let scenePropsState = { dir: '', wpId: '', meta: null };
@@ -328,12 +374,16 @@ function localize() {
   }
   const search = $('lib-search-input');
   if (search) search.placeholder = t('libSearchPlaceholder');
-  const repairText = $('patch-repair-text');
-  const repairSub = $('patch-repair-sub');
-  const repairBtn = $('patch-repair-btn');
-  if (repairText) repairText.textContent = t('patchMissing');
-  if (repairSub) repairSub.textContent = t('patchMissingSub');
-  if (repairBtn && !repairBtn.disabled) repairBtn.textContent = t('repairBtn');
+  if (latestPatchStatus) {
+    renderPatchStatus(latestPatchStatus);
+  } else {
+    const repairText = $('patch-repair-text');
+    const repairSub = $('patch-repair-sub');
+    const repairBtn = $('patch-repair-btn');
+    if (repairText) repairText.textContent = t('patchMissing');
+    if (repairSub) repairSub.textContent = t('patchMissingSub');
+    if (repairBtn && !repairBtn.disabled) repairBtn.textContent = t('repairBtn');
+  }
 }
 
 function fillSelect(selectEl, items, currentVal, getVal, getLabel, includeDefault = true) {
@@ -364,19 +414,78 @@ function fillSelect(selectEl, items, currentVal, getVal, getLabel, includeDefaul
 }
 
 function renderPatchStatus(patch, pluginVersion) {
-  const state = patch?.state || 'unknown';
+  if (patch) latestPatchStatus = patch;
+  const info = patch || latestPatchStatus || {};
+  const state = info?.state || 'unknown';
+  const kernelOn = typeof info?.kernelInjection === 'boolean' ? info.kernelInjection : (config?.features?.kernelInjection === true);
+  const macMode = info?.macLauncherMode === 'keep_original' || config?.features?.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+  const platform = info?.platform;
+
   const pill = $('patch-state-pill');
   const banner = $('patch-repair-banner');
+  const repairText = $('patch-repair-text');
+  const repairSub = $('patch-repair-sub');
+  const repairBtn = $('patch-repair-btn');
+  const forceBtn = $('force-repair-btn');
   const badge = $('platform-badge');
-  if (badge) badge.textContent = platformName(patch?.platform);
+  if (badge && platform) badge.textContent = platformName(platform);
   const verPill = $('plugin-version-pill');
   if (verPill && pluginVersion) verPill.textContent = `v${pluginVersion}`;
 
   if (pill) {
-    pill.className = 'status-pill ' + (state === 'ok' ? 'ok' : state === 'patch_missing' ? 'warn' : '');
-    pill.textContent = state === 'ok' ? t('stateOk') : state === 'patch_missing' ? t('stateMissing') : state === 'not_installed' ? t('stateNotInstalled') : t('stateUnknown');
+    const isOk = state === 'ok';
+    const isWarn = state === 'patch_missing' || state === 'cdp_inactive';
+    pill.className = 'status-pill ' + (isOk ? 'ok' : isWarn ? 'warn' : '');
+    if (isOk) {
+      pill.textContent = kernelOn ? t('stateKernelOk') : t('stateZeroPatchOk');
+    } else if (state === 'cdp_inactive') {
+      pill.textContent = t('stateCdpInactive');
+    } else if (state === 'patch_missing') {
+      pill.textContent = t('stateMissing');
+    } else if (state === 'not_installed') {
+      pill.textContent = t('stateNotInstalled');
+    } else {
+      pill.textContent = t('stateUnknown');
+    }
   }
-  if (banner) banner.hidden = state !== 'patch_missing';
+
+  if (banner) {
+    if (state === 'ok') {
+      banner.hidden = true;
+    } else if (state === 'cdp_inactive') {
+      banner.hidden = false;
+      banner.dataset.action = 'shortcuts';
+      if (repairText) repairText.textContent = t('cdpInactive');
+      if (repairSub) repairSub.textContent = t('cdpInactiveSub');
+      if (repairBtn && !repairBtn.disabled) repairBtn.textContent = t('repairShortcutsBtn');
+    } else if (state === 'patch_missing') {
+      banner.hidden = false;
+      banner.dataset.action = 'patch';
+      if (repairText) repairText.textContent = t('patchMissing');
+      if (repairSub) repairSub.textContent = t('patchMissingSub');
+      if (repairBtn && !repairBtn.disabled) repairBtn.textContent = t('repairBtn');
+    } else {
+      banner.hidden = true;
+    }
+  }
+
+  if (forceBtn && !forceBtn.disabled) {
+    forceBtn.dataset.action = kernelOn ? 'patch' : 'shortcuts';
+    forceBtn.textContent = kernelOn ? t('forceRepair') : t('repairShortcutsShort');
+  }
+
+  const macWarn = $('mac-sign-warning');
+  if (macWarn && platform !== undefined) macWarn.hidden = platform !== 'darwin';
+
+  const macRow = $('mac-launcher-mode-row');
+  if (macRow && platform !== undefined) macRow.hidden = !(platform === 'darwin' && !kernelOn);
+
+  if (!pendingModeConfirm) {
+    const kChk = $('cfg-kernelInjection');
+    if (kChk) kChk.checked = kernelOn;
+    const mSel = $('cfg-macLauncherMode');
+    if (mSel) mSel.value = macMode;
+  }
 }
 
 function rgbStrToHex(str) {
@@ -816,20 +925,82 @@ async function refreshAll(silent = false) {
   }
 }
 
-async function triggerRepair(btn) {
+async function triggerRepair(btn, explicitAction) {
   if (!btn) return;
+  const action = explicitAction || btn.dataset?.action || ($('patch-repair-banner')?.dataset?.action) || (latestPatchStatus?.kernelInjection ? 'patch' : 'shortcuts');
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = t('repairing');
   const fb = $('repair-feedback');
   if (fb) { fb.hidden = false; fb.textContent = ''; }
   try {
-    await apiJson('/api/patch-repair', 'POST');
-    if (fb) fb.textContent = t('repairDone');
+    if (action === 'shortcuts') {
+      await apiJson('/api/shortcuts-repair', 'POST');
+      if (fb) fb.textContent = t('shortcutsRepairDone');
+      btn.disabled = false;
+      btn.textContent = orig;
+      refreshAll(false).catch(() => {});
+    } else if (action === 'restore') {
+      await apiJson('/api/patch-restore', 'POST');
+      if (fb) fb.textContent = t('restoreDone');
+    } else {
+      await apiJson('/api/patch-repair', 'POST');
+      if (fb) fb.textContent = t('repairDone');
+    }
   } catch (err) {
     if (fb) fb.textContent = `${t('repairFail')}${err.message}`;
     btn.disabled = false;
     btn.textContent = orig;
+  }
+}
+
+function showModeConfirm(req) {
+  pendingModeConfirm = req;
+  const box = $('kernel-confirm-box');
+  const txt = $('kernel-confirm-text');
+  if (txt) txt.textContent = req.message;
+  if (box) box.hidden = false;
+}
+
+function cancelModeConfirm() {
+  pendingModeConfirm = null;
+  const box = $('kernel-confirm-box');
+  if (box) box.hidden = true;
+  renderPatchStatus(latestPatchStatus);
+}
+
+async function executeModeConfirm() {
+  if (!pendingModeConfirm) return;
+  const req = pendingModeConfirm;
+  const okBtn = $('kernel-confirm-ok');
+  const cancelBtn = $('kernel-confirm-cancel');
+  const fb = $('repair-feedback');
+  if (okBtn) okBtn.disabled = true;
+  if (cancelBtn) cancelBtn.disabled = true;
+  if (fb) { fb.hidden = false; fb.textContent = t('repairing'); }
+  try {
+    if (req.kind === 'enable_kernel') {
+      await apiJson('/api/patch-repair', 'POST');
+      if (fb) fb.textContent = t('repairDone');
+    } else if (req.kind === 'disable_kernel') {
+      await apiJson('/api/patch-restore', 'POST');
+      if (fb) fb.textContent = t('restoreDone');
+    } else if (req.kind === 'mac_launcher_mode') {
+      await apiJson('/api/mac-launcher-mode', 'POST', { mode: req.value });
+      config.features = config.features || {};
+      config.features.macLauncherMode = req.value;
+      if (fb) fb.textContent = t('modeSwitchDone');
+      await refreshAll(false).catch(() => {});
+    }
+    pendingModeConfirm = null;
+    const box = $('kernel-confirm-box');
+    if (box) box.hidden = true;
+  } catch (err) {
+    if (fb) fb.textContent = `${t('repairFail')}${err.message}`;
+    cancelModeConfirm();
+  } finally {
+    if (okBtn) okBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
   }
 }
 
@@ -1139,8 +1310,46 @@ function closeLibModal() {
 
 function bindEvents() {
   $('refresh-button')?.addEventListener('click', () => refreshAll(false));
-  $('patch-repair-btn')?.addEventListener('click', () => triggerRepair($('patch-repair-btn')));
-  $('force-repair-btn')?.addEventListener('click', () => triggerRepair($('force-repair-btn')));
+  $('patch-repair-btn')?.addEventListener('click', () => triggerRepair($('patch-repair-btn'), $('patch-repair-banner')?.dataset?.action));
+  $('force-repair-btn')?.addEventListener('click', () => triggerRepair($('force-repair-btn'), $('force-repair-btn')?.dataset?.action));
+
+  $('cfg-kernelInjection')?.addEventListener('change', e => {
+    const nextVal = e.target.checked === true;
+    const prevVal = typeof latestPatchStatus?.kernelInjection === 'boolean'
+      ? latestPatchStatus.kernelInjection
+      : (config?.features?.kernelInjection === true);
+    if (nextVal === prevVal) return;
+    if (nextVal) {
+      const isMac = latestPatchStatus?.platform === 'darwin';
+      showModeConfirm({
+        kind: 'enable_kernel',
+        value: true,
+        message: isMac ? t('confirmEnableKernelMac') : t('confirmEnableKernel')
+      });
+    } else {
+      showModeConfirm({
+        kind: 'disable_kernel',
+        value: false,
+        message: t('confirmDisableKernel')
+      });
+    }
+  });
+
+  $('cfg-macLauncherMode')?.addEventListener('change', e => {
+    const nextMode = e.target.value === 'keep_original' ? 'keep_original' : 'isolate';
+    const prevMode = latestPatchStatus?.macLauncherMode === 'keep_original' || config?.features?.macLauncherMode === 'keep_original'
+      ? 'keep_original'
+      : 'isolate';
+    if (nextMode === prevMode) return;
+    showModeConfirm({
+      kind: 'mac_launcher_mode',
+      value: nextMode,
+      message: nextMode === 'keep_original' ? t('confirmMacModeKeep') : t('confirmMacModeIsolate')
+    });
+  });
+
+  $('kernel-confirm-ok')?.addEventListener('click', () => executeModeConfirm());
+  $('kernel-confirm-cancel')?.addEventListener('click', () => cancelModeConfirm());
 
   $('check-update-btn')?.addEventListener('click', async () => {
     const btn = $('check-update-btn');

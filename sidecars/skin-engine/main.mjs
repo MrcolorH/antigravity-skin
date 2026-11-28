@@ -15,6 +15,15 @@ import {
   clearScanCache
 } from './wallpaper-library.mjs';
 import { getScenePoster } from './scene-pkg.mjs';
+import {
+  BOOT_PATCH_MARKER as HOST_PATCH_MARKER,
+  findOriginalResourcesDir,
+  detectAsarPatchState,
+  writeJsonAtomic,
+  patchWindowsShortcuts,
+  syncMacManualReinstallIfNeeded,
+  setupMacZeroPatchLauncher
+} from '../../scripts/platform-host.mjs';
 
 // 1. 确保启用原生 WebSocket (Node 20+ --experimental-websocket)
 if (typeof WebSocket === 'undefined' && !process.env.__AG_WS_SPAWNED) {
@@ -66,38 +75,38 @@ function readFileRaw(filePath) {
 }
 
 function locateAntigravityResources() {
-  const home = os.homedir();
-  const candidates = [];
-  if (process.platform === 'darwin') {
-    candidates.push(
-      '/Applications/Antigravity.app/Contents/Resources',
-      path.join(home, 'Applications', 'Antigravity.app', 'Contents', 'Resources')
-    );
-  } else if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-    const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-    candidates.push(
-      path.join(localAppData, 'Programs', 'antigravity', 'resources'),
-      path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
-      path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources'),
-      path.join(programFiles, 'Antigravity', 'resources'),
-      path.join(programFilesX86, 'Antigravity', 'resources')
-    );
-  } else {
-    candidates.push(
-      '/usr/lib/antigravity/resources',
-      '/opt/Antigravity/resources',
-      '/opt/antigravity/resources',
-      path.join(home, '.local', 'share', 'antigravity', 'resources')
-    );
+  return findOriginalResourcesDir({ platform: process.platform, home: os.homedir(), env: process.env });
+}
+
+let __initialKernelSynced = false;
+function ensureKernelInjectionSyncedWithHost(cfgObj) {
+  if (__initialKernelSynced || !cfgObj || typeof cfgObj !== 'object') return cfgObj;
+  __initialKernelSynced = true;
+  if (!cfgObj.features || typeof cfgObj.features !== 'object') cfgObj.features = {};
+  const hasUserCfg = fs.existsSync(CONFIG_FILE);
+  let rawUserCfg = null;
+  if (hasUserCfg) {
+    try { rawUserCfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (_) {}
   }
-  for (const dir of candidates) {
-    try {
-      if (fs.existsSync(path.join(dir, 'app.asar'))) return dir;
-    } catch (_) {}
+  const hasExplicitField = rawUserCfg && rawUserCfg.features && typeof rawUserCfg.features.kernelInjection === 'boolean';
+  if (!hasExplicitField) {
+    const resDir = locateAntigravityResources();
+    const asarPath = resDir ? path.join(resDir, 'app.asar') : '';
+    const { bootMarkerPresent } = detectAsarPatchState(asarPath, readFileRaw);
+    cfgObj.features.kernelInjection = !!bootMarkerPresent;
+    if (!cfgObj.features.macLauncherMode) cfgObj.features.macLauncherMode = 'isolate';
+    writeJsonAtomic(CONFIG_FILE, cfgObj);
+    if (!bootMarkerPresent && process.platform === 'win32') {
+      try {
+        const regScript = path.join(PLUGIN_ROOT, 'scripts', 'register-self-heal.mjs');
+        if (fs.existsSync(regScript)) {
+          const { nodeBin, env } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
+          execFile(nodeBin, [regScript, '--unregister'], { cwd: PLUGIN_ROOT, env, windowsHide: true }, () => {});
+        }
+      } catch (_) {}
+    }
   }
-  return null;
+  return cfgObj;
 }
 
 function getBootPatchStatus(force = false) {
@@ -109,22 +118,31 @@ function getBootPatchStatus(force = false) {
   let healState = null;
   try { healState = JSON.parse(fs.readFileSync(SELF_HEAL_STATE_FILE, 'utf8')); } catch (_) {}
 
+  const cfg = readConfig();
+  const kernelInjection = cfg?.features?.kernelInjection === true;
+  const macLauncherMode = cfg?.features?.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+
   const resourcesDir = locateAntigravityResources();
   let patched = false;
   let hasRemoteDebugSwitch = false;
   let asarPath = '';
   if (resourcesDir) {
     asarPath = path.join(resourcesDir, 'app.asar');
-    try {
-      const rawAsar = readFileRaw(asarPath);
-      patched = rawAsar.includes(BOOT_PATCH_MARKER);
-      hasRemoteDebugSwitch = rawAsar.includes("appendSwitch('remote-debugging-port'");
-    } catch (_) {
-      patched = false;
-    }
+    const st = detectAsarPatchState(asarPath, readFileRaw);
+    patched = st.bootMarkerPresent;
+    hasRemoteDebugSwitch = st.hasRemoteDebugSwitch;
   }
   const cdpAvailable = fs.existsSync(getDevToolsPortPath());
   const fullyPatched = patched && (hasRemoteDebugSwitch || cdpAvailable);
+
+  let state = 'not_installed';
+  if (resourcesDir) {
+    if (kernelInjection) {
+      state = fullyPatched ? 'ok' : 'patch_missing';
+    } else {
+      state = cdpAvailable ? 'ok' : 'cdp_inactive';
+    }
+  }
 
   const value = {
     installed: !!resourcesDir,
@@ -132,10 +150,13 @@ function getBootPatchStatus(force = false) {
     bootMarkerPresent: patched,
     hasRemoteDebugSwitch,
     cdpAvailable,
-    state: !resourcesDir ? 'not_installed' : (fullyPatched ? 'ok' : 'patch_missing'),
+    kernelInjection,
+    macLauncherMode,
+    mode: kernelInjection ? 'kernel_injection' : 'zero_patch',
+    state,
     asarPath,
     hasBackup: !!resourcesDir && fs.existsSync(path.join(resourcesDir, 'app.asar.bak')),
-    pending: !!(healState && healState.pending),
+    pending: kernelInjection && !!(healState && healState.pending),
     deferredReason: (healState && healState.deferredReason) || '',
     lastHealAt: (healState && healState.lastHealAt) || ''
   };
@@ -145,7 +166,6 @@ function getBootPatchStatus(force = false) {
 
 function getAntigravityClientVersion(resourcesDir) {
   if (!resourcesDir) return '';
-  // 1. 通用方式：利用 Electron 宿主接管的 fs 直接读取 app.asar 内的 package.json / product.json
   for (const rel of [
     path.join('app.asar', 'package.json'),
     path.join('app', 'package.json'),
@@ -160,7 +180,6 @@ function getAntigravityClientVersion(resourcesDir) {
       }
     } catch (_) {}
   }
-  // 2. macOS 兜底：读取 Antigravity.app/Contents/Info.plist
   if (process.platform === 'darwin') {
     try {
       const plistPath = path.resolve(resourcesDir, '..', 'Info.plist');
@@ -177,6 +196,12 @@ function getAntigravityClientVersion(resourcesDir) {
 let __sentinelNotifiedThisSession = false;
 function runBootPatchSentinel(httpPort) {
   if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  const cfg = ensureKernelInjectionSyncedWithHost(readConfig());
+  const kernelInjection = cfg?.features?.kernelInjection === true;
+  if (process.platform === 'darwin') {
+    try { syncMacManualReinstallIfNeeded({ isInsideHost: true }); } catch (_) {}
+  }
+
   const status = getBootPatchStatus(true);
   const currentVersion = getAntigravityClientVersion(locateAntigravityResources());
   const sentinelFile = path.join(PLUGIN_ROOT, 'state', 'patch-sentinel.json');
@@ -188,31 +213,41 @@ function runBootPatchSentinel(httpPort) {
   const prevVersion = typeof prev.lastClientVersion === 'string' ? prev.lastClientVersion.trim() : '';
   const versionChanged = Boolean(currentVersion && prevVersion && currentVersion !== prevVersion);
 
+  // 零改包模式下：若 Windows 客户端升级重建了快捷方式导致未带参数启动，自动补回 .lnk 参数（绝不碰 app.asar）
+  let shortcutsAutoPatched = false;
+  if (!kernelInjection && process.platform === 'win32' && !status.cdpAvailable) {
+    try {
+      const lnkRes = patchWindowsShortcuts({ pluginRoot: PLUGIN_ROOT });
+      shortcutsAutoPatched = !!(lnkRes.ok && (lnkRes.updated > 0 || lnkRes.userCreated > 0));
+    } catch (_) {}
+  }
+
   const nextState = {
     ...prev,
     state: status.state,
     patched: status.patched,
     cdpAvailable: status.cdpAvailable,
+    kernelInjection,
+    macLauncherMode: status.macLauncherMode,
+    shortcutsAutoPatched,
     lastClientVersion: currentVersion || prevVersion,
     ...(versionChanged ? { noticeDismissed: false } : {}),
     detectedAt: new Date().toISOString()
   };
   try {
-    fs.mkdirSync(path.dirname(sentinelFile), { recursive: true });
-    fs.writeFileSync(sentinelFile, JSON.stringify(nextState, null, 2), 'utf8');
+    writeJsonAtomic(sentinelFile, nextState);
   } catch (_) {}
 
-  // 仅当已记录过旧版本号、且本次启动检测到客户端版本号发生变更（即反重力已更新）时弹窗提示
-  if (!versionChanged) return;
+  // 硬门控：仅当用户明确开启了内核注入模式、且检测到客户端版本更新覆盖了补丁时，才弹出内核修复提示框
+  if (!kernelInjection || !versionChanged) return;
 
   if (!__sentinelNotifiedThisSession) {
     __sentinelNotifiedThisSession = true;
-    const cfg = readConfig();
     const zh = cfg?.features?.chineseLocalization !== false;
     if (process.platform === 'darwin') {
       const msg = zh
-        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），插件状态被覆盖，是否修复重新激活？`
-        : `Antigravity updated (${prevVersion} → ${currentVersion}) and plugin state was overwritten. Repair and reactivate now?`;
+        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），内核防白闪补丁被覆盖，是否重新合入？`
+        : `Antigravity updated (${prevVersion} → ${currentVersion}) and kernel patch was overwritten. Re-apply now?`;
       const btnCancel = zh ? '暂不修复' : 'Later';
       const btnConfirm = zh ? '修复并重新激活' : 'Repair & Reactivate';
       const osa = `
@@ -231,8 +266,8 @@ function runBootPatchSentinel(httpPort) {
     } else if (process.platform === 'win32') {
       const title = 'Antigravity Skin';
       const body = zh
-        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），插件状态被覆盖，是否修复重新激活？`
-        : `Antigravity updated (${prevVersion} → ${currentVersion}) and plugin state was overwritten. Repair and reactivate now?`;
+        ? `检测到 Antigravity 已更新（${prevVersion} → ${currentVersion}），内核防白闪补丁被覆盖，是否重新合入？`
+        : `Antigravity updated (${prevVersion} → ${currentVersion}) and kernel patch was overwritten. Re-apply now?`;
       const ps = `
         Add-Type -AssemblyName System.Windows.Forms;
         $r = [System.Windows.Forms.MessageBox]::Show('${body}', '${title}', 'YesNo', 'Information');
@@ -297,6 +332,8 @@ function buildDefaultConfig() {
   return {
     enabled: true,
     features: {
+      kernelInjection: false,
+      macLauncherMode: 'isolate',
       bootAnimation: false,
       bootAnimationConfig: {
         type: 'video',
@@ -383,6 +420,8 @@ function normalizeConfig(raw) {
     enabled: dash.enabled !== false,
     inlineEnabled: dash.inlineEnabled !== false
   };
+  out.features.kernelInjection = out.features.kernelInjection === true;
+  out.features.macLauncherMode = out.features.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
   // 路径归一化：容忍用户手填 E:////foo 或正反斜杠混写
   try {
     const libCfg = out.features.externalWallpaperLibrary;
@@ -468,8 +507,7 @@ function readConfig() {
 
 function writeConfig(newConfig) {
   try {
-    fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2), 'utf8');
+    writeJsonAtomic(CONFIG_FILE, newConfig);
     return true;
   } catch (e) {
     console.error('[Skin Engine] Failed to write config:', e);
@@ -754,12 +792,10 @@ async function checkPluginUpdate() {
     } catch (_) {}
   }
 
-  // 2. 备用兜底：若 API 受到 403 频控或直连超时，尝试直接请求远程 CDN 上的 plugin.json
+  // 2. 备用兜底：若 API 受到 403 频控或直连超时，直接请求 GitHub 官方 Raw 源上的 plugin.json
   if (!latestInfo) {
     const rawUrls = [
-      `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/plugin.json`,
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/plugin.json`,
-      `https://raw.gitmirror.com/${GITHUB_REPO}/main/plugin.json`
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/plugin.json`
     ];
     for (const rawUrl of rawUrls) {
       try {
@@ -791,32 +827,69 @@ async function checkPluginUpdate() {
   return latestInfo;
 }
 
-// 下载更新包（多镜像源自动重试）
-async function downloadUpdateZip(rawDownloadUrl, destZipPath) {
-  const targetUrls = [
-    rawDownloadUrl,
-    `https://ghproxy.net/${rawDownloadUrl}`,
-    `https://mirror.ghproxy.com/${rawDownloadUrl}`
-  ];
+function isTrustedUpdateEntryUrl(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || '').trim());
+    return u.protocol === 'https:' &&
+      u.hostname.toLowerCase() === 'github.com' &&
+      u.pathname.startsWith(`/${GITHUB_REPO}/`);
+  } catch (_) {
+    return false;
+  }
+}
 
+function isTrustedUpdateRedirectUrl(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || '').trim());
+    if (u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    return host === 'github.com' || host.endsWith('.githubusercontent.com');
+  } catch (_) {
+    return false;
+  }
+}
+
+// 下载更新包（仅使用 GitHub 官方源并校验跳转域，避免第三方镜像站劫持风险）
+async function downloadUpdateZip(rawDownloadUrl, destZipPath) {
+  if (!isTrustedUpdateEntryUrl(rawDownloadUrl)) {
+    throw new Error('拒绝非 GitHub 官方仓库的更新包下载地址');
+  }
+
+  let currentUrl = String(rawDownloadUrl).trim();
+  const maxRedirects = 5;
   let lastError = null;
-  for (const url of targetUrls) {
-    try {
-      console.log(`[Skin Engine] Attempting to download update from: ${url}`);
-      const res = await fetch(url, {
+
+  try {
+    for (let step = 0; step <= maxRedirects; step++) {
+      console.log(`[Skin Engine] Attempting to download update from: ${currentUrl}`);
+      const res = await fetch(currentUrl, {
+        redirect: 'manual',
         signal: AbortSignal.timeout(45000),
         headers: { 'User-Agent': 'Antigravity-Skin-Updater' }
       });
+
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get('location');
+        if (!loc) throw new Error(`HTTP ${res.status} 缺少重定向目标`);
+        const nextUrl = new URL(loc, currentUrl).toString();
+        if (!isTrustedUpdateRedirectUrl(nextUrl)) {
+          throw new Error(`拒绝跳转到非官方域名: ${nextUrl}`);
+        }
+        currentUrl = nextUrl;
+        continue;
+      }
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length < 1024) throw new Error('下载文件大小异常');
       fs.writeFileSync(destZipPath, buf);
       console.log(`[Skin Engine] Download succeeded: ${(buf.length / 1024).toFixed(1)} KB`);
       return;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[Skin Engine] Download attempt failed: ${url} ->`, err.message);
     }
+    throw new Error('更新包下载重定向次数过多');
+  } catch (err) {
+    lastError = err;
+    console.warn(`[Skin Engine] Download attempt failed: ${currentUrl} ->`, err.message);
   }
   throw new Error(`下载更新安装包失败：${lastError?.message || '网络连接超时'}`);
 }
@@ -885,15 +958,17 @@ async function extractAndDeploy(zipFilePath) {
       }
     }
 
-    // 复制白名单元文件
+    // 复制白名单元文件（补全 self-heal.bat / provisionSplash.js / CHANGELOG.md，并校验路径不逃逸）
     const safeFiles = [
-      'plugin.json', 'package.json', 'config.default.json', 'README.md',
+      'plugin.json', 'package.json', 'config.default.json', 'README.md', 'CHANGELOG.md',
+      'loadingOverlay.js', 'provisionSplash.js',
       'install.bat', 'uninstall.bat', 'install.ps1', 'uninstall.ps1',
-      'install.sh', 'uninstall.sh', 'patch-loading.bat', 'restore-loading.bat'
+      'install.sh', 'uninstall.sh', 'patch-loading.bat', 'restore-loading.bat', 'self-heal.bat'
     ];
     for (const f of safeFiles) {
-      const src = path.join(sourceRoot, f);
-      const dest = path.join(PLUGIN_ROOT, f);
+      const src = path.resolve(sourceRoot, f);
+      const dest = path.resolve(PLUGIN_ROOT, f);
+      if (!isSubPath(sourceRoot, src) || !isSubPath(PLUGIN_ROOT, dest)) continue;
       if (fs.existsSync(src)) {
         fs.copyFileSync(src, dest);
       }
@@ -901,20 +976,22 @@ async function extractAndDeploy(zipFilePath) {
 
     console.log('[Skin Engine] Core plugin files successfully updated on disk.');
 
-    // 4. 自动检查并合入内核补丁（确保在线升级后 remote-debugging-port 始终保持生效；热更新保持免重启）
-    try {
-      const patchScript = path.join(PLUGIN_ROOT, 'scripts', 'patch-boot-overlay.mjs');
-      if (fs.existsSync(patchScript)) {
-        const { nodeBin, env } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
-        execSync(`"${nodeBin}" "${patchScript}"`, {
-          cwd: PLUGIN_ROOT,
-          env,
-          stdio: 'ignore'
-        });
-        console.log('[Skin Engine] Auto-applied boot patch during online update.');
+    // 4. 硬门控：仅当用户明确开启了内核注入模式（features.kernelInjection === true）时，才在热更新后同步内核补丁
+    if (readConfig()?.features?.kernelInjection === true) {
+      try {
+        const patchScript = path.join(PLUGIN_ROOT, 'scripts', 'patch-boot-overlay.mjs');
+        if (fs.existsSync(patchScript)) {
+          const { nodeBin, env } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
+          execSync(`"${nodeBin}" "${patchScript}"`, {
+            cwd: PLUGIN_ROOT,
+            env,
+            stdio: 'ignore'
+          });
+          console.log('[Skin Engine] Auto-applied boot patch during online update.');
+        }
+      } catch (patchErr) {
+        console.warn('[Skin Engine] Failed to auto-apply boot patch after update:', patchErr.message);
       }
-    } catch (patchErr) {
-      console.warn('[Skin Engine] Failed to auto-apply boot patch after update:', patchErr.message);
     }
   } finally {
     // 清理临时解压目录
@@ -1133,13 +1210,37 @@ async function ensureWebWallGLOnActiveSessions() {
   return injectedCount;
 }
 
+function isAllowedCorsOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  if (origin === 'null') return true;
+  if (origin.startsWith('vscode-file://')) return true;
+  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
+}
+
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
+  const reqHost = String(req.headers.host || '');
+  if (reqHost && !/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(reqHost)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  const origin = req.headers.origin;
+  if (origin) {
+    if (!isAllowedCorsOrigin(origin)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+
+  const url = new URL(req.url, `http://${reqHost || '127.0.0.1'}`);
 
   // CORS & Chromium Private Network Access (PNA)
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
   if (req.method === 'OPTIONS') {
@@ -1198,13 +1299,19 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // API: 保存配置
+  // API: 保存配置（保护底层系统字段 kernelInjection / macLauncherMode 不被前端旧快照并发覆写）
   if (url.pathname === '/api/config' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        const parsed = JSON.parse(body);
+        const current = readConfig();
+        const rawParsed = JSON.parse(body);
+        if (!rawParsed || typeof rawParsed !== 'object') throw new Error('Invalid config object');
+        if (!rawParsed.features || typeof rawParsed.features !== 'object') rawParsed.features = {};
+        rawParsed.features.kernelInjection = current?.features?.kernelInjection === true;
+        rawParsed.features.macLauncherMode = current?.features?.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+        const parsed = normalizeConfig(rawParsed);
         writeConfig(parsed);
         // 若配置了场景素材，后台静默自动提取并持久化该素材的高清大图，为冷启动提供 100% 动态对齐的高清原画
         const bootWp = parsed?.features?.bootAnimationConfig?.wallpaperDir;
@@ -1325,18 +1432,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: 跨平台开屏动画完成通知（macOS 解除底层 CDP 视口置黑覆盖）
+  // API: 跨平台开屏动画完成通知（所有未打补丁宿主对称解除底层 CDP 视口置黑覆盖）
   if (url.pathname === '/api/boot-finished' && req.method === 'POST') {
-    if (process.platform === 'darwin') {
-      for (const [id, session] of activeSessions.entries()) {
-        try {
-          if (typeof session.clearAntiFlash === 'function') {
-            session.clearAntiFlash();
-          } else {
-            session.send('Emulation.setDefaultBackgroundColorOverride', {});
-          }
-        } catch (_) {}
-      }
+    for (const [id, session] of activeSessions.entries()) {
+      try {
+        if (typeof session.clearAntiFlash === 'function') {
+          session.clearAntiFlash();
+        } else {
+          session.send('Emulation.setDefaultBackgroundColorOverride', {});
+        }
+      } catch (_) {}
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
@@ -1357,7 +1462,54 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // API: 平台专属 - 一键重新合入开机动效与内核调试端口补丁
+  // API: 零改包快捷方式 / 启动器一键刷新
+  if (url.pathname === '/api/shortcuts/repair' && req.method === 'POST') {
+    let result = { ok: true };
+    if (process.platform === 'win32') {
+      result = patchWindowsShortcuts({ pluginRoot: PLUGIN_ROOT });
+    } else if (process.platform === 'darwin') {
+      const cfg = readConfig();
+      const mode = cfg?.features?.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+      result = setupMacZeroPatchLauncher({ mode, isInsideHost: true });
+    }
+    __bootPatchCache = { at: 0, value: null };
+    res.writeHead(result.ok ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
+  // API: 切换 macOS 启动器模式 (isolate / keep_original)
+  if (url.pathname === '/api/mac-launcher/mode' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        const nextMode = parsed.mode === 'keep_original' ? 'keep_original' : 'isolate';
+        const cfg = readConfig();
+        cfg.features = cfg.features || {};
+        cfg.features.macLauncherMode = nextMode;
+        writeConfig(cfg);
+        let applyRes = { ok: true, mode: nextMode };
+        if (process.platform === 'darwin') {
+          applyRes = setupMacZeroPatchLauncher({ mode: nextMode, isInsideHost: true });
+          if (applyRes.ok && applyRes.mode && applyRes.mode !== nextMode) {
+            cfg.features.macLauncherMode = applyRes.mode;
+            writeConfig(cfg);
+          }
+        }
+        __bootPatchCache = { at: 0, value: null };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ...applyRes, macLauncherMode: cfg.features.macLauncherMode }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // API: 平台专属 - 一键开启/修复内核防白闪与调试端口补丁 (Opt-in)
   if ((url.pathname === '/api/patch-boot' || url.pathname === '/api/boot-patch/repair') && req.method === 'POST') {
     if (process.platform !== 'win32' && process.platform !== 'darwin') {
       res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1372,8 +1524,16 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    try {
+      const cfg = readConfig();
+      cfg.features = cfg.features || {};
+      cfg.features.kernelInjection = true;
+      writeConfig(cfg);
+      __bootPatchCache = { at: 0, value: null };
+    } catch (_) {}
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, autoRestart: true, message: '已启动开机动效与内核补丁修复引擎，完成后将自动安全重启 Antigravity...' }));
+    res.end(JSON.stringify({ ok: true, autoRestart: true, message: '已开启内核注入并启动修复引擎，完成后将自动安全重启 Antigravity...' }));
 
     setTimeout(() => {
       try {
@@ -1414,6 +1574,77 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: 关闭内核注入并一键还原官方原版 app.asar（切回零改包纯净模式）
+  if ((url.pathname === '/api/restore-boot' || url.pathname === '/api/boot-patch/restore') && req.method === 'POST') {
+    if (process.platform !== 'win32' && process.platform !== 'darwin') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: '当前平台无需内核还原操作。' }));
+      return;
+    }
+
+    try {
+      const cfg = readConfig();
+      cfg.features = cfg.features || {};
+      cfg.features.kernelInjection = false;
+      writeConfig(cfg);
+      __bootPatchCache = { at: 0, value: null };
+    } catch (_) {}
+
+    if (process.platform === 'win32') {
+      try { patchWindowsShortcuts({ pluginRoot: PLUGIN_ROOT }); } catch (_) {}
+      try {
+        const unregScript = path.join(PLUGIN_ROOT, 'scripts', 'register-self-heal.mjs');
+        if (fs.existsSync(unregScript)) {
+          const { nodeBin, env } = resolvePatchNodeAndEnv({ skipKill: true, skipRelaunch: true });
+          execSync(`"${nodeBin}" "${unregScript}" --unregister`, { cwd: PLUGIN_ROOT, env, stdio: 'ignore' });
+        }
+      } catch (_) {}
+    } else if (process.platform === 'darwin') {
+      try {
+        const cfg = readConfig();
+        const mode = cfg?.features?.macLauncherMode === 'keep_original' ? 'keep_original' : 'isolate';
+        setupMacZeroPatchLauncher({ mode, isInsideHost: true });
+      } catch (_) {}
+    }
+
+    const restoreScript = path.join(PLUGIN_ROOT, 'scripts', 'restore-boot-overlay.mjs');
+    const st = getBootPatchStatus(true);
+    if (!st.hasBackup || !fs.existsSync(restoreScript)) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, autoRestart: false, message: '已切换为零改包纯净模式。' }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, autoRestart: true, message: '正在还原官方原版客户端文件并重启以零改包模式启动...' }));
+
+    setTimeout(() => {
+      try {
+        const { nodeBin, env: cleanEnv } = resolvePatchNodeAndEnv();
+        if (process.platform === 'win32') {
+          const child = spawn(nodeBin, [restoreScript, '--from-plugin', '--detached-worker', '--delay-ms=800'], {
+            cwd: PLUGIN_ROOT,
+            detached: true,
+            stdio: 'ignore',
+            env: { ...cleanEnv, __AGY_DETACHED_PATCHER: '1' }
+          });
+          child.unref();
+        } else {
+          const child = spawn(nodeBin, [restoreScript, '--from-plugin', '--from-host'], {
+            cwd: PLUGIN_ROOT,
+            detached: true,
+            stdio: 'ignore',
+            env: cleanEnv
+          });
+          child.unref();
+        }
+      } catch (err) {
+        console.error('[Skin Engine] Failed to spawn restore process:', err);
+      }
+    }, 500);
+    return;
+  }
+
   // API: 检查插件最新版本
   if (url.pathname === '/api/update/check' && req.method === 'GET') {
     checkPluginUpdate()
@@ -1445,6 +1676,11 @@ const server = http.createServer((req, res) => {
         if (!downloadUrl) {
           const info = await checkPluginUpdate();
           downloadUrl = info.downloadUrl;
+        }
+        if (!isTrustedUpdateEntryUrl(downloadUrl)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: '非法的更新包下载地址' }));
+          return;
         }
 
         tmpZip = path.join(os.tmpdir(), `agy-skin-update-${Date.now()}.zip`);
@@ -2967,71 +3203,69 @@ function createCdpSession(target, port) {
   ws.onopen = async () => {
     console.log(`[Skin Engine] CDP session opened for target ${targetId} (${target.title || target.url || ''})`);
 
-    // 🍎 macOS 专属视口零闪白防线：仅在未打 loadingOverlay.js 补丁且尚未过开屏阶段时激活，绝不将已接管或已完成启动的首页锁死在纯黑底板下
-    if (process.platform === 'darwin') {
-      try {
-        const cfg = readConfig();
-        const hostPatched = isHostBootOverlayPatched();
-        let alreadyBooted = hostPatched;
-        if (!alreadyBooted) {
-          try {
-            const bootCheck = await send('Runtime.evaluate', {
-              expression: `(() => {
-                try {
-                  return !!(window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__'));
-                } catch (_) { return false; }
-              })()`,
-              returnByValue: true
-            });
-            alreadyBooted = !!bootCheck?.result?.value;
-          } catch (_) {}
-        }
-
-        if (!hostPatched && isBootActiveEffective(cfg) && !alreadyBooted) {
-          await send('Emulation.setDefaultBackgroundColorOverride', {
-            color: { r: 0, g: 0, b: 0, a: 1 }
-          });
-          await send('Runtime.evaluate', {
+    // 全平台未打补丁宿主对称零闪白防线：仅在未打 loadingOverlay.js 补丁且尚未过开屏阶段时激活，绝不将已接管或已完成启动的首页锁死在纯黑底板下
+    try {
+      const cfg = readConfig();
+      const hostPatched = isHostBootOverlayPatched();
+      let alreadyBooted = hostPatched;
+      if (!alreadyBooted) {
+        try {
+          const bootCheck = await send('Runtime.evaluate', {
             expression: `(() => {
               try {
-                if (sessionStorage.getItem('__agy_booted__')) return;
-                document.documentElement.style.background = '#000000';
-                if (document.body) document.body.style.background = '#000000';
-                if (!document.getElementById('agy-macos-anti-flash')) {
-                  const st = document.createElement('style');
-                  st.id = 'agy-macos-anti-flash';
-                  st.textContent = 'html, body { background: #000000 !important; }';
-                  (document.head || document.documentElement).appendChild(st);
+                return !!(window.__agyMasterBootHandled || window.__agyHostOverlayActive || sessionStorage.getItem('__agy_booted__'));
+              } catch (_) { return false; }
+            })()`,
+            returnByValue: true
+          });
+          alreadyBooted = !!bootCheck?.result?.value;
+        } catch (_) {}
+      }
+
+      if (!hostPatched && isBootActiveEffective(cfg) && !alreadyBooted) {
+        await send('Emulation.setDefaultBackgroundColorOverride', {
+          color: { r: 0, g: 0, b: 0, a: 1 }
+        });
+        await send('Runtime.evaluate', {
+          expression: `(() => {
+            try {
+              if (sessionStorage.getItem('__agy_booted__')) return;
+              document.documentElement.style.background = '#000000';
+              if (document.body) document.body.style.background = '#000000';
+              if (!document.getElementById('agy-macos-anti-flash')) {
+                const st = document.createElement('style');
+                st.id = 'agy-macos-anti-flash';
+                st.textContent = 'html, body { background: #000000 !important; }';
+                (document.head || document.documentElement).appendChild(st);
+              }
+            } catch (_) {}
+          })()`
+        });
+        if (session.antiFlashTimer) clearTimeout(session.antiFlashTimer);
+        session.antiFlashTimer = setTimeout(() => {
+          session.antiFlashTimer = null;
+          if (ws.readyState !== WebSocket.OPEN) return;
+          send('Emulation.setDefaultBackgroundColorOverride', {}).catch(() => {});
+          send('Runtime.evaluate', {
+            expression: `(() => {
+              try {
+                if (window.__agyBootPlaying) return;
+                const st = document.getElementById('agy-macos-anti-flash');
+                if (st) st.remove();
+                if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
+                  document.documentElement.style.background = '';
+                }
+                if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
+                  document.body.style.background = '';
                 }
               } catch (_) {}
             })()`
-          });
-          if (session.antiFlashTimer) clearTimeout(session.antiFlashTimer);
-          session.antiFlashTimer = setTimeout(() => {
-            session.antiFlashTimer = null;
-            if (ws.readyState !== WebSocket.OPEN) return;
-            send('Emulation.setDefaultBackgroundColorOverride', {}).catch(() => {});
-            send('Runtime.evaluate', {
-              expression: `(() => {
-                try {
-                  if (window.__agyBootPlaying) return;
-                  const st = document.getElementById('agy-macos-anti-flash');
-                  if (st) st.remove();
-                  if (document.documentElement && (document.documentElement.style.background === 'rgb(0, 0, 0)' || document.documentElement.style.background === '#000000')) {
-                    document.documentElement.style.background = '';
-                  }
-                  if (document.body && (document.body.style.background === 'rgb(0, 0, 0)' || document.body.style.background === '#000000')) {
-                    document.body.style.background = '';
-                  }
-                } catch (_) {}
-              })()`
-            }).catch(() => {});
-          }, 12000);
-        } else {
-          clearSessionAntiFlash();
-        }
-      } catch (_) {}
-    }
+          }).catch(() => {});
+        }, 12000);
+      } else {
+        clearSessionAntiFlash();
+      }
+    } catch (_) {}
 
     // 关键优化：WebSocket 握手就绪时按需同步标题栏属性（仅开屏有效或壁纸皮肤激活时透明），绝不向 DOM 预埋多余全屏容器
     try {
@@ -3176,8 +3410,8 @@ function isMainAppTarget(target) {
     return false;
   }
 
-  // 2. 严禁误劫持用户本地起的服务 (如 localhost:3000, localhost:3005, 127.0.0.1:8080 等非 IDE 页面)
-  if (url.includes('localhost') || /127\.0\.0\.1:(?!0\b)\d+\/(?:admin|api|debug|test|app|dashboard)/i.test(url)) {
+  // 2. 严禁误劫持用户本地起的服务或本地 OAuth/认证回调页
+  if (url.includes('localhost') || /127\.0\.0\.1:(?!0\b)\d+\/(?:admin|api|debug|test|app|dashboard|callback|oauth|auth|login|signin|sso)/i.test(url)) {
     return false;
   }
 
@@ -3188,7 +3422,7 @@ function isMainAppTarget(target) {
     return false;
   }
 
-  // 4. 标题有效时二次校验官方 IDE 标识，坚决杜绝第三方 Tab 注入
+  // 4. 标题有效时二次校验官方 IDE 标识，坚决杜绝第三方 Tab 注入（冷启动空标题根路径保留放行）
   if (title) {
     const isAgyTitle = /(?:^|[\s\-—•·])Antigravity(?:\s|$)/i.test(title);
     if (!isAgyTitle) return false;
@@ -3296,7 +3530,7 @@ async function connectBrowserTarget(port) {
   }
 
   const browserWsUrl = versionInfo?.webSocketDebuggerUrl;
-  if (!browserWsUrl) {
+  if (!browserWsUrl || !/^wss?:\/\/(127\.0\.0\.1|localhost):\d+\//i.test(browserWsUrl)) {
     scheduleReconnect(2000);
     return;
   }

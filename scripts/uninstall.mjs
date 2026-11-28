@@ -4,6 +4,13 @@ import os from 'node:os';
 import http from 'node:http';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {
+  findOriginalResourcesDir,
+  restoreWindowsShortcuts,
+  teardownMacZeroPatchLauncher,
+  writeJsonAtomic,
+  readJsonSafe
+} from './platform-host.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,16 +24,43 @@ console.log('==================================================');
 console.log('  正在卸载 Antigravity 主题与皮肤插件...');
 console.log('==================================================');
 
-if (fs.existsSync(targetPluginDir)) {
-  console.log('[1/3] 移除开机自愈守护...');
-  const unregisterScript = path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs');
-  if (process.platform === 'win32' && fs.existsSync(unregisterScript)) {
+console.log('[1/4] 清理开机自愈守护与纯净启动入口...');
+const unregisterScript = fs.existsSync(path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs'))
+  ? path.join(targetPluginDir, 'scripts', 'register-self-heal.mjs')
+  : path.join(PROJECT_ROOT, 'scripts', 'register-self-heal.mjs');
+if (process.platform === 'win32') {
+  if (fs.existsSync(unregisterScript)) {
     try {
       execSync(`"${process.execPath}" "${unregisterScript}" --unregister`, { stdio: 'inherit' });
     } catch (_) {}
   }
+  try {
+    restoreWindowsShortcuts({ pluginRoot: targetPluginDir });
+  } catch (_) {}
+}
 
-  console.log('[2/3] 移除插件挂载目录...');
+console.log('[2/4] 检查官方备份并恢复零改包原版状态...');
+if (process.platform === 'win32' || process.platform === 'darwin') {
+  const resourcesDir = findOriginalResourcesDir({ includeBackupOnly: true });
+  const hasBackup = resourcesDir && fs.existsSync(path.join(resourcesDir, 'app.asar.bak'));
+  const restoreScript = fs.existsSync(path.join(targetPluginDir, 'scripts', 'restore-boot-overlay.mjs'))
+    ? path.join(targetPluginDir, 'scripts', 'restore-boot-overlay.mjs')
+    : path.join(PROJECT_ROOT, 'scripts', 'restore-boot-overlay.mjs');
+  if (hasBackup && fs.existsSync(restoreScript)) {
+    try {
+      execSync(`"${process.execPath}" "${restoreScript}" --no-restart`, { stdio: 'inherit' });
+    } catch (_) {}
+  }
+}
+
+if (process.platform === 'darwin') {
+  try {
+    teardownMacZeroPatchLauncher();
+  } catch (_) {}
+}
+
+if (fs.existsSync(targetPluginDir)) {
+  console.log('[3/4] 移除插件挂载目录...');
   try {
     const stat = fs.lstatSync(targetPluginDir);
     if (stat.isSymbolicLink()) {
@@ -41,7 +75,7 @@ if (fs.existsSync(targetPluginDir)) {
   }
 }
 
-console.log('[3/3] 注销插件配置...');
+console.log('[4/4] 注销插件配置...');
 
 async function disablePluginViaRpc() {
   const lsAddress = process.env.ANTIGRAVITY_LS_ADDRESS;
@@ -80,29 +114,12 @@ async function disablePluginViaRpc() {
 const rpcOk = await disablePluginViaRpc();
 if (!rpcOk && fs.existsSync(configFile)) {
   try {
-    const configData = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    if (configData.plugins && configData.plugins['antigravity-skin']) {
+    const configData = readJsonSafe(configFile);
+    if (configData && configData.plugins && configData.plugins['antigravity-skin']) {
       delete configData.plugins['antigravity-skin'];
-      const tmp = `${configFile}.tmp.${Date.now()}`;
-      fs.writeFileSync(tmp, JSON.stringify(configData, null, 2), 'utf8');
-      try {
-        fs.renameSync(tmp, configFile);
-      } catch (_) {
-        fs.copyFileSync(tmp, configFile);
-        try { fs.unlinkSync(tmp); } catch(__) {}
-      }
+      writeJsonAtomic(configFile, configData);
     }
   } catch (e) {}
-}
-
-// 3. 若处于 Windows 且存在开机补丁备份，自动恢复官方原版 app.asar
-if (process.platform === 'win32') {
-  const restoreScript = path.join(PROJECT_ROOT, 'scripts', 'restore-boot-overlay.mjs');
-  if (fs.existsSync(restoreScript)) {
-    try {
-      execSync(`node "${restoreScript}"`, { stdio: 'inherit' });
-    } catch (_) {}
-  }
 }
 
 console.log('==================================================');

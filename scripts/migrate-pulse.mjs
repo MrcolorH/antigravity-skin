@@ -24,6 +24,7 @@ function locateAppAsar({ platform = process.platform, home = os.homedir(), env =
   if (env.AG_SKIN_ASAR_PATH) candidates.push(env.AG_SKIN_ASAR_PATH);
   if (platform === 'darwin') {
     candidates.push(
+      path.join(home, 'Library', 'Application Support', 'AntigravitySkin.noindex', 'Antigravity.app', 'Contents', 'Resources', 'app.asar'),
       '/Applications/Antigravity.app/Contents/Resources/app.asar',
       path.join(home, 'Applications', 'Antigravity.app', 'Contents', 'Resources', 'app.asar')
     );
@@ -32,6 +33,7 @@ function locateAppAsar({ platform = process.platform, home = os.homedir(), env =
     candidates.push(
       path.join(local, 'Programs', 'antigravity', 'resources', 'app.asar'),
       path.join(local, 'Programs', 'Antigravity', 'resources', 'app.asar'),
+      path.join(local, 'Programs', 'Antigravity IDE', 'resources', 'app.asar'),
       'C:\\Program Files\\Antigravity\\resources\\app.asar'
     );
   } else {

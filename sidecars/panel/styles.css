@@ -747,3 +747,33 @@ body:not(.standalone) .lib-modal {
   font-size: 10px;
   text-align: center;
 }
+
+.zero-patch-block {
+  margin-top: 9px;
+}
+.mode-warn-text {
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--pulse-warning);
+}
+.confirm-inline-box {
+  margin-top: 8px;
+  padding: 8px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.confirm-inline-text {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--pulse-foreground);
+}
+.confirm-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}

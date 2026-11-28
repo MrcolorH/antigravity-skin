@@ -3,10 +3,23 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {
+  findOriginalResourcesDir,
+  findMacOriginalAppBundle,
+  resolveMacLaunchTarget,
+  updateKernelInjectionConfig,
+  getDefaultPluginRoot,
+  runPowerShellScript
+} from './platform-host.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
+
+function resolvePluginRootDir() {
+  if (fs.existsSync(path.join(PROJECT_ROOT, 'plugin.json'))) return PROJECT_ROOT;
+  return getDefaultPluginRoot();
+}
 
 // 确保 npx 与当前 node 同目录优先级最高，避免 GUI 启动环境 PATH 精简导致找不到 npx
 try {
@@ -25,46 +38,9 @@ if (process.platform !== 'win32' && process.platform !== 'darwin') {
   process.exit(0);
 }
 
-// 1. 定位 Antigravity resources 目录
+// 1. 定位 Antigravity 原版 resources 目录（自动支持 macOS 隔离目录且跳过启动器）
 function findResourcesDir() {
-  const home = os.homedir();
-  if (process.platform === 'darwin') {
-    const candidates = [
-      '/Applications/Antigravity.app/Contents/Resources',
-      path.join(home, 'Applications', 'Antigravity.app', 'Contents', 'Resources')
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(path.join(c, 'app.asar'))) {
-        return c;
-      }
-    }
-  } else if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    const candidates = [
-      path.join(localAppData, 'Programs', 'antigravity', 'resources'),
-      path.join(localAppData, 'Programs', 'Antigravity', 'resources'),
-      'C:\\Program Files\\Antigravity\\resources',
-      'C:\\Program Files (x86)\\Antigravity\\resources'
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(path.join(c, 'app.asar'))) {
-        return c;
-      }
-    }
-  } else {
-    const candidates = [
-      '/usr/lib/antigravity/resources',
-      '/opt/Antigravity/resources',
-      '/opt/antigravity/resources',
-      path.join(home, '.local', 'share', 'antigravity', 'resources')
-    ];
-    for (const c of candidates) {
-      if (fs.existsSync(path.join(c, 'app.asar'))) {
-        return c;
-      }
-    }
-  }
-  return null;
+  return findOriginalResourcesDir({ platform: process.platform, home: os.homedir(), env: process.env });
 }
 
 const resourcesDir = findResourcesDir();
@@ -100,19 +76,15 @@ function resolveMacAppBundlePath(resDir) {
     const candidate = path.resolve(resDir, '..', '..');
     if (candidate.endsWith('.app') && fs.existsSync(candidate)) return candidate;
   }
-  const home = os.homedir();
-  const candidates = [
-    '/Applications/Antigravity.app',
-    path.join(home, 'Applications', 'Antigravity.app')
-  ];
-  return candidates.find(c => fs.existsSync(c)) || '';
+  return findMacOriginalAppBundle() || '';
 }
 
 function scheduleDetachedMacRestart(resDir) {
-  const appBundle = resolveMacAppBundlePath(resDir);
+  const launchInfo = resolveMacLaunchTarget(resDir);
+  const launchTarget = launchInfo?.target || resolveMacAppBundlePath(resDir);
   const restartScript = [
     'sleep 1.2',
-    'osascript -e \'tell application "Antigravity" to quit\' >/dev/null 2>&1 || true',
+    'osascript -e \'tell application id "com.google.antigravity" to quit\' >/dev/null 2>&1 || true',
     'i=0',
     'while [ $i -lt 30 ]; do',
     '  if ! pgrep -f "/[A]ntigravity\\.app/Contents/" >/dev/null 2>&1; then break; fi',
@@ -129,17 +101,17 @@ function scheduleDetachedMacRestart(resDir) {
     '  done',
     'fi',
     'sleep 0.4',
-    'if [ -n "$AGY_APP_BUNDLE" ] && [ -d "$AGY_APP_BUNDLE" ]; then',
-    '  open -a "$AGY_APP_BUNDLE" --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
+    'if [ -n "$AGY_LAUNCH_TARGET" ] && [ -d "$AGY_LAUNCH_TARGET" ]; then',
+    '  open -a "$AGY_LAUNCH_TARGET" --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
     'else',
-    '  open -b com.google.antigravity --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
+    '  open -a Antigravity --args --remote-debugging-port=0 >/dev/null 2>&1 || true',
     'fi'
   ].join('\n');
 
   const child = spawn('/bin/sh', ['-c', restartScript], {
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, AGY_APP_BUNDLE: appBundle }
+    env: { ...process.env, AGY_LAUNCH_TARGET: launchTarget }
   });
   child.unref();
 }
@@ -404,6 +376,19 @@ try {
         }
       } catch (_) {}
     }
+
+    // 同步插件配置状态（features.kernelInjection = true）与 Windows 开机自愈注册
+    try {
+      const pluginRoot = resolvePluginRootDir();
+      updateKernelInjectionConfig(true, pluginRoot);
+      if (process.platform === 'win32' && process.env.SELF_HEAL !== '1') {
+        const regScript = path.join(pluginRoot, 'scripts', 'register-self-heal.mjs');
+        if (fs.existsSync(regScript)) {
+          execSync(`"${process.execPath}" "${regScript}"`, { stdio: 'ignore' });
+        }
+      }
+    } catch (_) {}
+
     console.log('🎉 恭喜！前置开机动画已成功完成动态联动升级！');
     console.log('');
     console.log('📌 本次真·零闪白终极升级：');
@@ -427,13 +412,14 @@ try {
         console.log('');
         console.log('🚀 正在自动为您启动 Antigravity 客户端...');
         if (process.platform === 'darwin') {
-          const appBundle = resolveMacAppBundlePath(resourcesDir);
-          if (appBundle && fs.existsSync(appBundle)) {
-            execSync(`open -a "${appBundle}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
+          const launchInfo = resolveMacLaunchTarget(resourcesDir);
+          const launchTarget = launchInfo?.target || resolveMacAppBundlePath(resourcesDir);
+          if (launchTarget && fs.existsSync(launchTarget)) {
+            execSync(`open -a "${launchTarget}" --args --remote-debugging-port=0`, { stdio: 'ignore' });
             console.log('✨ 客户端已成功拉起启动！');
             return;
           }
-          execSync('open -b com.google.antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
+          execSync('open -a Antigravity --args --remote-debugging-port=0', { stdio: 'ignore' });
           console.log('✨ 客户端已成功拉起启动！');
           return;
         } else if (process.platform === 'win32') {
@@ -455,17 +441,20 @@ try {
               }
             }
 
-            // 3. 检查桌面快捷方式指向的目标路径
+            // 3. 检查桌面快捷方式指向的目标路径（通过 Windows Shell API 解析真实桌面目录，兼容 OneDrive 重定向）
             try {
-              const desktop = path.join(os.homedir(), 'Desktop');
-              const lnkCandidates = [
-                path.join(desktop, 'Antigravity.lnk'),
-                path.join(desktop, 'Antigravity IDE.lnk')
-              ];
-              for (const lnk of lnkCandidates) {
-                if (fs.existsSync(lnk)) {
-                  const target = execSync(`powershell.exe -NoProfile -NonInteractive -Command "(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk}').TargetPath"`, { encoding: 'utf8' }).trim();
-                  if (target && fs.existsSync(target)) return target;
+              const realDesktop = runPowerShellScript("[Environment]::GetFolderPath('Desktop')");
+              if (realDesktop && fs.existsSync(realDesktop)) {
+                const lnkCandidates = [
+                  path.join(realDesktop, 'Antigravity.lnk'),
+                  path.join(realDesktop, 'Antigravity IDE.lnk'),
+                  path.join(realDesktop, 'Antigravity (Skin).lnk')
+                ];
+                for (const lnk of lnkCandidates) {
+                  if (fs.existsSync(lnk)) {
+                    const target = runPowerShellScript(`(New-Object -ComObject WScript.Shell).CreateShortcut('${lnk.replace(/'/g, "''")}').TargetPath`);
+                    if (target && fs.existsSync(target)) return target;
+                  }
                 }
               }
             } catch (_) {}
